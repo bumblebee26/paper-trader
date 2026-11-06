@@ -105,11 +105,9 @@ Whenever the code on GitHub changes, run this on the server outside market hours
 cd ~/paper-trader && git pull && .venv/bin/pip install -r requirements.txt
 ```
 Your `.env` and `journal/` are never touched by `git pull` (they're in `.gitignore`).
-To pull automatically every weekday at 08:45 before the session, add this line with
-`crontab -e`:
-```
-45 8 * * 1-5  cd /home/ubuntu/paper-trader && git pull -q && .venv/bin/pip install -q -r requirements.txt
-```
+You usually don't need to: the schedule in `aws/crontab.txt` already pulls the latest code
+every weekday at 08:45, before the first session. After a pull that changes
+`aws/crontab.txt` itself, run `crontab aws/crontab.txt` again.
 
 ## Everyday use
 - Approve or skip on Telegram; send `EXIT RELIANCE` to close a position.

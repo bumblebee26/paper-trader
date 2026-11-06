@@ -1,5 +1,5 @@
 # Mock trading schedule (server timezone must be Asia/Kolkata). Install with: crontab aws/crontab.txt
-# Replace /home/ubuntu/paper-trader if you unzipped somewhere else.
+# Replace /home/ubuntu/paper-trader if you cloned somewhere else.
 SHELL=/bin/bash
 PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
 18 9  * * 1-5  /home/ubuntu/paper-trader/aws/run_session.sh morning
