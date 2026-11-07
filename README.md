@@ -3,6 +3,9 @@
 Dummy money only (Rs 10,00,000). No broker, demat or bank account. Prices come free from
 Yahoo Finance (can lag a few minutes). Every trade needs your YES on Telegram.
 
+> **New here?** Follow [GETTING-STARTED.md](GETTING-STARTED.md) for the full AWS setup.
+> The sections below are for running it on your own computer with Claude Desktop.
+
 ## 1. Install (once)
 
 Install Python 3.10 or newer from python.org (on Windows, tick "Add Python to PATH").
