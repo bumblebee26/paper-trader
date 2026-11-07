@@ -1,7 +1,10 @@
 # Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored — never commit it.
 
 telegram_bot_token = "123456789:AA...your-bot-token"
-anthropic_api_key  = "sk-ant-...your-api-key"
+
+# Claude: fill ONE of these
+claude_oauth_token = "sk-ant-oat01-...from `claude setup-token`"   # Claude Pro/Max subscription
+# anthropic_api_key  = "sk-ant-api03-...from platform.claude.com"    # pay per use
 
 # Optional (defaults shown)
 # aws_region         = "ap-south-1"

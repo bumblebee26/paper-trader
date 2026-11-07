@@ -14,7 +14,8 @@ param() {
 
 TG_TOKEN="$(param telegram_bot_token)"
 TG_USER="$(param telegram_user_id)"
-API_KEY="$(param anthropic_api_key)"
+API_KEY="$(param anthropic_api_key 2>/dev/null || true)"
+OAUTH="$(param claude_oauth_token 2>/dev/null || true)"
 
 # Keep model/budget from an existing .env unless given explicitly
 if [ -f "$DIR/.env" ]; then
@@ -25,12 +26,13 @@ MODEL="${CLAUDE_MODEL:-${MODEL_OLD:-sonnet}}"
 BUDGET="${MAX_BUDGET_USD:-${BUDGET_OLD:-2}}"
 
 umask 077
-"$DIR/.venv/bin/python" - "$DIR" "$TG_TOKEN" "$TG_USER" "$API_KEY" "$MODEL" "$BUDGET" <<'EOF'
+"$DIR/.venv/bin/python" - "$DIR" "$TG_TOKEN" "$TG_USER" "$API_KEY" "$OAUTH" "$MODEL" "$BUDGET" <<'EOF'
 import sys
 from pathlib import Path
-d, token, user, key, model, budget = sys.argv[1:]
+d, token, user, key, oauth, model, budget = sys.argv[1:]
 values = {"TELEGRAM_BOT_TOKEN": token, "TELEGRAM_CHAT_ID": user, "ALLOWED_USER_ID": user,
-          "ANTHROPIC_API_KEY": key, "CLAUDE_MODEL": model, "MAX_BUDGET_USD": budget}
+          "ANTHROPIC_API_KEY": key, "CLAUDE_CODE_OAUTH_TOKEN": oauth,
+          "CLAUDE_MODEL": model, "MAX_BUDGET_USD": budget}
 lines = []
 for line in (Path(d) / ".env.example").read_text().splitlines():
     k = line.split("=", 1)[0]

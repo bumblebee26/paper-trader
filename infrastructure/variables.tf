@@ -34,10 +34,18 @@ variable "telegram_user_id" {
   default     = "8674025639"
 }
 
-variable "anthropic_api_key" {
-  description = "Anthropic API key for Claude Code headless. Stored encrypted in SSM Parameter Store."
+variable "claude_oauth_token" {
+  description = "Claude Pro/Max subscription token from `claude setup-token` (valid 1 year). Set this OR anthropic_api_key."
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+variable "anthropic_api_key" {
+  description = "Pay-per-use API key from platform.claude.com. Set this OR claude_oauth_token. If both are set, the API key is used."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 variable "claude_model" {
@@ -47,7 +55,7 @@ variable "claude_model" {
 }
 
 variable "max_budget_usd" {
-  description = "Spending cap per Claude session (three sessions per weekday)."
+  description = "Spending cap per Claude session (API key only; subscription runs use your plan limits)."
   type        = number
   default     = 2
 }

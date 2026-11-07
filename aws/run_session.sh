@@ -14,6 +14,17 @@ set -a; source "$DIR/.env"; set +a
 MODEL="${CLAUDE_MODEL:-sonnet}"
 BUDGET="${MAX_BUDGET_USD:-2}"
 
+# Auth: an API key (pay per use) wins; otherwise use the subscription token.
+# --bare only works with an API key, so subscription runs skip it.
+AUTH_FLAGS=()
+if [ -n "${ANTHROPIC_API_KEY:-}" ] && [[ "${ANTHROPIC_API_KEY}" != paste* ]]; then
+  AUTH_FLAGS=(--bare --max-budget-usd "$BUDGET")
+elif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  unset ANTHROPIC_API_KEY   # a stray key would override the subscription and bill the API
+else
+  echo "No ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN in .env" >> "$LOG"; exit 2
+fi
+
 # Skip weekends (holidays are detected by Claude from missing market data)
 [ "$PHASE" != "test" ] && [ "$(date +%u)" -ge 6 ] && exit 0
 
@@ -35,13 +46,12 @@ TOOLS="mcp__paper-trader__account_status,mcp__paper-trader__market_snapshot,mcp_
 cd "$DIR"
 # flock: never run two sessions at once (Telegram allows only one reader)
 flock -w 300 /tmp/paper-trader.lock \
-  claude --bare -p "Today is $(date +%A\ %F). Run the $PHASE part of the mock session. $TASK" \
+  claude "${AUTH_FLAGS[@]}" -p "Today is $(date +%A\ %F). Run the $PHASE part of the mock session. $TASK" \
     --append-system-prompt-file "$DIR/aws/trading_rules.md" \
     --mcp-config "$MCP_JSON" \
     --allowedTools "$TOOLS" \
     --permission-mode dontAsk \
     --model "$MODEL" \
-    --max-budget-usd "$BUDGET" \
     >> "$LOG" 2>&1
 STATUS=$?
 rm -f "$MCP_JSON"

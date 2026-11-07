@@ -87,7 +87,21 @@ resource "aws_instance" "trader" {
   lifecycle {
     # A newer Ubuntu image must not replace a running server with its journal.
     ignore_changes = [ami]
+
+    precondition {
+      condition     = var.claude_oauth_token != "" || var.anthropic_api_key != ""
+      error_message = "Set claude_oauth_token (Claude Pro/Max, from `claude setup-token`) or anthropic_api_key in terraform.tfvars."
+    }
   }
+
+  # Secrets must exist in SSM before first boot reads them.
+  depends_on = [
+    aws_ssm_parameter.telegram_bot_token,
+    aws_ssm_parameter.telegram_user_id,
+    aws_ssm_parameter.deploy_key_private,
+    aws_ssm_parameter.anthropic_api_key,
+    aws_ssm_parameter.claude_oauth_token,
+  ]
 }
 
 # ------------------------------------------------- GitHub deploy key (read) --

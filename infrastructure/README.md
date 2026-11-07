@@ -7,7 +7,7 @@ Creates everything in `aws/SETUP-AWS.md` automatically, in Mumbai (ap-south-1):
 | EC2 `t3.small`, Ubuntu 24.04, encrypted disk | Runs the trader and Claude Code |
 | Security group with **no inbound ports** | Nothing on the internet can reach the server |
 | IAM role (Session Manager + read `/paper-trader/*` params) | Console shell access without SSH; read its own secrets only |
-| SSM Parameter Store (encrypted) | Telegram token, Anthropic key, GitHub deploy key |
+| SSM Parameter Store (encrypted) | Telegram token, Claude token or API key, GitHub deploy key |
 | GitHub deploy key (generated) | Read-only access to the private repo |
 | EventBridge Scheduler (optional, on by default) | Starts the server 08:30 and stops it 16:15 IST, weekdays only |
 | AWS Budget (optional) | Emails you if monthly AWS spend passes your limit |
@@ -19,13 +19,14 @@ and Claude Code, writes `.env` from SSM, installs the cron schedule, and sends
 ## Before you start
 - Install **Terraform 1.6+** and the **AWS CLI**.
 - Run `aws configure` with an IAM user's access key in your AWS account.
-- Have your Telegram bot token and an Anthropic API key ready (platform.claude.com).
+- Have your Telegram bot token ready, plus **one** of: a Claude Pro/Max subscription token
+  (`claude setup-token` on your laptop, valid 1 year) or an Anthropic API key (platform.claude.com).
 - The region needs its **default VPC** (new accounts have one).
 
 ## Deploy
 ```
 cd infrastructure
-cp terraform.tfvars.example terraform.tfvars    # then paste your token and key in it
+cp terraform.tfvars.example terraform.tfvars    # then paste your Telegram token + Claude token or API key
 terraform init
 terraform validate
 terraform plan
@@ -61,7 +62,8 @@ cd paper-trader && .venv/bin/python server.py --test && aws/run_session.sh test
 - t3.small running only ~39 hours a week: roughly US$5–7/month (EC2 + 12 GB disk).
   Always on: roughly US$15–20/month.
 - SSM parameters (standard), Scheduler and Budgets at this size: free or cents.
-- Claude API: billed by Anthropic, capped per session by `max_budget_usd`.
+- Claude: with a subscription token, it uses your plan's limits (no extra bill). With an API
+  key, billed by Anthropic and capped per session by `max_budget_usd`.
 
 ## Security notes
 - `terraform.tfvars` and `terraform.tfstate` contain your secrets in plain text. Both are

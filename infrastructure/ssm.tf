@@ -8,10 +8,19 @@ resource "aws_ssm_parameter" "telegram_bot_token" {
   value = var.telegram_bot_token
 }
 
+# Only the credential you provide is stored (SSM can't hold empty values).
 resource "aws_ssm_parameter" "anthropic_api_key" {
+  count = var.anthropic_api_key == "" ? 0 : 1
   name  = "${local.param_prefix}/anthropic_api_key"
   type  = "SecureString"
   value = var.anthropic_api_key
+}
+
+resource "aws_ssm_parameter" "claude_oauth_token" {
+  count = var.claude_oauth_token == "" ? 0 : 1
+  name  = "${local.param_prefix}/claude_oauth_token"
+  type  = "SecureString"
+  value = var.claude_oauth_token
 }
 
 resource "aws_ssm_parameter" "telegram_user_id" {

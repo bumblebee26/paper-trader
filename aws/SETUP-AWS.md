@@ -19,8 +19,10 @@ State lives in `journal/ledger.json`, so each session picks up where the last on
 
 Code lives at github.com/bumblebee26/paper-trader (private).
 
-You need: an AWS account, an Anthropic API key (platform.claude.com, pay per use), and
-your Telegram bot token.
+You need: an AWS account, your Telegram bot token, and **one** of: a Claude Pro/Max
+subscription token (`claude setup-token` on your laptop, valid 1 year) or an Anthropic API
+key (platform.claude.com, pay per use). Put it in `.env` as `CLAUDE_CODE_OAUTH_TOKEN` or
+`ANTHROPIC_API_KEY`.
 
 ## 1. Launch a server
 AWS Console → EC2 → **Launch instance**:
@@ -67,7 +69,8 @@ chmod +x aws/run_session.sh
 cp .env.example .env
 nano .env
 ```
-In nano, paste your Telegram token and your Anthropic API key. Save with Ctrl+O, Enter,
+In nano, paste your Telegram token and either `CLAUDE_CODE_OAUTH_TOKEN` (subscription) or
+`ANTHROPIC_API_KEY`. Save with Ctrl+O, Enter,
 then exit with Ctrl+X.
 
 ## 5. Check Telegram and market data from AWS
