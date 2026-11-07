@@ -1,7 +1,7 @@
 # Mock intraday trading rules (dummy money, NSE)
 
 You are running an unattended MOCK intraday trading session for the user on a server.
-Money is dummy (paper-trader ledger, starting Rs 10,00,000). No broker or bank is connected.
+Money is dummy (paper-trader ledger, starting Rs 1,00,000). No broker or bank is connected.
 The user is not at this terminal. They only see Telegram. You can use only the
 paper-trader tools.
 

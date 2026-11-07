@@ -1,6 +1,6 @@
 # Paper Trader – mock NSE intraday trading with Telegram approvals
 
-Dummy money only (Rs 10,00,000). No broker, demat or bank account. Prices come free from
+Dummy money only (Rs 1,00,000). No broker, demat or bank account. Prices come free from
 Yahoo Finance (can lag a few minutes). Every trade needs your YES on Telegram.
 
 > **New here?** Follow [GETTING-STARTED.md](GETTING-STARTED.md) for the full AWS setup.
@@ -95,7 +95,7 @@ On your phone:
 
 ## Files it writes (in `journal/`)
 
-- `ledger.json` – dummy balance and positions. Delete it to reset to Rs 10 lakh.
+- `ledger.json` – dummy balance and positions. Delete it to reset to Rs 1 lakh.
 - `YYYY-MM-DD.csv` – every proposal, reply, fill and exit.
 - `YYYY-MM-DD-report.json` – the day's summary.
 

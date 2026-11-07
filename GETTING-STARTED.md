@@ -104,7 +104,7 @@ cd paper-trader
 aws/run_session.sh test
 ```
 - The first command sends a YES/NO test to Telegram. Tap one.
-- The second runs Claude Code once (using your subscription token or API key) and you get "[MOCK] AWS setup OK. Dummy balance Rs 1000000."
+- The second runs Claude Code once (using your subscription token or API key) and you get "[MOCK] AWS setup OK. Dummy balance Rs 100000."
 - On weekends, "Market data: no data" is normal.
 
 If setup hasn't finished: `sudo tail -f /var/log/paper-trader-bootstrap.log`.

@@ -92,7 +92,7 @@ If `claude` isn't found, close and reopen the terminal.
 ```
 aws/run_session.sh test
 ```
-Within about a minute you should get "[MOCK] AWS setup OK. Dummy balance Rs 1000000." on
+Within about a minute you should get "[MOCK] AWS setup OK. Dummy balance Rs 100000." on
 Telegram. If not, read `journal/logs/<today>-test.log`.
 
 ## 8. Turn on the schedule
