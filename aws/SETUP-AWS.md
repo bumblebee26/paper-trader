@@ -1,5 +1,9 @@
 # Run the mock trader on AWS (Claude Code, headless, weekday schedule)
 
+> **Shortcut:** `infrastructure/` has Terraform that does steps 1–8 for you, adds a
+> start/stop schedule to cut EC2 cost, and keeps secrets in encrypted SSM parameters.
+> See `infrastructure/README.md`. The manual steps below are the same setup by hand.
+
 What happens each weekday (IST), with no computer of yours switched on:
 
 | Time | What runs |

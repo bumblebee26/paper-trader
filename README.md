@@ -112,7 +112,7 @@ minimum reward:risk 1.5, entries 09:30–14:30, square-off 15:10, 5x simulated i
 
 ## Running it on AWS instead
 
-See `aws/SETUP-AWS.md`. Claude Code runs the session on a server on a weekday schedule,
+See `aws/SETUP-AWS.md` (by hand) or `infrastructure/README.md` (Terraform, automated). Claude Code runs the session on a server on a weekday schedule,
 so your computer can stay off.
 
 This is a learning simulator, not investment advice.

@@ -5,3 +5,11 @@ journal/
 __pycache__/
 *.pyc
 *.tmp
+
+# terraform: state and tfvars contain secrets
+infrastructure/.terraform/
+infrastructure/*.tfstate
+infrastructure/*.tfstate.*
+infrastructure/terraform.tfvars
+infrastructure/*.tfplan
+infrastructure/crash.log
