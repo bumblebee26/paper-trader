@@ -6,16 +6,16 @@ guardian Backstop that needs no Claude. Event {"action": "squareoff"} at 15:12 I
          any open dummy positions if no live session is running; {"action": "report"} at
          15:40 IST sends the day report if the session didn't.
 """
+import json
 import os
 
 import config
-
-# Settings use DISPATCH_* names: GitHub runners define GITHUB_REF/GITHUB_TOKEN themselves.
 import engine
 from http_client import log, request
 
 
 def kicker(event, context):
+    # Settings use DISPATCH_* names: GitHub runners define GITHUB_REF / GITHUB_TOKEN themselves.
     phase = (event or {}).get("phase", "morning")
     token = config.secret("DISPATCH_TOKEN", "DISPATCH_TOKEN_PARAM")
     if not token:
@@ -23,8 +23,6 @@ def kicker(event, context):
     repo = os.environ["DISPATCH_REPO"]
     workflow = os.environ.get("DISPATCH_WORKFLOW", "trading-session.yml")
     ref = os.environ.get("DISPATCH_REF", "main")
-    import json
-
     request(
         "POST",
         f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
