@@ -14,7 +14,7 @@ resource "aws_cloudwatch_log_group" "guardian" {
 
 resource "aws_lambda_function" "guardian" {
   function_name = "${local.prefix}-guardian"
-  description   = "Backstop without Claude: 15:12 square-off, 15:40 report."
+  description   = "No Claude: 15:12 square-off, 15:40 report, 15:45 export to the lakehouse."
   role          = aws_iam_role.guardian.arn
 
   runtime       = var.lambda_python_runtime
@@ -31,6 +31,9 @@ resource "aws_lambda_function" "guardian" {
       STATE_BUCKET           = module.state.id
       TELEGRAM_TOKEN_PARAM   = local.lakehouse_params.telegram_token
       TELEGRAM_CHAT_ID_PARAM = local.lakehouse_params.telegram_chat_id
+      DATABRICKS_URL_PARAM   = local.lakehouse_params.databricks_url
+      DATABRICKS_TOKEN_PARAM = local.lakehouse_params.databricks_token
+      LANDING_VOLUME_PATH    = var.lakehouse_landing_volume
     }
   }
 

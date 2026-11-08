@@ -4,7 +4,9 @@ kicker   Starts a GitHub Actions trading session at an exact IST time (GitHub's 
          start 10-60 minutes late). Event: {"phase": "morning" | "afternoon"}.
 guardian Backstop that needs no Claude. Event {"action": "squareoff"} at 15:12 IST closes
          any open dummy positions if no live session is running; {"action": "report"} at
-         15:40 IST sends the day report if the session didn't.
+         15:40 IST sends the day report if the session didn't; {"action": "export"} at 15:45
+         IST copies the day's journal to the lakehouse (add "date", or "start"/"end", to
+         re-export past days).
 """
 import json
 import os
@@ -59,4 +61,11 @@ def guardian(event, context):
             return {"report": engine.report(state, send=True)}
         finally:
             engine.save(state)
+    if action == "export":
+        import export
+
+        ev = event or {}
+        if ev.get("start"):
+            return {"exports": export.export_range(ev["start"], ev.get("end", ev["start"]))}
+        return export.export_day(ev.get("date") or engine._today())
     raise ValueError(f"unknown action {action}")

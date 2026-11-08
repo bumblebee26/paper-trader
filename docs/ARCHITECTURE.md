@@ -17,7 +17,7 @@ flowchart TB
         S3[("S3 stocks-trader-state-&lt;acct&gt;<br/>state/ journal/ plans/ reports/ sessions/")]
         TSSM[["SSM /stocks-trader/github-dispatch-token"]]
         SCH -- "09:08, 12:27" --> KICK
-        SCH -- "15:12, 15:40" --> GUARD
+        SCH -- "15:12, 15:40, 15:45" --> GUARD
         KICK -. reads .-> TSSM
         GUARD <--> S3
     end
@@ -32,6 +32,8 @@ flowchart TB
     WF -. reads .-> LSSM
     WF <-- "proposal / YES-NO" --> TG["Telegram"]
     GUARD --> TG
+    GUARD -- "15:45 journal export (Files API)" --> VOLT[("Volume landing/trades")]
+    VOLT --> GOLD
     PM --> TG
     YF["Yahoo Finance chart API (NSE prices)"] --> WF
     YF --> GUARD
@@ -47,7 +49,8 @@ flowchart TB
 | **Brief** (`trader/brief.py`) | Reads the lakehouse gold tables and turns them into the day plan: risk per trade from VIX, bias from India's historical gap after similar US days, unusual-volume and ADR candidates. |
 | **S3 state bucket** | The only memory between runs: ledger, journal CSVs, plans, reports, session claims, heartbeat. |
 | **Kicker Lambda** | Starts each session on time through the GitHub API. GitHub's own cron is kept as a backup. |
-| **Guardian Lambda** | Runs without Claude. Squares off at 15:12 and sends the report at 15:40 if the session didn't (crash, usage limit, runner failure). |
+| **Guardian Lambda** | Runs without Claude. Squares off at 15:12 and sends the report at 15:40 if the session didn't (crash, usage limit, runner failure). At 15:45 it exports the day's journal to the lakehouse. |
+| **Backup feed** (`trader/export.py`) | The day's journal as JSON lines (every event has a unique `event_id`, plus a final ledger snapshot) written to S3 `exports/` and to the lakehouse volume `landing/trades/`. The lakehouse turns it into `stocks.gold.trades`, `trading_daily` (with a reconciliation against the ledger), `trading_by_setup`, `trading_by_hour` and `trading_decisions`, and a **Paper trading** dashboard page. |
 | **CI/CD** | Same as stocks_lakehouse: checks on every push, plan on PR, apply on merge to `main`. |
 
 ## Why it's built this way
@@ -82,7 +85,7 @@ sessions a day are heavy on Pro. If a session hits a limit and stops, the guardi
 | Terraform state bucket | Same bucket, key `paper-trader/aws/terraform.tfstate` |
 | CI plan/apply users | `stocks-gha-plan` / `stocks-gha-apply`. Trader names start with `stocks-` so the apply user's IAM rights (`role/stocks-*`, `user/stocks-gha-*`) cover them |
 | Telegram bot and chat | `/stocks/telegram-bot-token`, `/stocks/telegram-chat-id`. The lakehouse only **sends**; the trader is the only **reader** of updates, so there's no conflict |
-| Databricks access | `/stocks/databricks-*` parameters, read-only SQL on the gold tables |
+| Databricks access | `/stocks/databricks-*` parameters: SQL reads of the gold tables (session), daily journal upload to the landing volume (guardian) |
 
 ### 4. Timing
 
@@ -104,7 +107,7 @@ rate-limit cloud addresses. The `test` session reports whether prices work from 
 |---|---|---|
 | You (`aws login`) | Everything in the project | — |
 | `stocks-gha-trader` (session) | Read/write the trader state bucket; read Telegram + Databricks SSM parameters | Delete objects, anything else |
-| `stocks-trader-guardian-role` | Read/write the trader state bucket; read Telegram parameters | Databricks, anything else |
+| `stocks-trader-guardian-role` | Read/write the trader state bucket; read Telegram and Databricks push parameters | Anything else |
 | `stocks-trader-kicker-role` | Read the GitHub dispatch token | Anything else |
 | `stocks-trader-scheduler-role` | Invoke the kicker and guardian | Anything else |
 | Claude in a session | Only the paper-trader MCP tools (`--allowedTools`, `--permission-mode dontAsk`) | Shell, files, web |

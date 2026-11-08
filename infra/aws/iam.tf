@@ -40,7 +40,7 @@ data "aws_iam_policy_document" "state_rw" {
 # ------------------------------------------------------------------ guardian --
 resource "aws_iam_role" "guardian" {
   name               = "${local.prefix}-guardian-role"
-  description        = "Guardian Lambda: trader state bucket + Telegram settings. Nothing else."
+  description        = "Guardian Lambda: trader state bucket, Telegram settings, Databricks push settings."
   assume_role_policy = data.aws_iam_policy_document.lambda_trust.json
 }
 
@@ -53,15 +53,15 @@ data "aws_iam_policy_document" "guardian" {
   source_policy_documents = [data.aws_iam_policy_document.state_rw.json]
 
   statement {
-    sid       = "ReadTelegramSettings"
+    sid       = "ReadTelegramAndDatabricksSettings"
     effect    = "Allow"
     actions   = ["ssm:GetParameter"]
-    resources = local.telegram_param_arns
+    resources = concat(local.telegram_param_arns, local.databricks_param_arns)
   }
 }
 
 resource "aws_iam_role_policy" "guardian" {
-  name   = "state-and-telegram"
+  name   = "state-telegram-databricks"
   role   = aws_iam_role.guardian.id
   policy = data.aws_iam_policy_document.guardian.json
 }

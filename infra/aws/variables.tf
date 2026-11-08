@@ -16,6 +16,12 @@ variable "lakehouse_prefix" {
   default     = "stocks"
 }
 
+variable "lakehouse_landing_volume" {
+  description = "Landing volume of the stocks_lakehouse; the daily journal export goes to its trades/ folder."
+  type        = string
+  default     = "/Volumes/stocks/bronze/landing"
+}
+
 variable "github_repo" {
   description = "Repository whose trading-session workflow the kicker starts (owner/name)."
   type        = string

@@ -15,7 +15,7 @@ import telegram_bot as tg
 JOURNAL_COLUMNS = [
     "timestamp_ist", "event", "symbol", "setup", "side", "entry", "stop", "target", "qty",
     "risk_rs", "rr", "reasons", "user_reply", "fill_price", "exit_price", "exit_reason",
-    "pnl_rs", "note",
+    "pnl_rs", "note", "event_id", "proposal_id", "fees_rs",
 ]
 
 
@@ -68,8 +68,10 @@ def _new_day(state: dict) -> None:
         state["carried_over_warning"] = list(state["positions"].keys())
 
 
-def journal(event: str, **fields) -> None:
-    row = dict(fields, timestamp_ist=_now(), event=event)
+def journal(event: str, event_id: str = "", **fields) -> None:
+    """Append one event. event_id is unique (random unless the caller needs a fixed one,
+    e.g. a re-sent report), so the Databricks copy can de-duplicate safely."""
+    row = dict(fields, timestamp_ist=_now(), event=event, event_id=event_id or uuid.uuid4().hex)
     storage.append_row(f"journal/{_today()}.csv", JOURNAL_COLUMNS, row)
 
 
@@ -191,7 +193,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         "sent_at": _now(), "valid_until": valid_until.strftime("%Y-%m-%d %H:%M:%S"),
         "message_id": msg_id, "text": text,
     }
-    journal("proposed", symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
+    journal("proposed", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
             target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]))
     return {"status": "pending", "proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
             "valid_until": state["proposals"][pid]["valid_until"]}
@@ -221,17 +223,17 @@ def wait_decision(state, pid, max_wait=45):
                 tg.edit(p["message_id"], p["text"] + "\n\n-> YES arrived after expiry. Not placed.")
             elif p["status"] == "rejected":
                 tg.edit(p["message_id"], p["text"] + "\n\n-> Skipped (NO).")
-                journal("rejected", symbol=p["symbol"], setup=p["setup"], side=p["side"],
+                journal("rejected", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], side=p["side"],
                         entry=p["entry"], stop=p["stop"], target=p["target"], user_reply="NO")
             if p["status"] == "expired":
-                journal("expired", symbol=p["symbol"], setup=p["setup"], user_reply="YES-late")
+                journal("expired", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], user_reply="YES-late")
             return {"status": p["status"]}
         if _expired(p):
             break
     if _expired(p):
         p["status"] = "expired"
         tg.edit(p["message_id"], p["text"] + "\n\n-> Expired with no reply. Not placed.")
-        journal("expired", symbol=p["symbol"], setup=p["setup"], side=p["side"],
+        journal("expired", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], side=p["side"],
                 entry=p["entry"], stop=p["stop"], target=p["target"], user_reply="none")
         return {"status": "expired"}
     return {"status": "pending", "valid_until": p["valid_until"]}
@@ -261,7 +263,7 @@ def execute(state, pid):
     if reason:
         p["status"] = "skipped_after_approval"
         tg.send(f"Skipped {p['symbol']}: {reason}.")
-        journal("skipped_after_approval", symbol=p["symbol"], setup=p["setup"], note=reason)
+        journal("skipped_after_approval", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], note=reason)
         return {"status": "skipped", "reason": reason}
 
     fill = slip(price, p["side"], opening=True)
@@ -276,7 +278,8 @@ def execute(state, pid):
     tg.edit(p["message_id"], p["text"] + f"\n\n-> Placed @ {fill:,.2f}")
     tg.send(f"Placed [MOCK] {p['side']} {p['symbol']} {p['qty']} @ {fill:,.2f}. "
             f"SL {p['stop']:,.2f}, TGT {p['target']:,.2f}.")
-    journal("filled", symbol=p["symbol"], setup=p["setup"], side=p["side"], entry=p["entry"],
+    journal("filled", proposal_id=pid, risk_rs=p["risk_rs"], fees_rs=costs(fill * p["qty"]),
+            symbol=p["symbol"], setup=p["setup"], side=p["side"], entry=p["entry"],
             stop=p["stop"], target=p["target"], qty=p["qty"], fill_price=fill, user_reply="YES",
             note=f"quote time {ts}")
     return {"status": "filled", "fill_price": fill, "qty": p["qty"]}
@@ -293,7 +296,8 @@ def close(state, symbol, exit_price, reason, notify=True):
     net = round(gross - costs(exit_fill * pos["qty"]), 2)
     state["balance"] += net
     state["realized_today"] += net
-    journal("squared_off" if reason == "square_off" else "exited", symbol=symbol,
+    journal("squared_off" if reason == "square_off" else "exited", proposal_id=pos.get("proposal_id", ""),
+            fees_rs=costs(exit_fill * pos["qty"]), symbol=symbol,
             setup=pos["setup"], side=pos["side"], qty=pos["qty"], fill_price=pos["fill_price"],
             exit_price=exit_fill, exit_reason=reason, pnl_rs=net)
     if notify:
@@ -343,7 +347,7 @@ def monitor(state):
         if p["status"] == "pending" and _expired(p):
             p["status"] = "expired"
             tg.edit(p["message_id"], p["text"] + "\n\n-> Expired with no reply. Not placed.")
-            journal("expired", symbol=p["symbol"], setup=p["setup"], user_reply="none")
+            journal("expired", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], user_reply="none")
     return {"events": events, "account": account(state)}
 
 
@@ -377,8 +381,15 @@ def report(state, send=True):
     closed = [r for r in rows if r["event"] in ("exited", "squared_off")]
     pnls = [float(r["pnl_rs"]) for r in closed]
     wins = [x for x in pnls if x > 0]
-    passed = [p for p in state["proposals"].values() if p["status"] in ("rejected", "expired")]
-    hypo = {f"{p['symbol']} ({p['status']})": _hypothetical(p) for p in passed}
+    passed = [(pid, p) for pid, p in state["proposals"].items() if p["status"] in ("rejected", "expired")]
+    hypo = {}
+    for pid, p in passed:
+        pnl = _hypothetical(p)
+        hypo[f"{p['symbol']} ({p['status']})"] = pnl
+        # Fixed event_id: re-running the report doesn't double-count in Databricks.
+        journal("passed_outcome", event_id=f"passed-{pid}", proposal_id=pid, symbol=p["symbol"],
+                setup=p["setup"], side=p["side"], qty=p["qty"], risk_rs=p["risk_rs"], pnl_rs=pnl,
+                user_reply=p["status"], note="what this skipped proposal would have made")
     summary = {
         "date": _today(),
         "signals_blocked_by_risk_gate": count("blocked_by_risk_gate"),

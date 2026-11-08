@@ -16,7 +16,7 @@ flowchart LR
     end
     subgraph AWS["AWS free plan (Sydney)"]
         K[Lambda kicker<br/>09:08 / 12:27 IST] 
-        G[Lambda guardian<br/>15:12 / 15:40 IST]
+        G[Lambda guardian<br/>15:12 / 15:40 / 15:45 IST]
         S3[(S3 state<br/>ledger, journal, reports)]
         SSM[[SSM secrets]]
     end
@@ -29,6 +29,7 @@ flowchart LR
     G <--> S3
     S <-- YES / NO --> TG[Telegram]
     G --> TG
+    G -- daily journal export --> VOL[(Lakehouse volume<br/>landing/trades)]
     Y[Yahoo Finance<br/>NSE prices] --> S & G
 ```
 
@@ -42,6 +43,7 @@ flowchart LR
 | 12:27 | Afternoon session. New entries stop at 14:30 |
 | 15:10 | Everything squared off, then the day report |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
+| 15:45 | The day's journal is copied to the lakehouse (backup feed); its pipeline builds the trading analysis tables and dashboard page |
 
 Send `EXIT RELIANCE` to Telegram any time to close that position.
 
