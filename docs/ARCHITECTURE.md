@@ -2,42 +2,35 @@
 
 ## Overview
 
-```mermaid
-flowchart TB
-    subgraph lh["stocks_lakehouse (same AWS account, Databricks Free Edition)"]
-        GOLD[("Gold tables<br/>nifty_after_us_moves_summary, global_snapshot,<br/>unusual_volume, silver.daily_bars")]
-        PM["08:45 pre-market brief → Telegram"]
-        LSSM[["SSM /stocks/*<br/>Telegram, Databricks URL/token/warehouse"]]
-    end
+![Architecture: scheduler, Lambdas, state bucket, GitHub Actions session, Telegram and the lakehouse](diagrams/02_architecture.png)
 
-    subgraph aws["AWS account (free plan, ap-southeast-2)"]
-        SCH["EventBridge Scheduler (Asia/Kolkata)"]
-        KICK["Lambda stocks-trader-kicker"]
-        GUARD["Lambda stocks-trader-guardian"]
-        S3[("S3 stocks-trader-state-&lt;acct&gt;<br/>state/ journal/ plans/ reports/ sessions/")]
-        TSSM[["SSM /stocks-trader/github-dispatch-token"]]
-        SCH -- "09:08, 12:27" --> KICK
-        SCH -- "15:12, 15:40, 15:45" --> GUARD
-        KICK -. reads .-> TSSM
-        GUARD <--> S3
-    end
+| Step | Arrow | What happens |
+|---|---|---|
+| **1–2** | Scheduler → kicker → session | At 09:08 and 12:27 IST the kicker starts `trading-session.yml` through the GitHub API. GitHub's own cron (09:16, 12:36) is the backup; a phase runs once per day. |
+| **3** | Session → lakehouse gold | `premarket_context` reads the lakehouse's gold tables over SQL; `start_day` turns them into today's risk and focus list. |
+| **4** | Yahoo → session | 1-minute and 5-minute NSE candles for scanning, fills and exits. |
+| **5–6** | Session ↔ Telegram | Proposals with YES/NO buttons; your replies and `EXIT SYMBOL` messages come back through long polling. |
+| **7** | Session ↔ state bucket | Every tool call reads and writes the ledger; every event is appended to the day's journal. |
+| **8–9** | Scheduler → guardian ↔ state bucket | 15:12 square-off and 15:40 report, only if the session didn't. |
+| **10** | Guardian → lakehouse volume | 15:45 export of the day's journal (`landing/trades/`), the lakehouse's input for the trading tables. |
 
-    subgraph gh["GitHub Actions (public repo)"]
-        WF["trading-session.yml<br/>Claude Code + paper-trader MCP server"]
-    end
+Dotted arrows: secrets read from SSM at runtime.
 
-    KICK -- "workflow_dispatch" --> WF
-    WF -- "SQL Statement API" --> GOLD
-    WF <--> S3
-    WF -. reads .-> LSSM
-    WF <-- "proposal / YES-NO" --> TG["Telegram"]
-    GUARD --> TG
-    GUARD -- "15:45 journal export (Files API)" --> VOLT[("Volume landing/trades")]
-    VOLT --> GOLD
-    PM --> TG
-    YF["Yahoo Finance chart API (NSE prices)"] --> WF
-    YF --> GUARD
-```
+### Platform context
+
+![Platform: stocks_lakehouse and paper-trader](diagrams/01_platform.png)
+
+This repo is half of a platform with [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse)
+(purple = this repo). The two meet twice a day: the session reads gold before the open, and the guardian sends
+the journal back at 15:45. The same diagram is in the lakehouse as `docs/diagrams/05_platform.mmd`.
+
+### The life of one trade
+
+![Trade lifecycle: candidate, Claude, risk gate, proposal, your reply, re-check, fill, exit, journal, export](diagrams/03_trade_lifecycle.png)
+
+Purple steps are Claude's judgment, orange steps are enforced in code, green steps are yours. Every outcome,
+including the trades that never happen, ends in the journal, so the lakehouse can show what skipped proposals
+would have made.
 
 ## Components
 
@@ -119,3 +112,7 @@ Trades still need your YES: `execute_approved_trade` refuses anything not approv
 
 Same as stocks_lakehouse: work on `dev`, `main` only through pull requests, LF line endings
 (`.gitattributes`), shared settings in `infra/aws/project.auto.tfvars`, `terraform fmt` enforced by CI.
+
+Diagrams are Mermaid sources in `docs/diagrams/*.mmd` with the lakehouse's `theme.json`. After editing one,
+run `scripts/render_diagrams.sh` (needs `npm install -g @mermaid-js/mermaid-cli`) and commit the `.mmd`, `.svg`
+and `.png`. `01_platform.mmd` must stay identical to the lakehouse's `05_platform.mmd`.

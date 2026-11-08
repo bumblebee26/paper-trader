@@ -1,0 +1,58 @@
+---
+config:
+  layout: elk
+  elk:
+    mergeEdges: false
+    nodePlacementStrategy: NETWORK_SIMPLEX
+---
+flowchart TB
+    subgraph EXT["Outside this repo"]
+        direction LR
+        YF["<b>Yahoo Finance</b><br/>chart API · NSE 1-min / 5-min"]
+        GOLD[("<b>stocks_lakehouse gold</b><br/>via SQL warehouse")]
+        VOL[("<b>Lakehouse volume</b><br/>landing/trades/")]
+    end
+
+    subgraph AWS["AWS account · free plan · ap-southeast-2 (Sydney)"]
+        direction TB
+        SCH["<b>EventBridge Scheduler</b> (Asia/Kolkata, Mon–Fri)<br/>kicks 09:08 · 12:27<br/>guards 15:12 · 15:40 · 15:45"]
+        subgraph LAMBDAS["Lambda functions (Python 3.13, arm64)"]
+            direction LR
+            KICK["stocks-trader-kicker"]
+            GUARD["stocks-trader-guardian<br/><i>no Claude</i>"]
+        end
+        S3[("<b>Trader state bucket</b><br/>state/ledger.json · journal/ · plans/<br/>reports/ · exports/ · sessions/")]
+        SSM[["<b>SSM Parameter Store</b><br/>/stocks-trader/github-dispatch-token<br/>/stocks/telegram-* · /stocks/databricks-*"]]
+    end
+
+    subgraph GHA["GitHub Actions · trading-session.yml (environment: trading)"]
+        direction LR
+        CC["<b>Claude Code</b><br/>rules: prompts/trading_rules.md<br/>only paper-trader tools"]
+        MCP["<b>paper-trader MCP server</b><br/>engine · scanner · brief · storage"]
+        CC <--> MCP
+    end
+
+    TG["<b>Telegram · you</b><br/>plan · proposals · YES/NO · EXIT · report"]
+
+    SCH -- "1 · invoke" --> KICK
+    KICK -- "2 · workflow_dispatch" --> CC
+    MCP -- "3 · pre-market context (SQL)" --> GOLD
+    YF -- "4 · prices" --> MCP
+    MCP -- "5 · proposal" --> TG
+    TG -- "6 · YES / NO / EXIT" --> MCP
+    MCP <-- "7 · ledger · journal" --> S3
+    SCH -- "8 · invoke" --> GUARD
+    GUARD <-- "9 · square-off · report" --> S3
+    GUARD -- "10 · 15:45 journal (Files API)" --> VOL
+    SSM -. "secrets at runtime" .-> KICK & GUARD & MCP
+
+    classDef ext fill:#eef2ff,stroke:#6366f1,color:#1e1b4b
+    classDef aws fill:#fff7ed,stroke:#f59e0b,color:#451a03
+    classDef store fill:#fffbeb,stroke:#d97706,color:#451a03
+    classDef trader fill:#f5f3ff,stroke:#8b5cf6,color:#2e1065
+    classDef out fill:#ecfdf5,stroke:#10b981,color:#022c22
+    class YF,GOLD,VOL ext
+    class SCH,KICK,GUARD aws
+    class S3,SSM store
+    class CC,MCP trader
+    class TG out
