@@ -1,0 +1,142 @@
+# Terraform CD for the aws stack (same pattern as stocks_lakehouse).
+#   Pull request into main -> plan, posted as a PR comment (read-only identity).
+#   Merge (push) to main    -> apply (production environment).
+#
+# Reuses the stocks_lakehouse CI users and state bucket (state key paper-trader/aws/...).
+# Required GitHub settings (see docs/SETUP.md, part D):
+#   Repository variables:  TF_STATE_BUCKET
+#   Repository secrets:    AWS_PLAN_ACCESS_KEY_ID, AWS_PLAN_SECRET_ACCESS_KEY      (stocks-gha-plan)
+#   Environment "production" secrets: AWS_APPLY_ACCESS_KEY_ID, AWS_APPLY_SECRET_ACCESS_KEY (stocks-gha-apply)
+name: Terraform
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - "trader/**"
+      - ".github/workflows/terraform.yml"
+      - ".github/actions/tf-init/**"
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - "trader/**"
+      - ".github/workflows/terraform.yml"
+      - ".github/actions/tf-init/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One Terraform run against the state at a time; never cancel an apply midway.
+concurrency:
+  group: terraform-state
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  plan:
+    name: plan (aws)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_PLAN_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_PLAN_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: ./.github/actions/tf-init
+        with:
+          stack: aws
+          state-bucket: ${{ vars.TF_STATE_BUCKET }}
+          region: ${{ env.AWS_REGION }}
+
+      - name: terraform plan
+        id: plan
+        working-directory: infra/aws
+        run: |
+          # Read-only identity: don't take the state lock.
+          set +e
+          terraform plan -input=false -lock=false -no-color -detailed-exitcode > plan.txt 2>&1
+          code=$?
+          set -e
+          echo "exitcode=${code}" >> "$GITHUB_OUTPUT"
+          cat plan.txt
+
+      - name: Comment plan on the pull request
+        uses: actions/github-script@v7
+        env:
+          STACK: aws
+          EXITCODE: ${{ steps.plan.outputs.exitcode }}
+        with:
+          script: |
+            const fs = require('fs');
+            const stack = process.env.STACK;
+            const code = process.env.EXITCODE;
+            const marker = `<!-- terraform-plan:${stack} -->`;
+            let plan = fs.readFileSync(`infra/${stack}/plan.txt`, 'utf8');
+            const limit = 60000;
+            if (plan.length > limit) plan = '...(truncated, see the job log)...\n' + plan.slice(-limit);
+            const status = code === '0' ? 'No changes' : code === '2' ? 'Changes to apply' : 'Plan FAILED';
+            const summary = (plan.match(/^Plan: .*$/m) || [''])[0];
+            const body = [
+              marker,
+              `### Terraform plan: \`${stack}\` · ${status}`,
+              summary ? `**${summary}**` : '',
+              '<details><summary>Show plan</summary>',
+              '',
+              '```text',
+              plan,
+              '```',
+              '</details>',
+              '',
+              `_Run ${context.runId}, commit ${context.sha.slice(0, 7)}. Merging to main applies this._`,
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Fail if plan failed
+        if: steps.plan.outputs.exitcode == '1'
+        run: exit 1
+
+  apply:
+    name: apply (aws)
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_APPLY_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_APPLY_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: ./.github/actions/tf-init
+        with:
+          stack: aws
+          state-bucket: ${{ vars.TF_STATE_BUCKET }}
+          region: ${{ env.AWS_REGION }}
+
+      - name: terraform apply
+        working-directory: infra/aws
+        run: terraform apply -input=false -auto-approve -lock-timeout=5m -no-color

@@ -1,0 +1,86 @@
+# Fast checks that need no cloud access. Runs on every pull request and every push to dev.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: "1.x"
+
+jobs:
+  python:
+    name: Python tests and MCP server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Unit tests (engine, brief, scanner, Lambdas; no network)
+        run: python -m unittest discover -s tests -v
+
+      - name: MCP server lists its tools
+        run: |
+          pip install -q -r requirements.txt
+          python - <<'PY'
+          import json, subprocess, sys
+          p = subprocess.Popen([sys.executable, "trader/server.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+          def send(o):
+              p.stdin.write(json.dumps(o) + "\n"); p.stdin.flush()
+          send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "ci", "version": "1"}}})
+          p.stdout.readline()
+          send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+          send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+          tools = [t["name"] for t in json.loads(p.stdout.readline())["result"]["tools"]]
+          p.kill()
+          print(len(tools), "tools:", ", ".join(tools))
+          assert {"premarket_context", "start_day", "run_cycle", "propose_trade", "wait_for_decision",
+                  "execute_approved_trade", "wait_for_next_candle", "end_of_day_report"} <= set(tools)
+          PY
+
+  terraform-fmt:
+    name: terraform fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Check formatting (fix locally with "terraform fmt -recursive infra")
+        run: terraform fmt -check -recursive -diff infra
+
+  terraform-validate:
+    name: terraform validate (${{ matrix.stack }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [aws, modules/secure_bucket]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Validate
+        working-directory: infra/${{ matrix.stack }}
+        run: |
+          terraform init -input=false -backend=false
+          terraform validate -no-color

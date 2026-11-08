@@ -1,0 +1,119 @@
+# Mock intraday trading session: Claude Code drives the paper-trader MCP tools, you approve on Telegram.
+#
+# Triggers (all times IST, Mon-Fri):
+#   AWS kicker Lambda (exact time): 09:08 morning, 12:27 afternoon  -> workflow_dispatch
+#   GitHub cron backup (can run late): 09:16 morning, 12:36 afternoon
+# Each phase runs once per day: the first trigger claims it in S3, later ones skip.
+#
+# Required GitHub settings (docs/SETUP.md, part D):
+#   Repository variable:  TRADER_STATE_BUCKET   (terraform output state_bucket)
+#   Environment "trading" secrets:
+#     AWS_TRADER_ACCESS_KEY_ID, AWS_TRADER_SECRET_ACCESS_KEY  (stocks-gha-trader)
+#     CLAUDE_CODE_OAUTH_TOKEN                                  (claude setup-token, Pro/Max)
+name: Trading session
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Session to run
+        type: choice
+        options: [auto, morning, afternoon, test]
+        default: auto
+  schedule:
+    - cron: "46 3 * * 1-5" # 09:16 IST morning backup
+    - cron: "6 7 * * 1-5"  # 12:36 IST afternoon backup
+
+permissions:
+  contents: read
+
+# One session at a time (only one program may read the Telegram bot). Never cancel a live one.
+concurrency:
+  group: trading-session
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  STATE_BUCKET: ${{ vars.TRADER_STATE_BUCKET }}
+  TELEGRAM_TOKEN_PARAM: /stocks/telegram-bot-token
+  TELEGRAM_CHAT_ID_PARAM: /stocks/telegram-chat-id
+  DATABRICKS_URL_PARAM: /stocks/databricks-workspace-url
+  DATABRICKS_TOKEN_PARAM: /stocks/databricks-pusher-token
+  DATABRICKS_WAREHOUSE_PARAM: /stocks/databricks-warehouse-id
+  CLAUDE_MODEL: sonnet
+
+jobs:
+  session:
+    runs-on: ubuntu-latest
+    environment: trading
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install trader dependencies
+        run: pip install -q -r requirements.txt
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_TRADER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_TRADER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Pick and claim the phase
+        id: phase
+        env:
+          INPUT_PHASE: ${{ github.event.inputs.phase || 'auto' }}
+        run: |
+          phase="$INPUT_PHASE"
+          if [ "$phase" = "auto" ]; then phase="$(python trader/session_ctl.py phase)"; fi
+          echo "phase=$phase" >> "$GITHUB_OUTPUT"
+          if [ "$phase" = "none" ]; then echo "Outside session hours"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if python trader/session_ctl.py claim "$phase"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Claude Code
+        if: steps.phase.outputs.run == 'true'
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run the session with Claude Code
+        if: steps.phase.outputs.run == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          PHASE: ${{ steps.phase.outputs.phase }}
+        run: |
+          unset ANTHROPIC_API_KEY  # bill the subscription, never an API key
+          cat > "$RUNNER_TEMP/mcp.json" <<JSON
+          {"mcpServers": {"paper-trader": {"type": "stdio", "command": "$(which python)", "args": ["$GITHUB_WORKSPACE/trader/server.py"]}}}
+          JSON
+          tools="mcp__paper-trader__premarket_context,mcp__paper-trader__start_day,mcp__paper-trader__account_status"
+          tools="$tools,mcp__paper-trader__market_snapshot,mcp__paper-trader__scan_setups,mcp__paper-trader__run_cycle"
+          tools="$tools,mcp__paper-trader__propose_trade,mcp__paper-trader__wait_for_decision"
+          tools="$tools,mcp__paper-trader__execute_approved_trade,mcp__paper-trader__monitor_positions"
+          tools="$tools,mcp__paper-trader__close_position,mcp__paper-trader__notify"
+          tools="$tools,mcp__paper-trader__wait_for_next_candle,mcp__paper-trader__end_of_day_report"
+          claude -p "$(python trader/session_ctl.py prompt "$PHASE")" \
+            --append-system-prompt-file prompts/trading_rules.md \
+            --mcp-config "$RUNNER_TEMP/mcp.json" \
+            --strict-mcp-config \
+            --allowedTools "$tools" \
+            --permission-mode dontAsk \
+            --model "$CLAUDE_MODEL" \
+            --output-format text
+
+      - name: Tell Telegram if the session failed
+        if: failure() && steps.phase.outputs.run == 'true'
+        env:
+          PHASE: ${{ steps.phase.outputs.phase }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python trader/session_ctl.py alert "[MOCK] $PHASE session stopped with an error. Log: $RUN_URL"

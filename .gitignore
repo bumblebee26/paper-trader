@@ -1,15 +1,44 @@
-# secrets and local state — never commit
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.tfstate.lock.info
+
+# Real variable and backend files hold account details; only the examples are committed
+*.tfvars
+*.tfvars.json
+backend.hcl
+
+# Keep .terraform.lock.hcl committed so provider versions stay pinned
+
+# Shared, non-secret settings used by both local runs and CI/CD
+!infra/*/project.auto.tfvars
+
+# Lambda build output
+infra/aws/build/
+
+# Terraform plan output (CI)
+**/plan.txt
+**/tfplan
+
+# Local trader secrets and state (laptop / Claude Desktop mode)
 .env
 journal/
-.venv/
+
+# Python
 __pycache__/
 *.pyc
+.venv/
 *.tmp
 
-# terraform: state and tfvars contain secrets
-infrastructure/.terraform/
-infrastructure/*.tfstate
-infrastructure/*.tfstate.*
-infrastructure/terraform.tfvars
-infrastructure/*.tfplan
-infrastructure/crash.log
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

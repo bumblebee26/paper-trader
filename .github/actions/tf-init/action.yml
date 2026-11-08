@@ -1,0 +1,45 @@
+name: Terraform init
+description: Install Terraform and initialise one stack against the shared S3 state backend.
+
+inputs:
+  stack:
+    description: Folder under infra/ (aws)
+    required: true
+  state-bucket:
+    description: S3 bucket holding Terraform state (shared with stocks_lakehouse)
+    required: true
+  state-key-prefix:
+    description: Key prefix that keeps this repo's state apart from the lakehouse's
+    required: false
+    default: paper-trader
+  region:
+    description: AWS region of the state bucket
+    required: true
+  terraform-version:
+    description: Terraform CLI version
+    required: false
+    default: "1.x"
+
+runs:
+  using: composite
+  steps:
+    - uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.terraform-version }}
+        terraform_wrapper: false
+
+    - name: terraform init (${{ inputs.stack }})
+      shell: bash
+      working-directory: infra/${{ inputs.stack }}
+      env:
+        STACK: ${{ inputs.stack }}
+        STATE_BUCKET: ${{ inputs.state-bucket }}
+        STATE_PREFIX: ${{ inputs.state-key-prefix }}
+        STATE_REGION: ${{ inputs.region }}
+      run: |
+        terraform init -input=false \
+          -backend-config="bucket=${STATE_BUCKET}" \
+          -backend-config="key=${STATE_PREFIX}/${STACK}/terraform.tfstate" \
+          -backend-config="region=${STATE_REGION}" \
+          -backend-config="encrypt=true" \
+          -backend-config="use_lockfile=true"
