@@ -12,6 +12,7 @@
 | 15:10 | Square-off, then end-of-day report | `reports/<date>.json` |
 | 15:12 | Guardian: square-off if no live session | — |
 | 15:40 | Guardian: report if none was sent | — |
+| 15:45 | Guardian: export the day's journal | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/` |
 
 ## Making a change
 
@@ -43,6 +44,7 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Skip trading today | Actions → Trading session → **Disable workflow** (enable it again afterwards) |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | Reset to Rs 1 lakh | Delete `state/ledger.json` from the state bucket |
+| Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`) |
 
 ```
 aws s3 rm s3://stocks-trader-state-<account-id>/state/ledger.json --region ap-southeast-2
