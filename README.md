@@ -8,30 +8,11 @@ It builds on [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse)
 pre-market data (US move, India's usual opening gap after such days, VIX, unusual volume, ADRs) sets each
 day's risk level and focus list.
 
-```mermaid
-flowchart LR
-    subgraph LH["stocks_lakehouse (same AWS account)"]
-        GOLD[(Gold tables<br/>Databricks)]
-        BRIEF[08:45 pre-market brief] --> TG
-    end
-    subgraph AWS["AWS free plan (Sydney)"]
-        K[Lambda kicker<br/>09:08 / 12:27 IST] 
-        G[Lambda guardian<br/>15:12 / 15:40 / 15:45 IST]
-        S3[(S3 state<br/>ledger, journal, reports)]
-        SSM[[SSM secrets]]
-    end
-    subgraph GH["GitHub Actions"]
-        S[Trading session<br/>Claude Code + paper-trader MCP]
-    end
-    K -- workflow_dispatch --> S
-    S -- premarket_context --> GOLD
-    S <--> S3
-    G <--> S3
-    S <-- YES / NO --> TG[Telegram]
-    G --> TG
-    G -- daily journal export --> VOL[(Lakehouse volume<br/>landing/trades)]
-    Y[Yahoo Finance<br/>NSE prices] --> S & G
-```
+![Platform: stocks_lakehouse and paper-trader across AWS, GitHub Actions, Databricks and Telegram](docs/diagrams/01_platform.png)
+
+The purple parts are this repo; the rest is [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse).
+More pictures, each explained: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (this repo's architecture, the
+life of one trade).
 
 ## A trading day (IST, Mon–Fri)
 
@@ -57,8 +38,9 @@ infra/
   modules/         secure_bucket: private, encrypted, versioned, HTTPS-only S3 (same as stocks_lakehouse)
   aws/             State bucket, kicker + guardian Lambdas, schedules, IAM, SSM, session CI user
 tests/             Unit tests (no network or AWS needed)
+scripts/           render_diagrams.sh (re-render docs/diagrams)
 .github/           CI (tests, fmt, validate), Terraform CD (plan on PR, apply on merge), trading session
-docs/              ARCHITECTURE, SETUP, OPERATIONS, TROUBLESHOOTING
+docs/              ARCHITECTURE, SETUP, OPERATIONS, TROUBLESHOOTING; docs/diagrams/ holds diagram sources and images
 ```
 
 ## How changes ship

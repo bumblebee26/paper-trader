@@ -1,0 +1,79 @@
+---
+config:
+  layout: elk
+  elk:
+    mergeEdges: false
+    nodePlacementStrategy: NETWORK_SIMPLEX
+---
+%% Shared platform view: stocks_lakehouse + paper-trader.
+%% The same file lives in bumblebee26/paper-trader as docs/diagrams/01_platform.mmd; keep them identical.
+%% Secrets (SSM) and deployments (CI/CD) are left out on purpose: see 04_cicd and the security tables.
+flowchart TB
+    subgraph SRC["Data sources"]
+        direction LR
+        NSE["<b>NSE</b><br/>daily bhavcopy"]
+        MAS["<b>Massive</b><br/>US stocks"]
+        FRED["<b>FRED</b><br/>global series"]
+        YF["<b>Yahoo Finance</b><br/>intraday NSE prices"]
+    end
+
+    subgraph AWS["AWS account · free plan · ap-southeast-2 (Sydney)"]
+        direction LR
+        subgraph LHA["stocks_lakehouse"]
+            direction TB
+            FET["<b>Fetcher Lambdas</b><br/>NSE 19:30 · Massive 04:30 · FRED 06:00"]
+            S3L[("<b>S3 landing bucket</b><br/>raw archive")]
+            PM["<b>Pre-market Lambda</b><br/>08:45 brief"]
+        end
+        subgraph PTA["paper-trader"]
+            direction TB
+            KICK["<b>Kicker Lambda</b><br/>09:08 · 12:27"]
+            GUARD["<b>Guardian Lambda</b><br/>15:12 square-off · 15:40 report<br/>15:45 export"]
+            S3T[("<b>Trader state bucket</b><br/>ledger · journal · reports")]
+        end
+    end
+
+    subgraph GHA["GitHub Actions"]
+        direction TB
+        SESS["<b>Trading session</b><br/>Claude Code + paper-trader MCP<br/>09:08–12:25 · 12:27–15:25"]
+    end
+
+    subgraph DBX["Databricks Free Edition · catalog stocks"]
+        direction TB
+        VOL[("<b>Landing volume</b><br/>nse · massive · fred · trades")]
+        PIPE["<b>stocks-medallion</b><br/>bronze → silver → gold"]
+        GOLD["<b>Gold tables</b><br/>markets + paper trading"]
+        WH["<b>SQL warehouse</b>"]
+        DASH["<b>Dashboard</b><br/>markets · Paper trading"]
+        VOL --> PIPE --> GOLD --> WH --> DASH
+    end
+
+    TG["<b>Telegram · you</b><br/>brief · plan · YES/NO · report"]
+
+    NSE & MAS & FRED --> FET
+    FET -- "raw file" --> S3L
+    FET -- "push (Files API)" --> VOL
+    PM -- "SQL" --> WH
+    PM -- "08:45 brief" --> TG
+    KICK -- "workflow_dispatch" --> SESS
+    SESS -- "pre-market context (SQL)" --> WH
+    YF -- "prices" --> SESS
+    SESS <-- "ledger" --> S3T
+    SESS <-- "proposals · YES/NO" --> TG
+    GUARD <-- "backstops" --> S3T
+    GUARD -- "15:45 journal (events.jsonl)" --> VOL
+
+    classDef ext fill:#eef2ff,stroke:#6366f1,color:#1e1b4b
+    classDef aws fill:#fff7ed,stroke:#f59e0b,color:#451a03
+    classDef store fill:#fffbeb,stroke:#d97706,color:#451a03
+    classDef trader fill:#f5f3ff,stroke:#8b5cf6,color:#2e1065
+    classDef dbx fill:#fef2f2,stroke:#ef4444,color:#450a0a
+    classDef gold fill:#fef9c3,stroke:#ca8a04,color:#422006
+    classDef out fill:#ecfdf5,stroke:#10b981,color:#022c22
+    class NSE,MAS,FRED,YF ext
+    class FET,PM aws
+    class S3L store
+    class KICK,GUARD,S3T,SESS trader
+    class VOL,PIPE,WH dbx
+    class GOLD gold
+    class DASH,TG out
