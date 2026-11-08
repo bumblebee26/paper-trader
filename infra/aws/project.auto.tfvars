@@ -6,4 +6,4 @@
 guardian_enabled = true
 
 # Kicker: start sessions at exact IST times. Turn on after the GitHub token is in SSM.
-dispatch_enabled = false
+dispatch_enabled = true
