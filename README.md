@@ -1,121 +1,88 @@
-# Paper Trader – mock NSE intraday trading with Telegram approvals
+# paper-trader
 
-Dummy money only (Rs 1,00,000). No broker, demat or bank account. Prices come free from
-Yahoo Finance (can lag a few minutes). Every trade needs your YES on Telegram.
+A **mock intraday trader for NSE stocks** with dummy money (Rs 1,00,000). Claude reads the market,
+proposes trades with reasons on **Telegram**, and nothing happens unless you tap **YES**. No broker, demat
+or bank account is involved.
 
-> **New here?** Follow [GETTING-STARTED.md](GETTING-STARTED.md) for the full AWS setup.
-> The sections below are for running it on your own computer with Claude Desktop.
+It builds on [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse): the lakehouse's
+pre-market data (US move, India's usual opening gap after such days, VIX, unusual volume, ADRs) sets each
+day's risk level and focus list.
 
-## 1. Install (once)
-
-Install Python 3.10 or newer from python.org (on Windows, tick "Add Python to PATH").
-
-Unzip this folder somewhere permanent, for example:
-- Windows: `C:\Users\<you>\paper-trader`
-- Mac: `/Users/<you>/paper-trader`
-
-Open a terminal in that folder (Windows: PowerShell, Mac: Terminal) and run:
-
+```mermaid
+flowchart LR
+    subgraph LH["stocks_lakehouse (same AWS account)"]
+        GOLD[(Gold tables<br/>Databricks)]
+        BRIEF[08:45 pre-market brief] --> TG
+    end
+    subgraph AWS["AWS free plan (Sydney)"]
+        K[Lambda kicker<br/>09:08 / 12:27 IST] 
+        G[Lambda guardian<br/>15:12 / 15:40 IST]
+        S3[(S3 state<br/>ledger, journal, reports)]
+        SSM[[SSM secrets]]
+    end
+    subgraph GH["GitHub Actions"]
+        S[Trading session<br/>Claude Code + paper-trader MCP]
+    end
+    K -- workflow_dispatch --> S
+    S -- premarket_context --> GOLD
+    S <--> S3
+    G <--> S3
+    S <-- YES / NO --> TG[Telegram]
+    G --> TG
+    Y[Yahoo Finance<br/>NSE prices] --> S & G
 ```
-python -m pip install -r requirements.txt
-```
-(On Mac use `python3` instead of `python` everywhere.)
 
-## 2. Add your secrets
+## A trading day (IST, Mon–Fri)
 
-Copy `.env.example` to a new file named `.env` and paste your bot token on the first line.
-Your ID 8674025639 is already filled in. Never share `.env`.
-
-## 3. Test Telegram
-
-```
-python server.py --test
-```
-You should see "Telegram bot OK: @mock_26_trader_bot", then a test message with YES / NO
-buttons arrives on your phone. Tap one; the terminal prints "Setup complete".
-
-## 4. Connect to Claude Desktop
-
-Claude Desktop → Settings → Developer → Edit Config. Add this inside the file
-(use your real folder path; on Windows double the backslashes):
-
-Windows:
-```json
-{
-  "mcpServers": {
-    "paper-trader": {
-      "command": "python",
-      "args": ["C:\\Users\\<you>\\paper-trader\\server.py"]
-    }
-  }
-}
-```
-Mac:
-```json
-{
-  "mcpServers": {
-    "paper-trader": {
-      "command": "python3",
-      "args": ["/Users/<you>/paper-trader/server.py"]
-    }
-  }
-}
-```
-Fully quit and reopen Claude Desktop. In a new chat, ask "What paper-trader tools do you
-have?" and you should see the tools listed below.
-
-## 5. Run a trading day (weekdays)
-
-Keep the computer awake and Claude Desktop open. Around 09:20 IST start a chat with:
-
-> Start today's mock intraday session with paper-trader. Use my intraday-strategy-india,
-> trade-approval-telegram and trade-journal skills. Watchlist: RELIANCE, HDFCBANK, ICICIBANK,
-> INFY, TCS, SBIN, AXISBANK, LT. Send me the focus list, then every 5 minutes run
-> scan_setups and monitor_positions, propose only the good setups, and send the
-> end-of-day report after square-off.
-
-On your phone:
-- Tap **YES - place** or **NO - skip** on each proposal. No reply in 3 minutes = skipped.
-- Send `EXIT RELIANCE` any time to close that dummy position.
-
-## Tools Claude gets
-
-| Tool | What it does |
+| Time | What happens |
 |---|---|
-| account_status | Dummy balance, P&L, open positions, margin |
-| market_snapshot | Gap %, previous-day high/low, VWAP, opening range |
-| scan_setups | ORB / VWAP / previous-day high-low candidates with numbers + Nifty context |
-| propose_trade | Risk gate + position size + Telegram message with YES/NO buttons |
-| wait_for_decision | Waits for your tap (call again while pending) |
-| execute_approved_trade | Simulated fill, only for approved proposals; re-checks price first |
-| monitor_positions | Stop/target hits, your EXIT messages, 15:10 square-off |
-| close_position | Close one dummy position |
-| notify | Plain Telegram message |
-| end_of_day_report | Day P&L, win rate, and what skipped trades would have made |
+| 08:45 | Lakehouse pre-market brief arrives on Telegram (unchanged) |
+| 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data, sends the day plan and focus list |
+| 09:20–12:25 | Every 5 minutes: check positions, scan the focus list, propose setups. You tap YES / NO |
+| 12:27 | Afternoon session. New entries stop at 14:30 |
+| 15:10 | Everything squared off, then the day report |
+| 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 
-## Files it writes (in `journal/`)
+Send `EXIT RELIANCE` to Telegram any time to close that position.
 
-- `ledger.json` – dummy balance and positions. Delete it to reset to Rs 1 lakh.
-- `YYYY-MM-DD.csv` – every proposal, reply, fill and exit.
-- `YYYY-MM-DD-report.json` – the day's summary.
+## Repository layout
 
-## Rules (change in `.env`)
+```
+trader/            Engine, scanner, brief (lakehouse), storage (S3/local), Telegram, MCP server, Lambda handlers.
+                   Standard library + boto3 only.
+prompts/           trading_rules.md: the rules Claude follows in a session
+infra/
+  modules/         secure_bucket: private, encrypted, versioned, HTTPS-only S3 (same as stocks_lakehouse)
+  aws/             State bucket, kicker + guardian Lambdas, schedules, IAM, SSM, session CI user
+tests/             Unit tests (no network or AWS needed)
+.github/           CI (tests, fmt, validate), Terraform CD (plan on PR, apply on merge), trading session
+docs/              ARCHITECTURE, SETUP, OPERATIONS, TROUBLESHOOTING
+```
 
-1% risk per trade, max 3 open positions, max 5 trades a day, stop after a 2% daily loss,
-minimum reward:risk 1.5, entries 09:30–14:30, square-off 15:10, 5x simulated intraday margin,
-0.05% slippage and Rs 20 brokerage per order. NSE holidays are not detected, so skip those days.
+## How changes ship
 
-## Troubleshooting
+```
+edit on dev  ──push──▶  CI: tests, MCP check, terraform fmt + validate
+              ──PR to main──▶  terraform plan posted as a PR comment
+              ──merge──▶  terraform apply; the next trading session uses the new code
+```
 
-- "TELEGRAM_BOT_TOKEN is not set" → `.env` missing or token not pasted.
-- "Conflict: terminated by other getUpdates request" → another copy is running; close the
-  terminal test or restart Claude Desktop.
-- Test message arrives but taps are ignored → ALLOWED_USER_ID must be 8674025639.
-- "no data" before 09:15 or on holidays is normal.
+`main` only changes through pull requests (same rules as stocks_lakehouse).
 
-## Running it on AWS instead
+## Documentation
 
-See `aws/SETUP-AWS.md` (by hand) or `infrastructure/README.md` (Terraform, automated). Claude Code runs the session on a server on a weekday schedule,
-so your computer can stay off.
+| Doc | Read it when |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it fits together and why it's built this way |
+| [docs/SETUP.md](docs/SETUP.md) | Setting it up: every step in order, Windows commands |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Day to day: changes, rules, monitoring, secrets |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Something failed |
 
-This is a learning simulator, not investment advice.
+## Laptop mode (optional)
+
+The same tools run locally in Claude Desktop with state in `journal/`: copy `.env.example` to `.env`, run
+`pip install -r requirements.txt`, test with `python trader/server.py --test`, then add
+`trader/server.py` as an MCP server in Claude Desktop. Don't run laptop mode while GitHub sessions are on:
+only one program can read the Telegram bot at a time.
+
+*Mock trading with dummy money for learning. Not investment advice.*

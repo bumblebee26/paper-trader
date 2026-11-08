@@ -1,0 +1,7 @@
+# Same bytes on every OS, so Lambda zips and Databricks workspace files hash
+# identically whether Terraform runs on Windows or in CI (Linux).
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.zip binary
