@@ -153,7 +153,8 @@ class KickerTest(unittest.TestCase):
         import os
         from unittest import mock
         calls = []
-        with mock.patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_test", "GITHUB_REPO": "bumblebee26/paper-trader"}), \
+        with mock.patch.dict(os.environ, {"DISPATCH_TOKEN": "ghp_test", "DISPATCH_REPO": "bumblebee26/paper-trader",
+                                          "GITHUB_REF": "refs/heads/dev"}), \
                 mock.patch.object(handlers, "request", lambda *a, **k: calls.append((a, k)) or b""):
             self.assertEqual(handlers.kicker({"phase": "afternoon"}, None), {"dispatched": "afternoon"})
         (method, url), kw = calls[0]

@@ -9,18 +9,20 @@ guardian Backstop that needs no Claude. Event {"action": "squareoff"} at 15:12 I
 import os
 
 import config
+
+# Settings use DISPATCH_* names: GitHub runners define GITHUB_REF/GITHUB_TOKEN themselves.
 import engine
 from http_client import log, request
 
 
 def kicker(event, context):
     phase = (event or {}).get("phase", "morning")
-    token = config.secret("GITHUB_TOKEN", "GITHUB_TOKEN_PARAM")
+    token = config.secret("DISPATCH_TOKEN", "DISPATCH_TOKEN_PARAM")
     if not token:
         raise RuntimeError("GitHub token not set in SSM")
-    repo = os.environ["GITHUB_REPO"]
-    workflow = os.environ.get("GITHUB_WORKFLOW_FILE", "trading-session.yml")
-    ref = os.environ.get("GITHUB_REF", "main")
+    repo = os.environ["DISPATCH_REPO"]
+    workflow = os.environ.get("DISPATCH_WORKFLOW", "trading-session.yml")
+    ref = os.environ.get("DISPATCH_REF", "main")
     import json
 
     request(

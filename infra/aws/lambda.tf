@@ -62,9 +62,9 @@ resource "aws_lambda_function" "kicker" {
 
   environment {
     variables = {
-      GITHUB_REPO        = var.github_repo
-      GITHUB_REF         = "main"
-      GITHUB_TOKEN_PARAM = aws_ssm_parameter.github_token.name
+      DISPATCH_REPO        = var.github_repo
+      DISPATCH_REF         = "main"
+      DISPATCH_TOKEN_PARAM = aws_ssm_parameter.github_token.name
     }
   }
 
