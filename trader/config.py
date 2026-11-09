@@ -68,7 +68,11 @@ def allowed_user_id() -> str:
 
 
 # --- dummy money and risk rules ---
-STARTING_CAPITAL = _f("STARTING_CAPITAL", 100_000)
+# Dummy pools: Rs 2,00,000 in total, split 20% / 30% / 50%. Only the intraday pool trades today;
+# swing and long-term are planned (see the system plan, phases 3 and 4).
+STARTING_CAPITAL = _f("STARTING_CAPITAL", 40_000)          # intraday pool
+SWING_CAPITAL = _f("SWING_CAPITAL", 60_000)
+LONG_TERM_CAPITAL = _f("LONG_TERM_CAPITAL", 100_000)
 RISK_PER_TRADE_PCT = _f("RISK_PER_TRADE_PCT", 1.0)
 MAX_OPEN_POSITIONS = _i("MAX_OPEN_POSITIONS", 3)
 MAX_TRADES_PER_DAY = _i("MAX_TRADES_PER_DAY", 10)        # 0 = no daily limit

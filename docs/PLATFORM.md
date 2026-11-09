@@ -8,7 +8,7 @@
 ## Overview
 
 Two repositories form one platform: **stocks_lakehouse** collects and analyses India and US market data, and
-**paper-trader** uses that analysis to run a mock intraday trader with dummy money (Rs 1,00,000), with every
+**paper-trader** uses that analysis to run a mock intraday trader with dummy money (an Rs 40,000 intraday pool of an Rs 2,00,000 dummy portfolio), with every
 trade approved by you on Telegram.
 
 - **stocks_lakehouse** fetches NSE, US (Massive) and global (FRED) data into S3 and Databricks, builds

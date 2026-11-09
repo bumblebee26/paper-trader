@@ -32,7 +32,8 @@ class MemoryStore:
 class Env:
     """Patches clock, storage, Telegram and prices for one test."""
 
-    def __init__(self, when=datetime(2026, 11, 9, 10, 40)):
+    def __init__(self, when=datetime(2026, 11, 9, 10, 40), capital=100_000):
+        self.capital = capital  # tests of the mechanics use Rs 1 lakh; the live intraday pool is config's
         self.clock = when.replace(tzinfo=market.IST)
         self.store = MemoryStore()
         self.sent, self.edits, self.updates = [], [], []
@@ -61,6 +62,7 @@ class Env:
             mock.patch.object(tg, "edit", lambda m, t: self.edits.append(t)),
             mock.patch.object(market, "last_price", lambda s: (self.prices.get(s), "2026-11-09 10:40")),
             mock.patch.object(market, "candles", lambda s, i="5m", d=1: self.bars.get((s, i), [])),
+            mock.patch.object(config, "STARTING_CAPITAL", self.capital),
         ]
         for p in self._patches:
             p.start()

@@ -53,8 +53,23 @@ def save(state: dict) -> None:
     storage.put_json(storage.LEDGER_KEY, state)
 
 
+def _apply_capital_change(state: dict) -> None:
+    """When STARTING_CAPITAL changes, move the balance by the same amount, so the P&L so far is kept."""
+    old = state.get("starting_capital", config.STARTING_CAPITAL)
+    new = config.STARTING_CAPITAL
+    if old == new or state["positions"]:
+        return
+    state["balance"] = round(state["balance"] + new - old, 2)
+    state["starting_capital"] = new
+    pnl = state["balance"] - new
+    journal("capital_change", note=f"intraday pool {inr(old)} -> {inr(new)}; P&L so far {inr(pnl, sign=True)} kept")
+    tg.send(f"[MOCK] Intraday pool resized from {inr(old)} to {inr(new)} (part of the Rs 2 lakh dummy portfolio). "
+            f"Your P&L so far ({inr(pnl, sign=True)}) is kept: balance now {inr(state['balance'])}.")
+
+
 def _new_day(state: dict) -> None:
     state["day"] = _today()
+    _apply_capital_change(state)
     state["day_start_balance"] = state["balance"]
     state["trades_today"] = 0
     state["realized_today"] = 0.0

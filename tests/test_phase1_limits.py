@@ -21,6 +21,8 @@ def open_trade(env, st, symbol, entry=1000.0, stop=995.0, target=1010.0):
 
 class Phase1Test(unittest.TestCase):
     def test_defaults(self):
+        self.assertEqual((config.STARTING_CAPITAL, config.SWING_CAPITAL, config.LONG_TERM_CAPITAL),
+                         (40_000, 60_000, 100_000))
         self.assertEqual(config.MAX_TRADES_PER_DAY, 10)
         self.assertEqual(config.DAILY_LOSS_LIMIT_RS, 10_000)
         self.assertEqual(len(sectors.WATCHLIST), 36)
@@ -95,3 +97,21 @@ class Phase1Test(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CapitalChangeTest(unittest.TestCase):
+    def test_pool_resized_keeps_pnl(self):
+        import storage
+        from helpers import Env as E
+        with E(capital=40_000) as env:
+            storage.put_json(storage.LEDGER_KEY, {
+                "balance": 98_853.0, "starting_capital": 100_000, "positions": {}, "proposals": {},
+                "decisions": {}, "exit_requests": [], "tg_offset": 0, "day": "2026-11-08"})
+            st = engine.load()
+            self.assertEqual(st["starting_capital"], 40_000)
+            self.assertEqual(st["balance"], 38_853.0)
+            self.assertEqual(st["day_start_balance"], 38_853.0)
+            self.assertIn("resized from Rs 1,00,000 to Rs 40,000", env.sent[-1])
+            engine.save(st)
+            engine.load()
+            self.assertEqual(sum("resized" in m for m in env.sent), 1)
