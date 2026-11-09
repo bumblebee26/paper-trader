@@ -11,6 +11,7 @@
 | 12:27 / 12:36 | Afternoon session (kicker / backup) | — |
 | 15:10 | Square-off, then end-of-day report | `reports/<date>.json` |
 | 15:12 | Guardian: square-off if no live session | — |
+| 15:14 | Guardian: puts the swing pool's idle cash into NIFTYBEES (once; nothing to do afterwards) | `state/pools/swing.json` |
 | 15:40 | Guardian: report if none was sent; daily portfolio snapshot (circuit breaker at 12% below the peak) | `state/portfolio.json` |
 | every 2 min | Responder: answers Telegram commands when no session is live | — |
 | Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools) | `reports/weekly/<date>.json` |

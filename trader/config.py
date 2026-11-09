@@ -73,6 +73,8 @@ def allowed_user_id() -> str:
 STARTING_CAPITAL = _f("STARTING_CAPITAL", 40_000)          # intraday pool
 SWING_CAPITAL = _f("SWING_CAPITAL", 60_000)
 LONG_TERM_CAPITAL = _f("LONG_TERM_CAPITAL", 100_000)
+# Swing rules failed their backtest (9 Nov 2026): the swing pool holds this index fund instead.
+SWING_PARK_SYMBOL = os.environ.get("SWING_PARK_SYMBOL", "NIFTYBEES")  # "" = keep the cash idle
 RISK_PER_TRADE_PCT = _f("RISK_PER_TRADE_PCT", 1.0)
 MAX_OPEN_POSITIONS = _i("MAX_OPEN_POSITIONS", 3)
 MAX_TRADES_PER_DAY = _i("MAX_TRADES_PER_DAY", 10)        # 0 = no daily limit

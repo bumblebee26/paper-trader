@@ -8,7 +8,8 @@ guardian Backstop that needs no Claude. Event {"action": "squareoff"} at 15:12 I
          any open dummy positions if no live session is running; {"action": "report"} at
          15:40 IST sends the day report if the session didn't; {"action": "export"} at 15:45
          IST copies the day's journal to the lakehouse (add "date", or "start"/"end", to
-         re-export past days); {"action": "weekly"} on Fridays at 17:55 IST sends the weekly report.
+         re-export past days); {"action": "park"} at 15:14 IST puts the swing pool's idle
+         cash into NIFTYBEES (does nothing once invested); {"action": "weekly"} on Fridays at 17:55 IST sends the weekly report.
 """
 import json
 import os
@@ -63,6 +64,17 @@ def guardian(event, context):
             return {"report": engine.report(state, send=True)}
         finally:
             engine.save(state)
+    if action == "park":
+        import pools
+        import telegram_bot as tg
+
+        out = pools.park("swing")
+        if out["status"] == "bought":
+            tg.send(f"[MOCK] Swing pool: bought {out['qty']} NIFTYBEES at Rs {out['fill']:,.2f} "
+                    f"(cash left Rs {out['cash_left']:,.0f}).\nIn plain words: the swing rules failed their backtest, "
+                    "so as you decided, this Rs 60,000 now simply follows the Nifty 50 until a better swing idea "
+                    "passes a test. /portfolio shows how it's doing.")
+        return out
     if action == "weekly":
         import weekly
 

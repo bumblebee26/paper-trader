@@ -27,6 +27,8 @@ LIMITS = {
 JOURNAL_COLUMNS = ["timestamp_ist", "pool", "event", "symbol", "qty", "price", "fees_rs", "value_rs",
                    "pnl_rs", "cash_after", "reason", "note"]
 BREAKER_PCT = 12.0  # every pool stops new buys when total equity is this far below its peak
+INDEX_FUNDS = {"NIFTYBEES"}  # a whole market in one holding: exempt from the per-stock and sector caps
+PARK_BUFFER_PCT = 0.5        # cash left over when parking, so costs never overdraw the pool
 
 
 def capital(pool):
@@ -98,6 +100,10 @@ def buy_check(p, symbol, qty, price, other_pools=()):
     if value + costs("BUY", value) > p["cash"]:
         return f"not enough cash in the {p['pool']} pool (Rs {p['cash']:,.0f} free)"
     held = p["holdings"].get(symbol)
+    if breaker_on():
+        return "portfolio circuit breaker is on (total value 12% below its peak); send /resume all after reviewing"
+    if symbol in INDEX_FUNDS:
+        return None
     if not held and len(p["holdings"]) >= lim["max_holdings"]:
         return f"already {lim['max_holdings']} holdings, the pool's maximum"
     after = value + (held["qty"] * held["avg_cost"] if held else 0)
@@ -115,8 +121,6 @@ def buy_check(p, symbol, qty, price, other_pools=()):
     total_eq = eq + sum(equity(o) for o in other_pools)
     if other_pools and combined > total_eq * 15 / 100:
         return f"{symbol} would be over 15% of the swing and long-term pools combined"
-    if breaker_on():
-        return "portfolio circuit breaker is on (total value 12% below its peak); send /resume all after reviewing"
     return None
 
 
@@ -161,6 +165,39 @@ def sell(p, symbol, qty=None, price=None, reason=""):
     return {"status": "sold", "symbol": symbol, "qty": qty, "fill": fill, "pnl_rs": pnl}
 
 
+def refresh_prices(p):
+    """Update each holding's last_price from the market (kept as is when a quote fails)."""
+    for sym, h in p["holdings"].items():
+        try:
+            price, _ = market.last_price(sym)
+        except Exception:  # noqa: BLE001
+            price = None
+        if price:
+            h["last_price"] = price
+    return p
+
+
+def park(pool="swing", symbol=None):
+    """Put the pool's idle cash into an index fund (decided 9 Nov 2026 for the swing pool, whose rules
+    failed their backtest). Once parked, later runs do nothing. Returns what happened."""
+    symbol = symbol if symbol is not None else config.SWING_PARK_SYMBOL
+    if not symbol:
+        return {"status": "skipped", "reason": "parking switched off"}
+    p = load(pool)
+    price, when = market.last_price(symbol)
+    if not price:
+        return {"status": "skipped", "reason": f"no {symbol} price"}
+    spend = p["cash"] * (1 - PARK_BUFFER_PCT / 100)
+    unit = price * (1 + config.SLIPPAGE_PCT / 100) * (1 + config.DELIVERY_COST_PCT / 100)
+    qty = math.floor(spend / unit)
+    if qty < 1 or spend < 0.05 * p["capital"]:
+        return {"status": "skipped", "reason": "already invested"}
+    out = buy(p, symbol, qty, price, reason="swing rules on hold: pool held in the index")
+    if out["status"] == "bought":
+        save(p)
+    return {**out, "price_time": when, "cash_left": p["cash"]}
+
+
 # ------------------------------------------------------------ portfolio --
 PORTFOLIO_KEY = "state/portfolio.json"
 
@@ -172,7 +209,9 @@ def breaker_on():
 def snapshot(intraday_state, prices=None):
     """Record today's total equity across pools; trip the circuit breaker 12% below the peak.
     Returns the snapshot. Called once a day after the close (guardian report)."""
-    pools = {name: load(name) for name in POOLS}
+    pools = {name: refresh_prices(load(name)) for name in POOLS}
+    for p in pools.values():
+        save(p)
     values = {"intraday": round(intraday_state["balance"], 2),
               **{name: equity(p, prices) for name, p in pools.items()}}
     total = round(sum(values.values()), 2)
@@ -201,11 +240,19 @@ def reset_breaker():
 
 def summary_lines(intraday_state):
     lines = []
-    for name, label, phase in (("swing", "Swing", "phase 3, planned 7 Dec"),
+    for name, label, phase in (("swing", "Swing", "rules on hold; to be held in NIFTYBEES"),
                                ("long_term", "Long-term", "phase 4, planned 21 Dec")):
-        p = load(name)
+        p = refresh_prices(load(name))
         eq = equity(p)
-        state = (f"{len(p['holdings'])} holdings, cash Rs {p['cash']:,.0f}" if p["holdings"]
-                 else f"not trading yet ({phase})")
+        if list(p["holdings"]) == [s for s in p["holdings"] if s in INDEX_FUNDS] and p["holdings"]:
+            sym = next(iter(p["holdings"]))
+            h = p["holdings"][sym]
+            gain = eq - p["capital"]
+            state = (f"held in {sym} ({h['qty']} units, {'+' if gain >= 0 else '-'}Rs {abs(gain):,.0f}); "
+                     "swing rules on hold")
+        elif p["holdings"]:
+            state = f"{len(p['holdings'])} holdings, cash Rs {p['cash']:,.0f}"
+        else:
+            state = f"not trading yet ({phase})"
         lines.append((label, eq, p["capital"], state))
     return lines

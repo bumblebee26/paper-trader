@@ -118,3 +118,31 @@ class WeeklyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParkTest(unittest.TestCase):
+    def test_swing_pool_parks_in_niftybees_once(self):
+        import handlers
+        with Env(capital=40_000) as env:
+            env.prices["NIFTYBEES"] = 280.0
+            out = handlers.guardian({"action": "park"}, None)
+            self.assertEqual(out["status"], "bought")
+            p = pools.load("swing")
+            h = p["holdings"]["NIFTYBEES"]
+            self.assertEqual(h["qty"], out["qty"])
+            self.assertGreater(h["qty"] * 280.14, 59_000)          # nearly all of the Rs 60,000
+            self.assertGreaterEqual(p["cash"], 0)
+            self.assertIn("bought", env.sent[-1])
+            self.assertIn("follows the Nifty 50", env.sent[-1])
+            n = len(env.sent)
+            self.assertEqual(handlers.guardian({"action": "park"}, None)["status"], "skipped")
+            self.assertEqual(len(env.sent), n)
+            env.prices["NIFTYBEES"] = 290.0
+            text = engine.portfolio_text(engine.load())
+            self.assertIn("Swing:", text)
+            self.assertIn("held in NIFTYBEES", text)
+            self.assertIn("+Rs", text)
+
+    def test_no_price_no_buy(self):
+        with Env(capital=40_000):
+            self.assertEqual(pools.park("swing")["status"], "skipped")
