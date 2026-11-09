@@ -27,6 +27,7 @@ In detail:
 This repo is half of a platform with [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse)
 (purple = this repo). The two meet twice a day: the session reads gold before the open, and the guardian sends
 the journal back at 15:45. The same diagram is in the lakehouse as `docs/diagrams/05_platform.mmd`.
+The written overview of both repos together is [PLATFORM.md](PLATFORM.md).
 
 ### The life of one trade
 

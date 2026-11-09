@@ -58,6 +58,7 @@ edit on dev  ──push──▶  CI: tests, MCP check, terraform fmt + validate
 
 | Doc | Read it when |
 |---|---|
+| [docs/PLATFORM.md](docs/PLATFORM.md) | The whole platform with stocks_lakehouse: diagram, daily timeline, contracts, security, costs |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it fits together and why it's built this way |
 | [docs/SETUP.md](docs/SETUP.md) | Setting it up: every step in order, Windows commands |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Day to day: changes, rules, monitoring, secrets |
