@@ -27,7 +27,8 @@ life of one trade).
 | 15:45 | The day's journal is copied to the lakehouse (backup feed); its pipeline builds the trading analysis tables and dashboard page |
 
 Money is split into three dummy pools (Rs 2,00,000 in total): **intraday** Rs 40,000 (trading now), **swing**
-Rs 60,000 and **long-term** Rs 1,00,000 (their own ledgers; trading starts in later phases). If all pools
+Rs 60,000 (held in NIFTYBEES: the swing rules failed their backtest) and **long-term** Rs 1,00,000 (starts
+in a later phase). If all pools
 together fall 12% below their peak, a circuit breaker stops new buys until you send `/resume`. Every Friday
 evening a **weekly report** explains the week in plain words.
 
