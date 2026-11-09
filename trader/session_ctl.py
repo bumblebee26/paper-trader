@@ -21,7 +21,9 @@ PHASES = {
             "plan from step 1. 4) Call wait_for_next_candle(session_end='{end}') until 09:20 has passed. "
             "If run_cycle shows no Nifty candle dated today by 09:30, it is a holiday: notify 'No market "
             "today' and stop. 5) Loop: run_cycle, handle candidates per the rules, "
-            "wait_for_next_candle(session_end='{end}'), until session_over."
+            "wait_for_next_candle(session_end='{end}'), until session_over. If positions are still open then, "
+            "notify one line: 'Morning session done. The afternoon session (12:27) keeps managing <symbols>; "
+            "everything closes by 15:10.' Otherwise stop without a message."
         ),
     },
     "afternoon": {
