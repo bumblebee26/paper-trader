@@ -7,6 +7,7 @@ import time
 import uuid
 from datetime import datetime, timedelta
 
+import advisor
 import config
 import market
 import storage
@@ -341,7 +342,8 @@ def plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summa
 
 
 # -------------------------------------------------------------- proposals --
-def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news="none", summary=""):
+def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news="none", summary="",
+            ai_yes_pct=None):
     symbol, side = symbol.upper(), side.upper()
     ok, why, qty, risk_rs, rr = risk_gate(state, symbol, side, entry, stop, target)
     if not ok:
@@ -353,9 +355,14 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)
     risk_pct = round(risk_rs / state["balance"] * 100, 2)
     need = qty * entry / config.INTRADAY_LEVERAGE
+    advice = advisor.assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct)
     lines = [
         f"[MOCK] {side} {symbol}  ({setup})",
+        *advice["lines"],
+        "",
         *plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summary),
+        "",
+        *advice["market_lines"],
         "",
         "Details:",
         f"Entry ~{entry:,.2f} | SL {stop:,.2f} | Target {target:,.2f}",
@@ -374,11 +381,13 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         "stop": stop, "target": target, "qty": qty, "risk_rs": risk_rs, "rr": rr,
         "reasons": reasons[:3], "invalid_if": invalid_if, "status": "pending",
         "sent_at": _now(), "valid_until": valid_until.strftime("%Y-%m-%d %H:%M:%S"),
-        "message_id": msg_id, "text": text,
+        "message_id": msg_id, "text": text, "suggested_yes_pct": advice["yes_pct"],
     }
     journal("proposed", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
-            target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]))
+            target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]),
+            note=f"suggested {advice['verdict']} {advice['yes_pct']}%")
     return {"status": "pending", "proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
+            "suggestion": f"{advice['verdict']} {advice['yes_pct']}%",
             "valid_until": state["proposals"][pid]["valid_until"]}
 
 

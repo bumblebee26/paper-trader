@@ -26,6 +26,13 @@ life of one trade).
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | The day's journal is copied to the lakehouse (backup feed); its pipeline builds the trading analysis tables and dashboard page |
 
+Each proposal starts with **a suggestion** ("YES, 65% for and 35% against") and explains itself in plain
+words: what you'd buy or sell, why now, what you'd make or lose, and a **market check** of Nifty 50,
+Sensex, the stock's sector index (Bank Nifty, Nifty IT), whether the price has already run, and the time
+left. The percentage is a checklist score (live checks averaged with Claude's own view), not a chance of
+profit. You still make the call. The lakehouse table `stocks.gold.trading_decisions` shows later how
+your YES and NO calls worked out.
+
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,
 `/exit SYMBOL`, `/pause`, `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
 within seconds during sessions, within ~2 minutes otherwise (evenings, weekends). A `/pause` sent in the evening

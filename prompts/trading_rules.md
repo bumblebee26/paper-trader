@@ -49,6 +49,9 @@ the market for this stock and the main thing that could go wrong. No jargon or a
 "today's average price", not "VWAP"; "the market", not "Nifty breadth"). Don't repeat money amounts;
 the code adds them. Example: "Banks are rising with the market today and this one just broke out with
 twice its usual buying. The risk: it's already up 2% today, so some buyers may take profits."
+ai_yes_pct: your honest 0-100 view of whether the user should say YES, after weighing the evidence and
+the risks. Don't inflate it: 50 means a coin flip. The code averages it with its own live checks (Nifty,
+Sensex, sector index, late entry, time left, plan bias) and shows the user one suggestion; the user decides.
 If it returns `blocked`, move on.
 
 ## Approval flow
