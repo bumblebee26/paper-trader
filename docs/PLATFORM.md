@@ -21,12 +21,19 @@ trade approved by you on Telegram.
 
 ## System diagram
 
-![Platform: stocks_lakehouse and paper-trader across AWS, GitHub Actions, Databricks and Telegram](diagrams/01_platform.png)
+**At a glance** (blue = stocks_lakehouse, orange = paper-trader):
+
+![Platform at a glance: AWS Sydney, GitHub Actions and Databricks, meeting at the morning SQL read and the 15:45 journal export](diagrams/platform_overview.png)
 
 No servers anywhere: scheduled Lambdas in AWS, a GitHub Actions job for the trading session, and a Databricks
 pipeline. The systems meet twice a day: the session reads the gold tables before the open, and the guardian
-exports the journal to the landing volume at 15:45. Purple = paper-trader. Secrets (SSM) and deployments
-(CI/CD) are left out of the picture; they're covered below.
+exports the journal to the landing volume at 15:45.
+
+**In detail** (purple = paper-trader; source `docs/diagrams/01_platform.mmd`, identical in both repos):
+
+![Platform: stocks_lakehouse and paper-trader across AWS, GitHub Actions, Databricks and Telegram](diagrams/01_platform.png)
+
+Secrets (SSM) and deployments (CI/CD) are left out of both pictures; they're covered below.
 
 ## A day in the life
 
