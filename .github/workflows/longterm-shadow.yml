@@ -1,0 +1,53 @@
+name: Long-term shadow
+
+# Weekly shadow run of the long-term pool (phase 4d): what it would buy or sell this week, in a separate shadow ledger.
+# Plain Python, no Claude. Also runnable by hand: Actions -> Long-term shadow -> Run workflow.
+on:
+  schedule:
+    - cron: "45 4 * * 6" # Saturday 10:15 IST (after the 07:15 fundamentals refresh)
+  workflow_dispatch:
+    inputs:
+      send:
+        description: Send the report to Telegram
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  STATE_BUCKET: ${{ vars.TRADER_STATE_BUCKET }}
+  TELEGRAM_TOKEN_PARAM: /stocks/telegram-bot-token
+  TELEGRAM_CHAT_ID_PARAM: /stocks/telegram-chat-id
+  DATABRICKS_URL_PARAM: /stocks/databricks-workspace-url
+  DATABRICKS_TOKEN_PARAM: /stocks/databricks-pusher-token
+  DATABRICKS_WAREHOUSE_PARAM: /stocks/databricks-warehouse-id
+
+jobs:
+  shadow:
+    runs-on: ubuntu-latest
+    environment: trading
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_TRADER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_TRADER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Shadow week
+        env:
+          SEND: ${{ inputs.send || 'true' }}
+        run: |
+          if [ "$SEND" = "true" ]; then python jobs/longterm_shadow.py; else python jobs/longterm_shadow.py --no-send; fi

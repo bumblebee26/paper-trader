@@ -14,6 +14,7 @@
 | 15:14 | Guardian: puts the swing pool's idle cash into NIFTYBEES (once; nothing to do afterwards) | `state/pools/swing.json` |
 | 15:40 | Guardian: report if none was sent; daily portfolio snapshot (circuit breaker at 12% below the peak) | `state/portfolio.json` |
 | 15:45 | Guardian: export the day's journal and a portfolio snapshot (every pool and holding, swing and long-term prices refreshed) | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/`; `exports/portfolio/date=<date>/portfolio.jsonl` + volume `portfolio/` |
+| Sat 10:15 | GitHub Actions *Long-term shadow*: what the long-term pool would buy or sell this week (shadow ledger `state/pools/long_term_shadow.json`, never in the real portfolio); Telegram report | `shadow/longterm/<date>.json` |
 | Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools) | `reports/weekly/<date>.json` |
 | Sat 07:15 | GitHub Actions *Company fundamentals*: NSE's Nifty 200 list (the 250 most traded NSE stocks if the list can't be read) plus the watchlist; financials → lakehouse `landing/fundamentals/` (feeds `stocks.gold.company_fundamentals`), the list → `landing/index_members/` | `fundamentals/date=<date>/fundamentals.jsonl`, `index_members/date=<date>/nifty200.jsonl` |
 | every 2 min | Responder: answers Telegram commands when no session is live | — |
