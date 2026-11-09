@@ -57,6 +57,7 @@ def _new_day(state: dict) -> None:
     state["day_start_balance"] = state["balance"]
     state["trades_today"] = 0
     state["realized_today"] = 0.0
+    state["loss_limit_hit"] = False
     for p in state["proposals"].values():
         if p["status"] in ("pending", "approved"):
             p["status"] = "expired"
@@ -262,6 +263,37 @@ def account(state: dict) -> dict:
 
 
 # -------------------------------------------------------------- risk gate --
+def loss_limit_rs(state) -> float:
+    return state["day_start_balance"] * config.DAILY_LOSS_LIMIT_PCT / 100
+
+
+def loss_limit_reached(state) -> bool:
+    return -state["realized_today"] >= loss_limit_rs(state)
+
+
+def check_loss_limit(state) -> None:
+    """Tell the user when the day's realized loss crosses the limit, and again when a winning exit brings it
+    back under (then new proposals are allowed again). Called after every change to realized P&L."""
+    hit = loss_limit_reached(state)
+    if hit == bool(state.get("loss_limit_hit")):
+        return
+    state["loss_limit_hit"] = hit
+    today, limit = inr(state["realized_today"], sign=True), inr(loss_limit_rs(state))
+    if hit:
+        tg.send(f"[MOCK] Daily loss limit reached: today {today} (limit -{limit}). No new proposals for now; "
+                "open positions are still managed. If a winning exit brings the loss back under the limit, "
+                "trading resumes by itself.")
+        journal("loss_limit_hit", pnl_rs=round(state["realized_today"], 2))
+    else:
+        left = state.get("trades_today", 0)
+        more = (f" ({config.MAX_TRADES_PER_DAY - left} of {config.MAX_TRADES_PER_DAY} trades left today)"
+                if left < config.MAX_TRADES_PER_DAY else
+                f", but all {config.MAX_TRADES_PER_DAY} trades for today are used")
+        tg.send(f"[MOCK] Back under the daily loss limit: today {today} (limit -{limit}). New proposals are "
+                f"allowed again{more}.")
+        journal("loss_limit_cleared", pnl_rs=round(state["realized_today"], 2))
+
+
 def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, target: float):
     """Return (ok, reason, qty, risk_rs, rr)."""
     side = side.upper()
@@ -283,9 +315,10 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
         return False, "max open positions reached", 0, 0, rr
     if state["trades_today"] >= config.MAX_TRADES_PER_DAY:
         return False, "max trades for today reached", 0, 0, rr
-    loss_limit = state["day_start_balance"] * config.DAILY_LOSS_LIMIT_PCT / 100
-    if -state["realized_today"] >= loss_limit:
-        return False, "daily loss limit hit; no more trades today", 0, 0, rr
+    if loss_limit_reached(state):
+        return False, (f"daily loss limit reached (today {inr(state['realized_today'], sign=True)}, limit "
+                       f"-{inr(loss_limit_rs(state))}); it lifts by itself if a winning exit brings the loss "
+                       "back under the limit"), 0, 0, rr
     if rr < config.MIN_RR:
         return False, f"risk-reward {rr} is below minimum {config.MIN_RR}", 0, 0, rr
     risk_budget = state["balance"] * state.get("day_risk_pct", config.RISK_PER_TRADE_PCT) / 100
@@ -470,6 +503,7 @@ def execute(state, pid):
     fill = slip(price, p["side"], opening=True)
     state["balance"] -= costs(fill * p["qty"])
     state["realized_today"] -= costs(fill * p["qty"])
+    check_loss_limit(state)
     state["trades_today"] += 1
     state["positions"][p["symbol"]] = {
         "side": p["side"], "qty": p["qty"], "fill_price": fill, "stop": p["stop"],
@@ -511,6 +545,7 @@ def close(state, symbol, exit_price, reason, notify=True):
                 f"In plain words: {EXIT_PLAIN.get(reason, 'It was closed.')} "
                 f"{'You made' if net > 0 else 'You lost'} {inr(abs(net))} on this trade, after fees.\n"
                 f"{ledger_line(state)}")
+    check_loss_limit(state)
     return {"status": "closed", "symbol": symbol, "exit_price": exit_fill, "pnl_rs": net}
 
 
