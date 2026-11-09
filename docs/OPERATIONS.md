@@ -54,6 +54,7 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Want to | Do |
 |---|---|
 | Test without trading | Actions → Trading session → Run workflow → `test` |
+| Swing backtest | Actions → Swing backtest → Run workflow (about 2 min, no Claude). Telegram summary; full results in `backtests/swing/<date>.json` in the state bucket |
 | Re-run a phase today | Delete `sessions/<date>/<phase>` from the state bucket, then Run workflow |
 | Skip trading today | Actions → Trading session → **Disable workflow** (enable it again afterwards) |
 | All commands | Send `/help` (or `/prompts`, or "what can you do?") on Telegram; they're also in the bot's `/` menu |
