@@ -23,8 +23,9 @@ import swing  # noqa: E402
 UNIVERSE_SQL = """
 WITH eq AS (SELECT symbol, trade_date, turnover FROM stocks.silver.nse_eq_daily WHERE series = 'EQ'),
 first60 AS (SELECT trade_date FROM (SELECT DISTINCT trade_date FROM eq) ORDER BY trade_date LIMIT 60)
-SELECT symbol FROM eq JOIN first60 USING (trade_date)
-GROUP BY symbol HAVING count(*) >= 50 ORDER BY percentile_approx(turnover, 0.5) DESC LIMIT 250
+SELECT symbol, percentile_approx(turnover, 0.5) AS median_turnover, count(*) AS sessions
+FROM eq JOIN first60 USING (trade_date)
+GROUP BY symbol HAVING sessions >= 50 ORDER BY median_turnover DESC LIMIT 250
 """
 BARS_SQL = """
 SELECT symbol, CAST(trade_date AS STRING) AS d, open, high, low, close, prev_close, volume
