@@ -29,8 +29,10 @@ life of one trade).
 Each proposal starts with **a suggestion** ("YES, 65% for and 35% against") and explains itself in plain
 words: what you'd buy or sell, why now, what you'd make or lose, and a **market check** of Nifty 50,
 Sensex, the stock's sector index (Bank Nifty, Nifty IT), whether the price has already run, and the time
-left. The percentage is a checklist score (live checks averaged with Claude's own view), not a chance of
-profit. You still make the call. The lakehouse table `stocks.gold.trading_decisions` shows later how
+left. An **independent risk reviewer** (a second Claude, with no tools, that sees only facts gathered by
+code, never the trading agent's pitch) tries to argue against each trade and gives its own verdict in
+plain words. The percentage averages three scores: the live checks, the trading agent and the reviewer.
+It is not a chance of profit. You still make the call. The lakehouse table `stocks.gold.trading_decisions` shows later how
 your YES and NO calls worked out.
 
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,

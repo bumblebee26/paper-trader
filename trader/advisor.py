@@ -104,19 +104,33 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
         else:
             checks.append((WARN, f"The morning plan expected a {bias}, which goes against a {side}.", -5))
 
-    score = 50 + sum(p for _, _, p in checks)
-    if ai_yes_pct is not None:
-        score = (score + max(0, min(100, float(ai_yes_pct)))) / 2
-    yes = int(round(max(5, min(95, score))))
-    if yes >= 60:
-        verdict = "YES"
-    elif yes <= 40:
-        verdict = "NO"
-    else:
-        verdict = "UNSURE"
-    lines = [
-        f"My suggestion: {verdict}, {yes}% for and {100 - yes}% against. You decide.",
-        "(A score from the checks below, not the chance of profit.)",
-    ]
+    checks_pct = int(round(max(5, min(95, 50 + sum(p for _, _, p in checks)))))
     market_lines = ["Market check:", *[f"{icon} {text}" for icon, text, _ in checks]]
-    return {"yes_pct": yes, "verdict": verdict, "lines": lines, "market_lines": market_lines}
+    out = {"checks_pct": checks_pct, "market_lines": market_lines}
+    return combine(out, ai_yes_pct, None)
+
+
+def _verdict(pct):
+    return "YES" if pct >= 60 else "NO" if pct <= 40 else "UNSURE"
+
+
+def combine(advice, ai_yes_pct=None, review=None):
+    """One suggestion from up to three opinions, equally weighted: the live checks, the trading agent
+    and the independent reviewer. Each part is shown so the user sees where the number comes from."""
+    parts = [("checks", advice["checks_pct"])]
+    if ai_yes_pct is not None:
+        parts.append(("trading agent", int(round(max(0, min(100, float(ai_yes_pct)))))))
+    if review:
+        parts.append(("reviewer", review["yes_pct"]))
+    yes = int(round(max(5, min(95, sum(p for _, p in parts) / len(parts)))))
+    verdict = _verdict(yes)
+    lines = [f"My suggestion: {verdict}, {yes}% for and {100 - yes}% against. You decide."]
+    if len(parts) > 1:
+        lines.append("From: " + " · ".join(f"{name} {p}%" for name, p in parts)
+                     + " (scores, not the chance of profit)")
+    else:
+        lines.append("(A score from the checks below, not the chance of profit.)")
+    if review:
+        lines.append(f"Independent reviewer says {review['verdict']}: {review['why']}")
+    return {**advice, "yes_pct": yes, "verdict": verdict, "lines": lines,
+            "review": review, "ai_yes_pct": ai_yes_pct}
