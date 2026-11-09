@@ -5,6 +5,11 @@ name: Long-term backtest
 on:
   workflow_dispatch:
     inputs:
+      universe:
+        description: "nifty200 = today's index list; traded = the 250 most traded stocks of Apr-Jun 2025 (no hindsight)"
+        type: choice
+        options: [nifty200, traded]
+        default: nifty200
       send:
         description: Send the summary to Telegram
         type: boolean
@@ -47,5 +52,8 @@ jobs:
       - name: Run the backtest
         env:
           SEND: ${{ inputs.send }}
+          UNIVERSE: ${{ inputs.universe }}
         run: |
-          if [ "$SEND" = "true" ]; then python backtest/run_longterm.py; else python backtest/run_longterm.py --no-send; fi
+          args="--universe=$UNIVERSE"
+          if [ "$SEND" != "true" ]; then args="$args --no-send"; fi
+          python backtest/run_longterm.py $args

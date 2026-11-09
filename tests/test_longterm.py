@@ -72,6 +72,11 @@ class SimulateTest(unittest.TestCase):
         text = run_longterm.message(r)
         self.assertIn("beat holding the index by 8.4 points", text)
         self.assertIn("Picks on 2025-07-01: TCS", text)
+        self.assertIn("today's Nifty 200 companies", text)
+        r["coverage"] = {"universe": 250, "with_figures": 190}
+        text = run_longterm.message(r)
+        self.assertIn("the 250 most traded NSE stocks of Apr-Jun 2025 (no hindsight)", text)
+        self.assertIn("available for 190 of those 250 stocks", text)
 
 
 if __name__ == "__main__":

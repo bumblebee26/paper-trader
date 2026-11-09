@@ -1,6 +1,10 @@
 """Run the long-term pool backtest on lakehouse data and report in plain words.
 
-  python backtest/run_longterm.py [--no-send]
+  python backtest/run_longterm.py [--no-send] [--universe=traded]
+
+--universe=traded picks from the 250 most traded NSE stocks of Apr-Jun 2025 (what you could have
+known on 1 Jul 2025) instead of today's Nifty 200 list, which favours companies that joined the
+index because their price already rose. Industries come from today's list where known.
 
 Scenario A: pick 10 companies on 1 Jul 2025 (FY25 figures, published by then), hold to today.
 Scenario B: the same, then re-pick on 1 Jul 2026 with FY26 figures (sell what dropped out).
@@ -31,12 +35,32 @@ WHERE series = 'EQ' AND trade_date >= '2025-05-01' AND symbol IN ({symbols})
 ORDER BY symbol, trade_date
 """
 SELECTIONS = [("2025-07-01", "2025-03-31"), ("2026-07-01", "2026-03-31")]
+TRADED_SQL = """
+SELECT symbol, percentile_approx(turnover, 0.5) AS median_turnover, count(*) AS sessions
+FROM stocks.silver.nse_eq_daily
+WHERE series = 'EQ' AND trade_date BETWEEN '2025-04-01' AND '2025-06-30'
+GROUP BY symbol HAVING sessions >= 40 ORDER BY median_turnover DESC LIMIT 250
+"""
 
 
-def load():
+def load(universe="nifty200"):
     f = lambda v: float(v) if v not in (None, "") else None  # noqa: E731
     fund = [(r["symbol"], r["metric"], r["period_type"], r["period_end"], f(r["value"])) for r in run_swing.sql_all(FUND_SQL)]
     members = {r["symbol"]: r["industry"] for r in run_swing.sql_all(MEMBERS_SQL)}
+    coverage = None
+    if universe == "traded":
+        traded = [r["symbol"] for r in run_swing.sql_all(TRADED_SQL) if not r["symbol"].endswith("BEES")]
+        have = {r[0] for r in fund}
+        coverage = {"universe": len(traded), "with_figures": sum(1 for s in traded if s in have)}
+        fund = [r for r in fund if r[0] in set(traded)]
+        industries = {s: members.get(s) for s in traded}
+        symbols = sorted(set(traded)) + ["NIFTYBEES"]
+        quoted = ",".join("'" + s.replace("'", "") + "'" for s in symbols)
+        data = {}
+        for r in run_swing.sql_all(BARS_SQL.format(symbols=quoted)):
+            data.setdefault(r["symbol"], []).append(
+                (r["d"], f(r["open"]), f(r["high"]), f(r["low"]), f(r["close"]), f(r["prev_close"]), f(r["volume"])))
+        return fund, industries, {s: swing.adjust(rows) for s, rows in data.items()}, coverage
     symbols = sorted(set(members) or {r[0] for r in fund}) + ["NIFTYBEES"]
     quoted = ",".join("'" + s.replace("'", "") + "'" for s in symbols)
     data = {}
@@ -46,7 +70,7 @@ def load():
     series = {s: swing.adjust(rows) for s, rows in data.items()}
     if members:
         fund = [r for r in fund if r[0] in members]
-    return fund, members, series
+    return fund, members, series, coverage
 
 
 def first_trading_day(series, on_or_after):
@@ -95,9 +119,14 @@ def message(r):
 
     h, rb, n, n90 = r["hold"], r["rebalance"], r["nifty"] or {}, r["nifty90"] or {}
     first = r["selections"][0]
+    cov = r.get("coverage")
+    who = ("the 250 most traded NSE stocks of Apr-Jun 2025 (no hindsight)" if cov else "today's Nifty 200 companies")
     lines = [f"[MOCK] Long-term pool backtest: Rs 1,00,000 from {first['date']} to {r['end']}",
-             f"Rules: Nifty 200 companies passing the quality tests, top 10 (max 2 per industry), 90% invested in "
-             f"equal parts, costs included. {first['eligible']} companies qualified on {first['date']}.", "",
+             f"Rules: {who} passing the quality tests, top 10 (max 2 per industry), 90% invested in "
+             f"equal parts, costs included. {first['eligible']} companies qualified on {first['date']}."]
+    if cov:
+        lines.append(f"Company figures were available for {cov['with_figures']} of those {cov['universe']} stocks.")
+    lines += ["",
              f"- Buy and hold the 10 picks: {h['return_pct']:+.1f}% ({engine.inr(1e5 * h['return_pct'] / 100, sign=True)}), "
              f"deepest fall {h['max_drawdown_pct']}%",
              f"- Re-pick on {r['selections'][1]['date']} with FY26 figures: {rb['return_pct']:+.1f}%, deepest fall "
@@ -121,13 +150,15 @@ def message(r):
 
 def main(argv):
     t0 = time.monotonic()
-    fund, members, series = load()
+    universe = "traded" if "--universe=traded" in argv else "nifty200"
+    fund, members, series, coverage = load(universe)
     print(f"Loaded {len(fund)} figures, {len(members)} members, {len(series)} price series in {time.monotonic() - t0:.0f}s")
     r = run(fund, members, series)
+    r["universe"], r["coverage"] = universe, coverage
     print(json.dumps(r, indent=1, default=str)[:6000])
     text = message(r)
     print(text)
-    storage.put_json(f"backtests/longterm/{market.now_ist():%Y-%m-%d}.json", r)
+    storage.put_json(f"backtests/longterm/{market.now_ist():%Y-%m-%d}-{universe}.json", r)
     if "--no-send" not in argv:
         import telegram_bot as tg
 
