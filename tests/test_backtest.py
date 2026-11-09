@@ -125,3 +125,37 @@ class RunnerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StudyTest(unittest.TestCase):
+    def test_window_and_market_filter(self):
+        base = [100 + 0.05 * i for i in range(260)]
+        closes = base + [114.0, 118.0, 122.0, 126.0, 130.0, 134.0, 138.0]
+        vols = [1e5] * 260 + [4e5] + [2e5] * 6
+        falling = [300 - 0.3 * i for i in range(len(closes))]          # index below its 200-day average
+        data = {"ABC": series(closes, vols), "NIFTYBEES": series(falling)}
+        on = swing.run(data, setups=("breakout",), warmup_days=200, market_filter=True)
+        off = swing.run(data, setups=("breakout",), warmup_days=200, market_filter=False)
+        self.assertEqual(on["trades"], [])
+        self.assertTrue(off["trades"])
+        d = days(len(closes))
+        late = swing.run(data, setups=("breakout",), warmup_days=200, start=d[-3])
+        self.assertEqual(late["summary"]["start"], d[-3])
+
+    def test_study_picks_on_train_and_reports_test(self):
+        random.seed(2)
+        data = {}
+        for k in range(40):
+            c, closes = 100.0, []
+            for _ in range(590):
+                c *= 1 + random.gauss(0.0005, 0.018)
+                closes.append(round(c, 2))
+            data[f"S{k}"] = series(closes, [random.uniform(5e4, 3e5) for _ in closes])
+        data["NIFTYBEES"] = series([250 * (1.0003 ** i) for i in range(590)])
+        st = run_swing.study(data)
+        self.assertEqual(len(st["train"]), len(run_swing.GRID))
+        self.assertEqual(st["best"], st["train"][0]["config"])
+        self.assertGreaterEqual(st["test_best"]["start"], run_swing.TEST[0])
+        text = run_swing.study_message(st)
+        self.assertIn("judged once on", text)
+        self.assertIn("Just holding NIFTYBEES", text)

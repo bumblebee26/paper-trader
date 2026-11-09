@@ -1,7 +1,8 @@
 """Run the swing backtest on the lakehouse's NSE daily prices and report in plain words.
 
-  python backtest/run_swing.py            # needs AWS credentials (SSM: Databricks settings, Telegram)
-  python backtest/run_swing.py --no-send  # print only
+  python backtest/run_swing.py              # rework study: tune on 12 months, judge on the last 6
+  python backtest/run_swing.py --original   # the first four variants over the whole period
+  add --no-send to print only. Needs AWS credentials (SSM: Databricks settings, Telegram).
 
 Fetches daily bars for the 250 most traded NSE stocks of the first 60 sessions (plus NIFTYBEES)
 from stocks.silver.nse_eq_daily, runs four variants, saves backtests/swing/<date>.json in the state
@@ -112,8 +113,82 @@ def message(results):
     return "\n".join(lines)
 
 
+TRAIN = ("2025-05-15", "2026-04-30")   # rules are chosen here...
+TEST = ("2026-05-01", "2026-12-31")    # ...and judged once here, on months the choice never saw
+GRID = [
+    {"setups": (setup,), "market_filter": mf, "target_r": tr, "max_days": md}
+    for setup in ("pullback", "breakout") for mf in (True, False) for tr in (1.5, 2.0) for md in (10, 20)
+]
+
+
+def describe(cfg):
+    return (f"{cfg['setups'][0]}s, {'only when Nifty is above its 200-day average, ' if cfg['market_filter'] else ''}"
+            f"{cfg['target_r']:g}x target, {cfg['max_days']}-day limit")
+
+
+def score(summary):
+    return summary["return_pct"] - summary["max_drawdown_pct"]
+
+
+def study(data):
+    """Pick the best of GRID on TRAIN, then test that one (and the original rules) on TEST."""
+    train = []
+    for g in GRID:
+        r = swing.run(data, start=TRAIN[0], end=TRAIN[1], **g)
+        train.append((score(r["summary"]), g, r["summary"]))
+    train.sort(key=lambda x: x[0], reverse=True)
+    best = train[0][1]
+    test_best = swing.run(data, start=TEST[0], end=TEST[1], **best)["summary"]
+    test_orig = swing.run(data, start=TEST[0], end=TEST[1], setups=("pullback",))["summary"]
+    return {"train": [{"config": {**g, "setups": list(g["setups"])}, "summary": s} for _, g, s in train],
+            "best": {**best, "setups": list(best["setups"])}, "test_best": test_best, "test_original": test_orig}
+
+
+def study_message(st):
+    tb, to = st["test_best"], st["test_original"]
+    top = st["train"][0]["summary"]
+    bench = tb.get("benchmark_return_pct")
+    lines = ["[MOCK] Swing rules, second try",
+             f"Tuned on {TRAIN[0]} to {TRAIN[1]} ({len(GRID)} rule versions), then judged once on "
+             f"{tb['start']} to {tb['end']}, months the tuning never saw.", "",
+             f"Best version on the tuning months: {describe(st['best'])}: {top['return_pct']:+.1f}%, "
+             f"deepest fall {top['max_drawdown_pct']}% (NIFTYBEES {top.get('benchmark_return_pct', 'n/a')}%).", "",
+             "The test that counts (unseen months, Rs 60,000):",
+             f"- Chosen rules: {tb['return_pct']:+.1f}% ({inr(tb['final_equity'] - 60_000, sign=True)}), deepest fall "
+             f"{tb['max_drawdown_pct']}%, {tb['trades']} trades, {tb['win_rate_pct']}% won",
+             f"- Original pullback rules: {to['return_pct']:+.1f}%, deepest fall {to['max_drawdown_pct']}%",
+             f"- Just holding NIFTYBEES: {bench}%, deepest fall {tb.get('benchmark_max_drawdown_pct', 'n/a')}%", "",
+             "In plain words:"]
+    if bench is not None and tb["return_pct"] > bench and tb["max_drawdown_pct"] <= 1.5 * (tb.get("benchmark_max_drawdown_pct") or 0) + 5:
+        lines.append("- The reworked rules beat holding the index on unseen months: worth a shadow week on live data.")
+    else:
+        lines.append("- The reworked rules still don't beat holding the index on unseen months. As agreed, drop "
+                     "swing for now and use the Rs 60,000 differently.")
+    if (tb["trades"] or 0) < 25:
+        lines.append(f"- Only {tb['trades']} trades in the test: a thin sample, so treat it with caution.")
+    return "\n".join(lines)
+
+
 def main(argv):
     send = "--no-send" not in argv
+    if "--original" not in argv:
+        t0 = time.monotonic()
+        data = load_data()
+        print(f"Loaded {len(data)} symbols in {time.monotonic() - t0:.0f}s")
+        st = study(data)
+        for row in st["train"]:
+            print(describe(row["config"]), json.dumps({k: row["summary"][k] for k in
+                  ("return_pct", "max_drawdown_pct", "trades", "win_rate_pct", "avg_r")}))
+        print("TEST best", json.dumps(st["test_best"], indent=1))
+        print("TEST original", json.dumps(st["test_original"], indent=1))
+        text = study_message(st)
+        print(text)
+        storage.put_json(f"backtests/swing/study-{market.now_ist():%Y-%m-%d}.json", st)
+        if send:
+            import telegram_bot as tg
+
+            tg.send(text)
+        return 0
     t0 = time.monotonic()
     data = load_data()
     print(f"Loaded {len(data)} symbols, {sum(len(v) for v in data.values())} bars in {time.monotonic() - t0:.0f}s")

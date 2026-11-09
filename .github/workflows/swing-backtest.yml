@@ -5,6 +5,11 @@ name: Swing backtest
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: "study = tune on 12 months, judge on the last 6; original = the first four variants"
+        type: choice
+        options: [study, original]
+        default: study
       send:
         description: Send the summary to Telegram
         type: boolean
@@ -47,5 +52,9 @@ jobs:
       - name: Run the backtest
         env:
           SEND: ${{ inputs.send }}
+          MODE: ${{ inputs.mode }}
         run: |
-          if [ "$SEND" = "true" ]; then python backtest/run_swing.py; else python backtest/run_swing.py --no-send; fi
+          args=""
+          if [ "$MODE" = "original" ]; then args="--original"; fi
+          if [ "$SEND" != "true" ]; then args="$args --no-send"; fi
+          python backtest/run_swing.py $args

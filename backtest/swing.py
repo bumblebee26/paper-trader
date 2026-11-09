@@ -26,6 +26,8 @@ DEFAULTS = {
     "cost_pct": 0.12, "dp_charge": 16.0, "slippage_pct": 0.05, "gap_skip_pct": 2.0,
     "atr_mult": 2.0, "target_r": 2.5, "trail_after_r": 1.0, "max_days": 20,
     "setups": ("pullback", "breakout"), "rs_filter": False,
+    "market_filter": False,  # only buy while NIFTYBEES closes above its 200-day average
+    "start": None, "end": None,  # simulate only these dates (ISO strings); indicators still use all history
 }
 
 
@@ -101,6 +103,10 @@ def run(data, bench="NIFTYBEES", **overrides):
     # Start once the 200-day average exists, so the strategy and NIFTYBEES cover the same days.
     warmup = cfg.get("warmup_days", 210)
     dates = dates[warmup:] if len(dates) > warmup + 20 else dates
+    if cfg["start"]:
+        dates = [d for d in dates if str(d) >= cfg["start"]]
+    if cfg["end"]:
+        dates = [d for d in dates if str(d) <= cfg["end"]]
     bench_bars = series.get(bench)
     slip = cfg["slippage_pct"] / 100
 
@@ -175,7 +181,11 @@ def run(data, bench="NIFTYBEES", **overrides):
         if bench_bars and d in idx[bench]:
             bench_ret = bench_bars[idx[bench][d]]["ret63"]
         cands = []
-        for sym, bars in series.items():
+        market_ok = True
+        if cfg["market_filter"]:
+            bb = bench_bars[idx[bench][d]] if bench_bars and d in idx[bench] else None
+            market_ok = bool(bb and bb["sma200"] and bb["close"] > bb["sma200"])
+        for sym, bars in (series.items() if market_ok else ()):
             if sym == bench or sym in holdings:
                 continue
             i = idx[sym].get(d)
