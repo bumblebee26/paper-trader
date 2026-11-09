@@ -16,17 +16,11 @@ def now_ist() -> datetime:
     return datetime.now(IST)
 
 
-# NSE equity holidays on weekdays (nseindia.com holiday list). Add each new year's list in December.
-NSE_HOLIDAYS = {
-    "2026-11-10": "Diwali-Balipratipada",
-    "2026-11-24": "Guru Nanak Jayanti",
-    "2026-12-25": "Christmas",
-}
-
-
 def holiday(d) -> str:
-    """The holiday's name if NSE is closed on date d for a holiday (not weekends), else ''."""
-    return NSE_HOLIDAYS.get(d.strftime("%Y-%m-%d"), "")
+    """The holiday's name if NSE is closed on date d (from NSE's live list, see nse_calendar), else ''."""
+    import nse_calendar  # late import: nse_calendar imports this module
+
+    return nse_calendar.holidays().get(d.strftime("%Y-%m-%d"), "")
 
 
 def is_trading_day(d) -> bool:

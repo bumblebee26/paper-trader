@@ -10,10 +10,13 @@ sys.modules.setdefault("boto3", mock.MagicMock())
 import config  # noqa: E402
 import market  # noqa: E402
 import news  # noqa: E402
+import nse_calendar  # noqa: E402
 import storage  # noqa: E402
 import telegram_bot as tg  # noqa: E402
 
 USER_ID = "8674025639"
+NSE_2026 = {"2026-11-08": "Diwali Laxmi Pujan", "2026-11-10": "Diwali-Balipratipada",
+            "2026-11-24": "Prakash Gurpurb Sri Guru Nanak Dev", "2026-12-25": "Christmas"}
 
 
 class MemoryStore:
@@ -66,6 +69,9 @@ class Env:
             mock.patch.object(config, "STARTING_CAPITAL", self.capital),
         ]
         news.reset_cache()
+        nse_calendar.reset_cache()
+        self.nse_holidays = dict(NSE_2026)  # what the fake NSE holiday list returns; None = NSE unreachable
+        self._patches.append(mock.patch.object(nse_calendar, "fetch", self._fake_nse))
         self.news_files = {}  # date -> list of items; empty = feed unavailable
         self._patches.append(mock.patch.object(news, "_read", self._fake_news))
         for p in self._patches:
@@ -76,6 +82,11 @@ class Env:
         for p in self._patches:
             p.stop()
         storage.reset_backend(None)
+
+    def _fake_nse(self):
+        if self.nse_holidays is None:
+            raise RuntimeError("NSE unreachable")
+        return dict(self.nse_holidays)
 
     def _fake_news(self, day):
         if day not in self.news_files:
