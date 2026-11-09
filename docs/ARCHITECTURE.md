@@ -13,6 +13,7 @@
 | **7** | Session ↔ state bucket | Every tool call reads and writes the ledger; every event is appended to the day's journal. |
 | **8–9** | Scheduler → guardian ↔ state bucket | 15:12 square-off and 15:40 report, only if the session didn't. |
 | **10** | Guardian → lakehouse volume | 15:45 export of the day's journal (`landing/trades/`), the lakehouse's input for the trading tables. |
+| **11–12** | Scheduler → responder ↔ Telegram | Every 2 minutes, only when no session is live (fresh heartbeat or a phase claimed in the last 10 min): answers `/help`, `/ledger`, `/plan`, `/pause`, `/resume` from the S3 ledger. Telegram allows one reader, so the responder and the session never poll at the same time. |
 
 Dotted arrows: secrets read from SSM at runtime.
 
@@ -47,6 +48,7 @@ would have made.
 | **Brief** (`trader/brief.py`) | Reads the lakehouse gold tables and turns them into the day plan: risk per trade from VIX, bias from India's historical gap after similar US days, unusual-volume and ADR candidates. |
 | **S3 state bucket** | The only memory between runs: ledger, journal CSVs, plans, reports, session claims, heartbeat. |
 | **Kicker Lambda** | Starts each session on time through the GitHub API. GitHub's own cron is kept as a backup. |
+| **Responder Lambda** | Answers Telegram commands outside sessions (evenings, weekends, holidays) within ~2 minutes. `/pause` sent after 14:30 applies to the next trading day. Skips while a session is live. |
 | **Guardian Lambda** | Runs without Claude. Squares off at 15:12 and sends the report at 15:40 if the session didn't (crash, usage limit, runner failure). At 15:45 it exports the day's journal to the lakehouse. |
 | **Backup feed** (`trader/export.py`) | The day's journal as JSON lines (every event has a unique `event_id`, plus a final ledger snapshot) written to S3 `exports/` and to the lakehouse volume `landing/trades/`. The lakehouse turns it into `stocks.gold.trades`, `trading_daily` (with a reconciliation against the ledger), `trading_by_setup`, `trading_by_hour` and `trading_decisions`, and a **Paper trading** dashboard page. |
 | **CI/CD** | Same as stocks_lakehouse: checks on every push, plan on PR, apply on merge to `main`. |

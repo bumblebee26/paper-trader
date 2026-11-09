@@ -77,3 +77,39 @@ resource "aws_lambda_function" "kicker" {
     aws_iam_role_policy.kicker,
   ]
 }
+
+# Answers Telegram commands outside sessions. Same permissions as the guardian
+# (state bucket + Telegram settings), so it reuses that role.
+resource "aws_cloudwatch_log_group" "responder" {
+  name              = "/aws/lambda/${local.prefix}-responder"
+  retention_in_days = var.log_retention_days
+}
+
+resource "aws_lambda_function" "responder" {
+  function_name = "${local.prefix}-responder"
+  description   = "Answers Telegram commands (/help, /ledger, /plan, /pause) when no session is live."
+  role          = aws_iam_role.guardian.arn
+
+  runtime       = var.lambda_python_runtime
+  architectures = ["arm64"]
+  handler       = "handlers.responder"
+  timeout       = 60
+  memory_size   = 128
+
+  filename         = data.archive_file.trader.output_path
+  source_code_hash = data.archive_file.trader.output_base64sha256
+
+  environment {
+    variables = {
+      STATE_BUCKET           = module.state.id
+      TELEGRAM_TOKEN_PARAM   = local.lakehouse_params.telegram_token
+      TELEGRAM_CHAT_ID_PARAM = local.lakehouse_params.telegram_chat_id
+    }
+  }
+
+  depends_on = [
+    aws_cloudwatch_log_group.responder,
+    aws_iam_role_policy_attachment.guardian_logs,
+    aws_iam_role_policy.guardian,
+  ]
+}

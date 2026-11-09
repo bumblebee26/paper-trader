@@ -62,7 +62,6 @@ def _new_day(state: dict) -> None:
     state["decisions"] = {}
     state["exit_requests"] = []
     state["requests"] = []
-    state["paused"] = False
     state["day_risk_pct"] = config.RISK_PER_TRADE_PCT
     state["plan"] = None
     state["focus"] = []
@@ -175,13 +174,13 @@ Commands (with or without the /):
 /ledger  money now: balance, in use, free, open positions with live P&L (also /balance, /status)
 /plan  today's plan: US move, VIX, risk per trade, bias, focus list
 /exit SYMBOL  close that position now, e.g. /exit HDFCBANK
-/pause  no new proposals today; open positions are still managed
+/pause  no new proposals for the day; open positions are still managed. After 14:30, at weekends or on holidays it applies to the next trading day
 /resume  allow new proposals again
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
 On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30, each needs your YES within 3 min; stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse.
-I reply during sessions only (09:08-15:25 IST). Dummy money only."""
+During sessions (09:08-15:25 IST) I reply within seconds; at other times within about 2 minutes. Dummy money only."""
 
 
 def _plan_text(state) -> str:
@@ -191,9 +190,24 @@ def _plan_text(state) -> str:
     import brief
 
     text = brief.plan_message({**plan, "risk_per_trade_pct": state.get("day_risk_pct")}, state.get("focus", []))
-    if state.get("paused"):
+    if is_paused(state):
         text += "\nNew proposals: PAUSED (send /resume)"
     return text
+
+
+def next_trading_day() -> str:
+    """Today if entries are still possible today, else the next weekday (holidays not known)."""
+    now = market.now_ist()
+    if now.weekday() < 5 and now <= _at(config.ENTRY_END):
+        return now.strftime("%Y-%m-%d")
+    d = now + timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
+
+
+def is_paused(state) -> bool:
+    return state.get("paused_for") == _today()
 
 
 def answer_requests(state) -> int:
@@ -206,13 +220,24 @@ def answer_requests(state) -> int:
             tg.send(HELP_TEXT)
         elif ask == "plan":
             tg.send(_plan_text(state))
-        elif ask == "paused":
-            journal("paused_by_user")
-            tg.send("[MOCK] Paused: no new proposals today. Open positions are still watched and squared off "
-                    "at 15:10. Send /resume to allow proposals again.")
-        elif ask == "resumed":
+        elif ask == "pause":
+            day = next_trading_day()
+            state["paused_for"] = day
+            journal("paused_by_user", note=f"no new proposals on {day}")
+            if day == _today():
+                tg.send("[MOCK] Paused: no new proposals today. Open positions are still watched and squared off "
+                        "at 15:10. Send /resume to allow proposals again.")
+            else:
+                tg.send(f"[MOCK] Paused for {datetime.strptime(day, '%Y-%m-%d'):%a %d %b}: that day's sessions "
+                        f"will make no proposals. Send /resume to undo.")
+        elif ask == "resume":
+            was = state.pop("paused_for", None)
             journal("resumed_by_user")
-            tg.send("[MOCK] Resumed: proposals allowed again (entries until 14:30).")
+            tg.send("[MOCK] Resumed: proposals allowed again." if was else "[MOCK] Nothing was paused.")
+        elif ask == "nothing_pending":
+            tg.send("[MOCK] There's no proposal waiting for an answer right now.")
+        elif ask == "unknown":
+            tg.send("[MOCK] I didn't catch that. Send /help to see what I can do.")
     return len(asks)
 
 
@@ -229,7 +254,7 @@ def account(state: dict) -> dict:
         "entry_window_open": in_entry_window(),
         "risk_per_trade_pct_today": state.get("day_risk_pct", config.RISK_PER_TRADE_PCT),
         "focus": state.get("focus", []),
-        "paused_by_user": state.get("paused", False),
+        "paused_by_user": is_paused(state),
         "carried_over_warning": state.get("carried_over_warning"),
     }
 
@@ -246,7 +271,7 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     if (side == "BUY" and not (stop < entry < target)) or (side == "SELL" and not (target < entry < stop)):
         return False, "for BUY need stop < entry < target; for SELL need target < entry < stop", 0, 0, 0
     rr = round(abs(target - entry) / per_share, 2)
-    if state.get("paused"):
+    if is_paused(state):
         return False, "paused by you on Telegram (send /resume)", 0, 0, rr
     if not in_entry_window():
         return False, f"outside entry window {config.ENTRY_START}-{config.ENTRY_END} IST (weekdays)", 0, 0, rr
@@ -563,6 +588,20 @@ def session_alive(max_age_min=10) -> bool:
         return False
     t = datetime.strptime(hb["time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=market.IST)
     return market.now_ist() - t < timedelta(minutes=max_age_min)
+
+
+def session_active(max_age_min=10) -> bool:
+    """A trading session is live (fresh heartbeat) or just started (claimed minutes ago, still
+    installing). While it is, only the session may read Telegram updates."""
+    if session_alive(max_age_min):
+        return True
+    for phase in ("morning", "afternoon"):
+        claim = storage.get_json(f"sessions/{_today()}/{phase}")
+        if claim:
+            t = datetime.strptime(claim["claimed_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=market.IST)
+            if market.now_ist() - t < timedelta(minutes=max_age_min):
+                return True
+    return False
 
 
 def claim_session(phase) -> bool:

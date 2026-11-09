@@ -15,7 +15,8 @@ output "github_token_param" {
 
 output "functions" {
   value = {
-    guardian = aws_lambda_function.guardian.function_name
-    kicker   = aws_lambda_function.kicker.function_name
+    guardian  = aws_lambda_function.guardian.function_name
+    kicker    = aws_lambda_function.kicker.function_name
+    responder = aws_lambda_function.responder.function_name
   }
 }

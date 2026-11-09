@@ -52,6 +52,12 @@ variable "dispatch_enabled" {
   default     = false
 }
 
+variable "responder_enabled" {
+  description = "Responder schedule: answer Telegram commands every 2 minutes when no session is live."
+  type        = bool
+  default     = false
+}
+
 variable "guardian_enabled" {
   description = "Guardian schedules: 15:12 IST square-off and 15:40 IST report backstops (no Claude needed)."
   type        = bool

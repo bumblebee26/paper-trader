@@ -27,7 +27,9 @@ life of one trade).
 | 15:45 | The day's journal is copied to the lakehouse (backup feed); its pipeline builds the trading analysis tables and dashboard page |
 
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,
-`/exit SYMBOL`, `/pause`, `/resume`. They also appear in the bot's `/` menu. `EXIT RELIANCE` closes that position; `LEDGER` gives a statement: balance,
+`/exit SYMBOL`, `/pause`, `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
+within seconds during sessions, within ~2 minutes otherwise (evenings, weekends). A `/pause` sent in the evening
+skips the next trading day. `EXIT RELIANCE` closes that position; `LEDGER` gives a statement: balance,
 money in use, money free, and open positions with live P&L. Every fill and exit also ends with a one-line ledger.
 
 ## Repository layout

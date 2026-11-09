@@ -2,6 +2,8 @@
 
 kicker   Starts a GitHub Actions trading session at an exact IST time (GitHub's own cron can
          start 10-60 minutes late). Event: {"phase": "morning" | "afternoon"}.
+responder Every 2 minutes, only while no session is live: answers Telegram commands (/help,
+         /ledger, /plan, /pause, /resume) from the S3 ledger, so the bot replies any time.
 guardian Backstop that needs no Claude. Event {"action": "squareoff"} at 15:12 IST closes
          any open dummy positions if no live session is running; {"action": "report"} at
          15:40 IST sends the day report if the session didn't; {"action": "export"} at 15:45
@@ -69,3 +71,31 @@ def guardian(event, context):
             return {"exports": export.export_range(ev["start"], ev.get("end", ev["start"]))}
         return export.export_day(ev.get("date") or engine._today())
     raise ValueError(f"unknown action {action}")
+
+
+def responder(event, context):
+    """Answer Telegram commands outside sessions. Never runs alongside a session: Telegram allows
+    one reader, and the session's own polling answers commands while it's live."""
+    import telegram_bot as tg
+
+    if engine.session_active():
+        return {"skipped": "session live"}
+    state = engine.load()
+    try:
+        try:
+            tg.poll(state, wait=0)
+        except tg.TelegramError as err:  # e.g. a session started a moment ago
+            log.info("poll skipped: %s", err)
+            return {"skipped": str(err)}
+        exits = state.pop("exit_requests", [])
+        if exits:
+            if state["positions"]:
+                tg.send("[MOCK] The market session isn't running, so I can't close at a live price now. "
+                        "Open positions are closed by 15:10 on trading days.")
+            else:
+                tg.send("[MOCK] No open positions; nothing to close.")
+        state["exit_requests"] = []
+        answered = engine.answer_requests(state)
+        return {"answered": answered + (1 if exits else 0)}
+    finally:
+        engine.save(state)
