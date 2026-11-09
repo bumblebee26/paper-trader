@@ -60,7 +60,8 @@ def poll(state, wait=0) -> None:
     """Read new updates once (long-polling up to `wait` seconds) into `state`.
 
     Button yes:<id> / no:<id> -> state["decisions"][id]; typed YES/NO -> newest pending
-    proposal; "EXIT RELIANCE" -> state["exit_requests"]. Other senders are ignored.
+    proposal; "EXIT RELIANCE" -> state["exit_requests"]; "LEDGER" / "BALANCE" / "STATUS" ->
+    state["ledger_requested"]. Other senders are ignored.
     """
     allowed = str(config.allowed_user_id())
     updates = _api("getUpdates", http_timeout=wait + 15, offset=state.get("tg_offset", 0),
@@ -86,6 +87,8 @@ def poll(state, wait=0) -> None:
             parts = (msg.get("text") or "").strip().upper().split()
             if len(parts) == 2 and parts[0] == "EXIT":
                 state.setdefault("exit_requests", []).append(parts[1])
+            elif parts and parts[0] in ("LEDGER", "BALANCE", "STATUS"):
+                state["ledger_requested"] = True
             elif parts and parts[0] in ("YES", "NO"):
                 pending = [p for p, v in state.get("proposals", {}).items() if v["status"] == "pending"]
                 if pending:

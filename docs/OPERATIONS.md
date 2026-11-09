@@ -43,6 +43,7 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Re-run a phase today | Delete `sessions/<date>/<phase>` from the state bucket, then Run workflow |
 | Skip trading today | Actions → Trading session → **Disable workflow** (enable it again afterwards) |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
+| See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session |
 | Reset to Rs 1 lakh | Delete `state/ledger.json` from the state bucket |
 | Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`) |
 
