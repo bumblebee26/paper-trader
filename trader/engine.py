@@ -110,6 +110,71 @@ def margin_used(state: dict) -> float:
     return sum(p["qty"] * p["fill_price"] for p in state["positions"].values()) / config.INTRADAY_LEVERAGE
 
 
+def inr(x, sign=False) -> str:
+    """Rupees with Indian digit grouping: 100000 -> '1,00,000'; sign=True adds +/-."""
+    neg = x < 0
+    n = f"{abs(round(x)):d}"
+    if len(n) > 3:
+        head, tail = n[:-3], n[-3:]
+        groups = []
+        while len(head) > 2:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        n = ",".join(([head] if head else []) + groups) + "," + tail
+    prefix = "-" if neg else ("+" if sign and x > 0 else "")
+    return f"{prefix}Rs {n}"
+
+
+def ledger_line(state) -> str:
+    """One line for Telegram: what the dummy money is doing right now."""
+    used = margin_used(state)
+    n = len(state["positions"])
+    return (f"Ledger: balance {inr(state['balance'])} | in use {inr(used)} "
+            f"({n} position{'s' if n != 1 else ''}) | free {inr(state['balance'] - used)} | "
+            f"today {inr(state['realized_today'], sign=True)}")
+
+
+def ledger_statement(state) -> str:
+    """Full statement for the LEDGER command: money, positions with live P&L."""
+    used = margin_used(state)
+    exposure = used * config.INTRADAY_LEVERAGE
+    lines = [
+        f"[MOCK] Ledger at {market.now_ist():%H:%M} IST",
+        f"Starting capital: {inr(state['starting_capital'])}",
+        f"Balance now:      {inr(state['balance'])} ({inr(state['balance'] - state['starting_capital'], sign=True)} total)",
+        f"In use (margin):  {inr(used)}",
+        f"Free to trade:    {inr(state['balance'] - used)}",
+        f"Exposure:         {inr(exposure)} ({config.INTRADAY_LEVERAGE:g}x intraday)",
+        f"Today realized:   {inr(state['realized_today'], sign=True)} | trades {state['trades_today']}"
+        f"/{config.MAX_TRADES_PER_DAY}",
+    ]
+    if state["positions"]:
+        lines.append("Open positions:")
+        total = 0.0
+        for sym, p in state["positions"].items():
+            price, _ = market.last_price(sym)
+            d = 1 if p["side"] == "BUY" else -1
+            if price is None:
+                lines.append(f"- {p['side']} {sym} {p['qty']} @ {p['fill_price']:,.2f} (no live price)")
+                continue
+            upnl = (price - p["fill_price"]) * p["qty"] * d
+            total += upnl
+            lines.append(f"- {p['side']} {sym} {p['qty']} @ {p['fill_price']:,.2f}, now {price:,.2f}: "
+                         f"{inr(upnl, sign=True)} | SL {p['stop']:,.2f} TGT {p['target']:,.2f}")
+        lines.append(f"Unrealized: {inr(total, sign=True)} (before exit costs)")
+    else:
+        lines.append("No open positions.")
+    return "\n".join(lines)
+
+
+def answer_ledger_requests(state) -> bool:
+    """Reply to a LEDGER message from Telegram, if one came in."""
+    if not state.pop("ledger_requested", False):
+        return False
+    tg.send(ledger_statement(state))
+    return True
+
+
 def account(state: dict) -> dict:
     return {
         "dummy_balance": round(state["balance"], 2),
@@ -174,10 +239,12 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     pid = uuid.uuid4().hex[:8]
     valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)
     risk_pct = round(risk_rs / state["balance"] * 100, 2)
+    need = qty * entry / config.INTRADAY_LEVERAGE
     lines = [
         f"[MOCK] {side} {symbol}  ({setup})",
         f"Entry ~{entry:,.2f} | SL {stop:,.2f} | Target {target:,.2f}",
         f"Qty {qty} | Risk Rs {risk_rs:,.0f} ({risk_pct}%) | R:R {rr}",
+        f"Uses {inr(need)} margin of {inr(state['balance'] - margin_used(state))} free",
         "Why:",
         *[f"{i}. {r}" for i, r in enumerate(reasons[:3], 1)],
         f"News: {news}",
@@ -277,7 +344,7 @@ def execute(state, pid):
     p["status"] = "filled"
     tg.edit(p["message_id"], p["text"] + f"\n\n-> Placed @ {fill:,.2f}")
     tg.send(f"Placed [MOCK] {p['side']} {p['symbol']} {p['qty']} @ {fill:,.2f}. "
-            f"SL {p['stop']:,.2f}, TGT {p['target']:,.2f}.")
+            f"SL {p['stop']:,.2f}, TGT {p['target']:,.2f}.\n{ledger_line(state)}")
     journal("filled", proposal_id=pid, risk_rs=p["risk_rs"], fees_rs=costs(fill * p["qty"]),
             symbol=p["symbol"], setup=p["setup"], side=p["side"], entry=p["entry"],
             stop=p["stop"], target=p["target"], qty=p["qty"], fill_price=fill, user_reply="YES",
@@ -302,7 +369,7 @@ def close(state, symbol, exit_price, reason, notify=True):
             exit_price=exit_fill, exit_reason=reason, pnl_rs=net)
     if notify:
         tg.send(f"[MOCK] Closed {symbol} ({reason}) @ {exit_fill:,.2f}. "
-                f"P&L Rs {net:,.0f}. Balance Rs {state['balance']:,.0f}.")
+                f"P&L {inr(net, sign=True)}.\n{ledger_line(state)}")
     return {"status": "closed", "symbol": symbol, "exit_price": exit_fill, "pnl_rs": net}
 
 
@@ -310,6 +377,7 @@ def monitor(state):
     """Check stops/targets, EXIT commands, and square-off time. Call every few minutes."""
     events = []
     tg.poll(state, wait=0)
+    answer_ledger_requests(state)
     for sym in list(dict.fromkeys(state.get("exit_requests", []))):
         if sym in state["positions"]:
             price, _ = market.last_price(sym)
@@ -412,8 +480,10 @@ def report(state, send=True):
     if send:
         lines = [
             f"[MOCK] Day report {summary['date']}",
-            f"P&L today: Rs {summary['realized_today_rs']:,.0f}",
-            f"Balance: Rs {summary['balance_rs']:,.0f} (total {summary['total_pnl_since_start_rs']:+,.0f})",
+            f"P&L today: {inr(summary['realized_today_rs'], sign=True)}",
+            f"Balance: {inr(summary['balance_rs'])} (total {inr(summary['total_pnl_since_start_rs'], sign=True)}"
+            f" since start of {inr(state['starting_capital'])})",
+            f"In use: {inr(margin_used(state))} | free: {inr(state['balance'] - margin_used(state))}",
             f"Trades: {summary['trades_closed']} closed, {summary['wins']} wins"
             + (f" ({summary['win_rate_pct']}%)" if summary["win_rate_pct"] is not None else ""),
             f"Proposed {summary['proposed']} | rejected {summary['rejected']} | expired {summary['expired']}"

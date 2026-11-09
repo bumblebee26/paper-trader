@@ -26,7 +26,8 @@ life of one trade).
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | The day's journal is copied to the lakehouse (backup feed); its pipeline builds the trading analysis tables and dashboard page |
 
-Send `EXIT RELIANCE` to Telegram any time to close that position.
+Send `EXIT RELIANCE` to Telegram any time to close that position, or `LEDGER` for a statement: balance,
+money in use, money free, and open positions with live P&L. Every fill and exit also ends with a one-line ledger.
 
 ## Repository layout
 
