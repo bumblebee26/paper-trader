@@ -124,8 +124,8 @@ is bought yet).
 
 ## Status and roadmap
 
-Where each phase of the system plan stands. The plan itself (pools, rules, risks, decisions) is the
-"Paper Trader: Complete System Plan" document; this table is the short version.
+Where each phase of the system plan stands. The full plan (pools, rules, backtests, risks, decisions) is
+[SYSTEM_PLAN.md](SYSTEM_PLAN.md), in both repos; this table is the short version.
 
 | Phase | Status | Live parts | Next |
 |---|---|---|---|
