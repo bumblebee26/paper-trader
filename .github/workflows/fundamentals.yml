@@ -1,0 +1,51 @@
+name: Company fundamentals
+
+# Weekly: company financials for ~250 large NSE companies -> lakehouse (stocks.gold.company_fundamentals).
+# Plain Python, no Claude. Also runnable by hand: Actions -> Company fundamentals -> Run workflow.
+on:
+  schedule:
+    - cron: "45 1 * * 6" # Saturday 07:15 IST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Fetch and print only, push nothing
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  STATE_BUCKET: ${{ vars.TRADER_STATE_BUCKET }}
+  DATABRICKS_URL_PARAM: /stocks/databricks-workspace-url
+  DATABRICKS_TOKEN_PARAM: /stocks/databricks-pusher-token
+  DATABRICKS_WAREHOUSE_PARAM: /stocks/databricks-warehouse-id
+
+jobs:
+  fundamentals:
+    runs-on: ubuntu-latest
+    environment: trading
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_TRADER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_TRADER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch and push
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then python jobs/fundamentals.py --dry-run; else python jobs/fundamentals.py; fi
