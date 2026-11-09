@@ -26,6 +26,11 @@ life of one trade).
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | The day's journal is copied to the lakehouse (backup feed); its pipeline builds the trading analysis tables and dashboard page |
 
+Money is split into three dummy pools (Rs 2,00,000 in total): **intraday** Rs 40,000 (trading now), **swing**
+Rs 60,000 and **long-term** Rs 1,00,000 (their own ledgers; trading starts in later phases). If all pools
+together fall 12% below their peak, a circuit breaker stops new buys until you send `/resume`. Every Friday
+evening a **weekly report** explains the week in plain words.
+
 Each proposal also lists the company's **NSE filings** from today and the last trading day (from the
 lakehouse news feed), flags worrying ones (regulatory, rating, pledge) and an upcoming board meeting, and
 names the **market mood** (trending up or down, jumpy, choppy). Stale prices pause proposals with an alert.

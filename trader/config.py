@@ -87,6 +87,9 @@ FOCUS_MAX = _i("FOCUS_MAX", 15)
 MIN_RR = _f("MIN_RR", 1.5)
 INTRADAY_LEVERAGE = _f("INTRADAY_LEVERAGE", 5.0)
 SLIPPAGE_PCT = _f("SLIPPAGE_PCT", 0.05)
+# Delivery (swing, long-term): STT 0.1% + exchange, stamp duty and GST, per side; depository charge per sell
+DELIVERY_COST_PCT = _f("DELIVERY_COST_PCT", 0.12)
+DP_CHARGE_RS = _f("DP_CHARGE_RS", 16.0)
 BROKERAGE_PER_ORDER = _f("BROKERAGE_PER_ORDER", 20.0)
 APPROVAL_TIMEOUT_SEC = _i("APPROVAL_TIMEOUT_SEC", 180)
 # Independent risk reviewer (trader/reviewer.py); switched on by REVIEWER=on in the session workflow.

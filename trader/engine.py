@@ -11,6 +11,7 @@ import advisor
 import config
 import market
 import news
+import pools
 import reviewer
 import sectors
 import storage
@@ -205,7 +206,7 @@ Commands (with or without the /):
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
-On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30, each needs your YES within 3 min; stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse.
+On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30, each needs your YES within 3 min; stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
 During sessions (09:08-15:25 IST) I reply within seconds; at other times within about 2 minutes. Dummy money only."""
 
 
@@ -251,16 +252,18 @@ def news_text(symbol) -> str:
 def portfolio_text(state) -> str:
     intraday = state["balance"]
     pnl = intraday - state["starting_capital"]
-    total = intraday + config.SWING_CAPITAL + config.LONG_TERM_CAPITAL
-    start = state["starting_capital"] + config.SWING_CAPITAL + config.LONG_TERM_CAPITAL
-    return "\n".join([
-        "[MOCK] Dummy portfolio",
-        f"Intraday:  {inr(intraday)} (started {inr(state['starting_capital'])}, {inr(pnl, sign=True)}), live",
-        f"Swing:     {inr(config.SWING_CAPITAL)} reserved, starts in phase 3 (planned 7 Dec)",
-        f"Long-term: {inr(config.LONG_TERM_CAPITAL)} reserved, starts in phase 4 (planned 21 Dec)",
-        f"Total:     {inr(total)} of {inr(start)} ({inr(total - start, sign=True)})",
-        "Stopped with /stop: send /resume to restart." if state.get("stopped") else "",
-    ]).strip()
+    total, start = intraday, state["starting_capital"]
+    lines = ["[MOCK] Dummy portfolio",
+             f"Intraday:  {inr(intraday)} (started {inr(state['starting_capital'])}, {inr(pnl, sign=True)}), live"]
+    for label, eq, cap, status in pools.summary_lines(state):
+        lines.append(f"{(label + ':').ljust(10)} {inr(eq)} of {inr(cap)}, {status}")
+        total, start = total + eq, start + cap
+    lines.append(f"Total:     {inr(total)} of {inr(start)} ({inr(total - start, sign=True)})")
+    if pools.breaker_on():
+        lines.append("Circuit breaker ON: total value fell 12% below its peak. Send /resume after reviewing.")
+    if state.get("stopped"):
+        lines.append("Stopped with /stop: send /resume to restart.")
+    return "\n".join(lines)
 
 
 def data_health(state, nifty) -> None:
@@ -314,8 +317,11 @@ def answer_requests(state) -> int:
         elif ask == "resume":
             was = state.pop("paused_for", None)
             stopped = state.pop("stopped", None)
-            journal("resumed_by_user")
-            tg.send("[MOCK] Resumed: proposals allowed again." if (was or stopped) else "[MOCK] Nothing was paused.")
+            breaker = pools.reset_breaker()
+            journal("resumed_by_user", note="circuit breaker reset" if breaker else "")
+            tg.send("[MOCK] Resumed: proposals allowed again"
+                    + (" (portfolio circuit breaker reset)." if breaker else ".")
+                    if (was or stopped or breaker) else "[MOCK] Nothing was paused.")
         elif ask == "stop":
             state["stopped"] = True
             journal("stopped_by_user")
@@ -425,6 +431,9 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     rr = round(abs(target - entry) / per_share, 2)
     if state.get("stopped"):
         return False, "stopped by you with /stop (send /resume to restart)", 0, 0, rr
+    if pools.breaker_on():
+        return False, ("portfolio circuit breaker: total value is 12% below its peak; send /resume after "
+                       "reviewing"), 0, 0, rr
     if is_paused(state):
         return False, "paused by you on Telegram (send /resume)", 0, 0, rr
     if state.get("data_stale"):
@@ -792,6 +801,17 @@ def report(state, send=True):
         "passed_trades_hypothetical_pnl": hypo,
         "open_positions": list(state["positions"].keys()),
     }
+    try:
+        snap = pools.snapshot(state)
+        summary["portfolio_total_rs"] = snap["total"]
+        summary["portfolio_drawdown_pct"] = snap["drawdown_pct"]
+        if snap["tripped_now"]:
+            tg.send(f"[MOCK] Portfolio circuit breaker: all pools together are {snap['drawdown_pct']}% below their "
+                    f"peak ({inr(snap['total'])} vs {inr(snap['peak'])}). No new buys in any pool until you send "
+                    "/resume. A good moment to review what went wrong.")
+            journal("circuit_breaker", note=f"drawdown {snap['drawdown_pct']}%")
+    except Exception as err:  # noqa: BLE001 - the day report must still go out
+        summary["portfolio_error"] = str(err)
     storage.put_json(f"reports/{_today()}.json", summary)
     if send:
         lines = [

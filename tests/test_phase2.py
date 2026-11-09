@@ -88,8 +88,8 @@ class CommandsTest(unittest.TestCase):
             news_msg, port, stop = env.sent[-3:]
             self.assertIn("RELIANCE: NSE filings, newest first", news_msg)
             self.assertIn("results: Reliance Industries", news_msg)
-            self.assertIn("Swing:     Rs 60,000 reserved", port)
-            self.assertIn("Long-term: Rs 1,00,000 reserved", port)
+            self.assertIn("Swing:     Rs 60,000 of Rs 60,000, not trading yet (phase 3, planned 7 Dec)", port)
+            self.assertIn("Long-term: Rs 1,00,000 of Rs 1,00,000, not trading yet (phase 4, planned 21 Dec)", port)
             self.assertIn("Total:     Rs 2,00,000 of Rs 2,00,000", port)
             self.assertIn("Stopped: no new proposals in any pool", stop)
             env.prices["ITC"] = 400.0

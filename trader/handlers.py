@@ -8,7 +8,7 @@ guardian Backstop that needs no Claude. Event {"action": "squareoff"} at 15:12 I
          any open dummy positions if no live session is running; {"action": "report"} at
          15:40 IST sends the day report if the session didn't; {"action": "export"} at 15:45
          IST copies the day's journal to the lakehouse (add "date", or "start"/"end", to
-         re-export past days).
+         re-export past days); {"action": "weekly"} on Fridays at 17:55 IST sends the weekly report.
 """
 import json
 import os
@@ -61,6 +61,14 @@ def guardian(event, context):
             if state.get("trades_today", 0) == 0 and not state.get("proposals"):
                 return {"skipped": "no activity today"}
             return {"report": engine.report(state, send=True)}
+        finally:
+            engine.save(state)
+    if action == "weekly":
+        import weekly
+
+        state = engine.load()
+        try:
+            return {"weekly": weekly.run(state)["week"]}
         finally:
             engine.save(state)
     if action == "export":
