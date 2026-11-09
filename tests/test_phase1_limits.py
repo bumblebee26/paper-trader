@@ -24,16 +24,16 @@ class Phase1Test(unittest.TestCase):
         self.assertEqual((config.STARTING_CAPITAL, config.SWING_CAPITAL, config.LONG_TERM_CAPITAL),
                          (40_000, 60_000, 100_000))
         self.assertEqual(config.MAX_TRADES_PER_DAY, 10)
-        self.assertEqual(config.DAILY_LOSS_LIMIT_RS, 10_000)
+        self.assertEqual(config.DAILY_LOSS_LIMIT_RS, 4_000)
         self.assertEqual(len(sectors.WATCHLIST), 36)
         self.assertGreaterEqual(len({sectors.sector(s) for s in sectors.WATCHLIST}), 10)
 
-    def test_ten_thousand_loss_limit(self):
+    def test_four_thousand_loss_limit(self):
         with Env():
             st = engine.load()
-            st["realized_today"] = -9_999.0
+            st["realized_today"] = -3_999.0
             self.assertFalse(engine.loss_limit_reached(st))
-            st["realized_today"] = -10_000.0
+            st["realized_today"] = -4_000.0
             self.assertTrue(engine.loss_limit_reached(st))
 
     def test_one_open_position_per_sector(self):
@@ -69,7 +69,7 @@ class Phase1Test(unittest.TestCase):
             st = engine.load()
             for sym in ("HDFCBANK", "INFY", "RELIANCE"):
                 open_trade(env, st, sym)
-                engine.close(st, sym, 990.0, "stop_loss")
+                engine.close(st, sym, 995.0, "stop_loss")
             self.assertIn("3 losses in a row, so a 30-minute cool-off", env.sent[-1])
             self.assertIn("until 11:10", env.sent[-1])
             r = open_trade(env, st, "ITC")

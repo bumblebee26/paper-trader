@@ -20,7 +20,7 @@
 | Limit | Default | Setting in `trader/config.py` |
 |---|---|---|
 | Trades per day | 10 (0 = no limit) | `MAX_TRADES_PER_DAY` |
-| Daily loss limit | Rs 10,000 of realized loss; lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_RS` (0 = use `DAILY_LOSS_LIMIT_PCT`) |
+| Daily loss limit | Rs 4,000 of realized loss (10% of the Rs 40,000 pool); lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_RS` (0 = use `DAILY_LOSS_LIMIT_PCT`) |
 | Cool-off | 30 min without new proposals after 3 losses in a row | `COOLOFF_AFTER_LOSSES`, `COOLOFF_MIN` |
 | Open positions | 3 in total, 1 per sector | `MAX_OPEN_POSITIONS`, `MAX_OPEN_PER_SECTOR` |
 | Trades per sector | 2 a day | `MAX_TRADES_PER_SECTOR` |
