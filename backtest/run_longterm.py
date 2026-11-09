@@ -134,17 +134,20 @@ def message(r):
              f"- Just holding NIFTYBEES: {n.get('return_pct', 'n/a')}% (90% invested like the pool: "
              f"{n90.get('return_pct', 'n/a')}%), deepest fall {n.get('max_drawdown_pct', 'n/a')}%", "",
              "Picks on " + first["date"] + ": " + ", ".join(p["symbol"] for p in first["picks"]), ""]
-    best = max(h["return_pct"], rb["return_pct"])
     bench = n90.get("return_pct")
     lines.append("In plain words:")
-    if bench is not None and best > bench:
-        lines.append(f"- The quality picks beat holding the index by {best - bench:.1f} points over these months: "
-                     "a good sign, worth the shadow weeks.")
+    if bench is not None:
+        for label, x in (("Buying and holding the picks", h["return_pct"]), ("Re-picking once a year", rb["return_pct"])):
+            lines.append(f"- {label} {'beat' if x > bench else 'did NOT beat'} holding the index by "
+                         f"{abs(x - bench):.1f} points.")
+        if min(h["return_pct"], rb["return_pct"]) <= bench:
+            lines.append("- A small or mixed edge: the shadow weeks matter before any real buying.")
+    if cov:
+        lines.append("- No index-list hindsight here; companies without figures couldn't be picked, and figures may be "
+                     "restated. One 16-month stretch: a sanity check, not proof.")
     else:
-        lines.append("- The quality picks did NOT beat holding the index over these months. Worth rethinking the rules "
-                     "before any buying.")
-    lines.append("- One stretch of about 16 months, today's Nifty 200 list and possibly restated figures: these "
-                 "flatter the result a little, so treat it as a sanity check, not proof.")
+        lines.append("- Today's Nifty 200 list favours companies that already rose (hindsight), and figures may be "
+                     "restated: this flatters the result. Compare with the no-hindsight run (universe: traded).")
     return "\n".join(lines)
 
 

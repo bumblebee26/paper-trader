@@ -29,7 +29,7 @@ flowchart TB
         subgraph PTA["paper-trader"]
             direction TB
             KICK["<b>Kicker Lambda</b><br/>09:08 · 12:27"]
-            GUARD["<b>Guardian Lambda</b><br/>15:12 square-off · 15:40 report<br/>15:45 export · Fri weekly report"]
+            GUARD["<b>Guardian Lambda</b><br/>15:12 square-off · 15:14 swing into NIFTYBEES<br/>15:40 report · 15:45 export · Fri weekly report"]
             S3T[("<b>Trader state bucket</b><br/>ledger · pools · journal · reports")]
             RESP["<b>Responder Lambda</b><br/>commands when no session"]
         end
@@ -39,6 +39,7 @@ flowchart TB
         direction TB
         SESS["<b>Trading session</b><br/>Claude Code + paper-trader MCP<br/>09:08–12:25 · 12:27–15:25"]
         FUND["<b>Company fundamentals</b><br/>Sat 07:15 · no Claude"]
+        SHAD["<b>Long-term shadow</b><br/>Sat 10:15 · no Claude"]
     end
 
     subgraph DBX["Databricks Free Edition · catalog stocks"]
@@ -68,6 +69,9 @@ flowchart TB
     NVOL -- "company news (Files API)" --> SESS
     YF -- "financials" --> FUND
     FUND -- "Sat: fundamentals + Nifty 200" --> VOL
+    WH -- "Sat: long-term picks" --> SHAD
+    SHAD -- "shadow ledger" --> S3T
+    SHAD -- "weekly shadow report" --> TG
     SESS <-- "ledger" --> S3T
     SESS <-- "proposals · YES/NO" --> TG
     GUARD <-- "backstops" --> S3T
@@ -84,7 +88,7 @@ flowchart TB
     class NSE,MAS,FRED,YF ext
     class FET,PM,NEWS aws
     class S3L store
-    class KICK,GUARD,S3T,SESS,RESP,FUND trader
+    class KICK,GUARD,S3T,SESS,RESP,FUND,SHAD trader
     class VOL,NVOL,PIPE,WH dbx
     class GOLD gold
     class DASH,TG out
