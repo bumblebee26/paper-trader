@@ -24,13 +24,14 @@ life of one trade).
 | 12:27 | Afternoon session. New entries stop at 14:30 |
 | 15:10 | Everything squared off, then the day report |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
-| 15:45 | The day's journal is copied to the lakehouse (backup feed); its pipeline builds the trading analysis tables and dashboard page |
+| 15:45 | The day's journal and a portfolio snapshot (all pools and holdings) are copied to the lakehouse; its pipeline builds the trading and portfolio tables and dashboard pages |
 
 Money is split into three dummy pools (Rs 2,00,000 in total): **intraday** Rs 40,000 (trading now), **swing**
 Rs 60,000 (held in NIFTYBEES: the swing rules failed their backtest) and **long-term** Rs 1,00,000 (starts
 in a later phase). If all pools
 together fall 12% below their peak, a circuit breaker stops new buys until you send `/resume`. Every Friday
-evening a **weekly report** explains the week in plain words.
+evening a **weekly report** explains the week in plain words. Every Saturday a GitHub Actions job sends
+company financials for NSE's Nifty 200 list to the lakehouse, which scores them for the long-term pool.
 
 Each proposal also lists the company's **NSE filings** from today and the last trading day (from the
 lakehouse news feed), flags worrying ones (regulatory, rating, pledge) and an upcoming board meeting, and
@@ -46,7 +47,7 @@ It is not a chance of profit. You still make the call. The lakehouse table `stoc
 your YES and NO calls worked out.
 
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,
-`/exit SYMBOL`, `/pause`, `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
+`/exit SYMBOL`, `/news SYMBOL`, `/portfolio`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
 within seconds during sessions, within ~2 minutes otherwise (evenings, weekends). A `/pause` sent in the evening
 skips the next trading day. `EXIT RELIANCE` closes that position; `LEDGER` gives a statement: balance,
 money in use, money free, and open positions with live P&L. Every fill and exit also ends with a one-line ledger.
@@ -54,15 +55,18 @@ money in use, money free, and open positions with live P&L. Every fill and exit 
 ## Repository layout
 
 ```
-trader/            Engine, scanner, brief (lakehouse), storage (S3/local), Telegram, MCP server, Lambda handlers.
-                   Standard library + boto3 only.
+trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, weekly report, export,
+                   storage (S3/local), Telegram, MCP server, Lambda handlers. Standard library + boto3 only.
+jobs/              fundamentals.py: weekly company financials (Nifty 200) for the lakehouse
+backtest/          Swing-pool backtest on the lakehouse's NSE daily prices
 prompts/           trading_rules.md: the rules Claude follows in a session
 infra/
   modules/         secure_bucket: private, encrypted, versioned, HTTPS-only S3 (same as stocks_lakehouse)
-  aws/             State bucket, kicker + guardian Lambdas, schedules, IAM, SSM, session CI user
+  aws/             State bucket, kicker, guardian + responder Lambdas, schedules, IAM, SSM, session CI user
 tests/             Unit tests (no network or AWS needed)
 scripts/           render_diagrams.sh (re-render docs/diagrams)
-.github/           CI (tests, fmt, validate), Terraform CD (plan on PR, apply on merge), trading session
+.github/           CI (tests, fmt, validate), Terraform CD (plan on PR, apply on merge), trading session,
+                   company fundamentals (weekly), swing backtest (manual)
 docs/              ARCHITECTURE, SETUP, OPERATIONS, TROUBLESHOOTING; docs/diagrams/ holds diagram sources and images
 ```
 
