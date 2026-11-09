@@ -19,6 +19,11 @@
 | Sat 07:15 | GitHub Actions *Company fundamentals*: NSE's Nifty 200 list (the 250 most traded NSE stocks if the list can't be read) plus the watchlist; financials → lakehouse `landing/fundamentals/` (feeds `stocks.gold.company_fundamentals`), the list → `landing/index_members/` | `fundamentals/date=<date>/fundamentals.jsonl`, `index_members/date=<date>/nifty200.jsonl` |
 | every 2 min | Responder: answers Telegram commands when no session is live | — |
 
+**NSE holidays.** `market.NSE_HOLIDAYS` lists the weekday holidays (2026: 10 Nov, 24 Nov, 25 Dec). On those
+days the morning session sends one "No market today" message and stops before Claude starts, the afternoon
+session and the 15:14 park are skipped, and `/pause` and "next session" dates skip to the next trading day.
+**Add next year's list from nseindia.com each December.**
+
 ## Risk limits (intraday)
 
 | Limit | Default | Setting in `trader/config.py` |
