@@ -11,8 +11,9 @@
 | 12:27 / 12:36 | Afternoon session (kicker / backup) | — |
 | 15:10 | Square-off, then end-of-day report | `reports/<date>.json` |
 | 15:12 | Guardian: square-off if no live session | — |
-| 15:40 | Guardian: report if none was sent | — |
+| 15:40 | Guardian: report if none was sent; daily portfolio snapshot (circuit breaker at 12% below the peak) | `state/portfolio.json` |
 | every 2 min | Responder: answers Telegram commands when no session is live | — |
+| Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools) | `reports/weekly/<date>.json` |
 | 15:45 | Guardian: export the day's journal | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/` |
 
 ## Risk limits (intraday)
@@ -64,6 +65,7 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session, ~2 min otherwise |
 | Reset the intraday pool to Rs 40,000 | Delete `state/ledger.json` from the state bucket |
+| Pool ledgers | Swing and long-term: `state/pools/<pool>.json` and `journal/pools/<pool>/<date>.csv` (trading starts in phases 3 and 4) |
 | Resize a pool | Change `STARTING_CAPITAL` (intraday), `SWING_CAPITAL` or `LONG_TERM_CAPITAL` in `trader/config.py`; the next day the balance moves by the same amount, keeping the P&L so far |
 | Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`) |
 

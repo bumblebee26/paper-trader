@@ -11,6 +11,7 @@ locals {
     squareoff = "cron(12 15 ? * MON-FRI *)"
     report    = "cron(40 15 ? * MON-FRI *)"
     export    = "cron(45 15 ? * MON-FRI *)"
+    weekly    = "cron(55 17 ? * FRI *)"
   }
 }
 
