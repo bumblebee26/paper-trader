@@ -70,7 +70,8 @@ class SimulateTest(unittest.TestCase):
              "hold": {"return_pct": 12.0, "max_drawdown_pct": 9.0}, "rebalance": {"return_pct": 10.0, "max_drawdown_pct": 8.0},
              "nifty": {"return_pct": 4.0, "max_drawdown_pct": 9.6}, "nifty90": {"return_pct": 3.6}}
         text = run_longterm.message(r)
-        self.assertIn("beat holding the index by 8.4 points", text)
+        self.assertIn("Buying and holding the picks beat holding the index by 8.4 points", text)
+        self.assertIn("Re-picking once a year beat holding the index by 6.4 points", text)
         self.assertIn("Picks on 2025-07-01: TCS", text)
         self.assertIn("today's Nifty 200 companies", text)
         r["coverage"] = {"universe": 250, "with_figures": 190}

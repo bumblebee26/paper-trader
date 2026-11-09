@@ -33,6 +33,15 @@ together fall 12% below their peak, a circuit breaker stops new buys until you s
 evening a **weekly report** explains the week in plain words. Every Saturday a GitHub Actions job sends
 company financials for NSE's Nifty 200 list to the lakehouse, which scores them for the long-term pool.
 
+**Long-term pool (shadow mode until the 18 Dec go/no-go).** Each week the lakehouse ranks Nifty 200 companies
+on five quality tests (return on capital, debt, cash flow, growth, price) and names 10 picks, at most 2 per
+industry. Every Saturday at 10:15 the *Long-term shadow* job "buys" the next pick (two when Nifty is 5%+ below
+its 52-week high), sells anything that stops qualifying and trims anything above 18%, in a shadow ledger only,
+and explains each move on Telegram. The rules were backtested first (`backtest/run_longterm.py`). Picking on 1 Jul 2025
+from the most traded stocks of the time (no hindsight) and holding to 9 Nov 2026 returned +1.9% (+8.4% when
+re-picked a year later) vs +0.3% for NIFTYBEES, with smaller falls (about 9% vs 14%). Picking from today's
+Nifty 200 list showed +19.7%, but most of that gap was hindsight. The swing rules failed the same kind of test, so the swing pool is held in NIFTYBEES.
+
 Each proposal also lists the company's **NSE filings** from today and the last trading day (from the
 lakehouse news feed), flags worrying ones (regulatory, rating, pledge) and an upcoming board meeting, and
 names the **market mood** (trending up or down, jumpy, choppy). Stale prices pause proposals with an alert.

@@ -60,6 +60,15 @@ The trader reads `/Volumes/stocks/bronze/news/date=<today>/latest.jsonl`, writte
 means NSE blocked the request; anything else is usually the Databricks pusher token. Trading continues
 without news.
 
+### No long-term shadow report on Saturday
+Actions → Long-term shadow → the run. `TABLE_OR_VIEW_NOT_FOUND ... longterm_candidates` means the lakehouse
+hadn't refreshed after the 07:15 fundamentals job yet: re-run the workflow later. Nothing is bought for real
+either way; the shadow ledger is `state/pools/long_term_shadow.json`.
+
+### A backtest fails with `TABLE_OR_VIEW_NOT_FOUND`
+The lakehouse table it reads is created by the pipeline after new files land (for example
+`silver.index_members` after the first fundamentals run). Wait for the next refresh and run it again.
+
 ### `Data alert: market prices look stale`
 No fresh Nifty candle for 20 minutes during market hours (Yahoo delay or outage). New proposals pause until
 prices are fresh again; open positions are still checked. Nothing to do unless it lasts all day.
