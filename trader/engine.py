@@ -7,6 +7,7 @@ import time
 import uuid
 from datetime import datetime, timedelta
 
+import advisor
 import config
 import market
 import storage
@@ -296,8 +297,53 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     return True, "ok", qty, round(qty * per_share, 2), rr
 
 
+# ---------------------------------------------------------- plain words --
+SETUP_PLAIN = {
+    "ORB long": "the price broke above its first 15-minute range with strong buying, which often keeps going up",
+    "ORB short": "the price broke below its first 15-minute range with strong selling, which often keeps going down",
+    "VWAP reclaim": "the price climbed back above today's average traded price (VWAP), a sign buyers are back in control",
+    "VWAP rejection": "the price failed to stay above today's average traded price (VWAP), a sign sellers are in control",
+    "PDH break": "the price broke above yesterday's high with strong volume, a sign of fresh buying",
+    "PDL break": "the price broke below yesterday's low with strong volume, a sign of fresh selling",
+}
+
+EXIT_PLAIN = {
+    "target": "It reached the target price, so the profit was booked as planned.",
+    "stop_loss": "It hit the stop-loss price, so it was closed to keep the loss small, as planned.",
+    "square_off": "Intraday trades must close the same day, so it was closed at 15:10 at the market price.",
+    "user_exit": "You asked to exit, so it was closed at the market price.",
+}
+
+
+def plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summary="") -> list[str]:
+    """Plain-language explanation of a proposal (code-built, so the numbers always match)."""
+    buy = side == "BUY"
+    gain = abs(target - entry) * qty
+    idea = SETUP_PLAIN.get(setup, f"a '{setup}' setup appeared")
+    lines = [
+        "In plain words:",
+        (f"- Buy {qty} {symbol} shares at about Rs {entry:,.2f} and sell them later today."
+         if buy else
+         f"- Sell {qty} {symbol} shares at about Rs {entry:,.2f} now and buy them back later today "
+         "(this profits if the price falls)."),
+        f"- Why now: {idea}.",
+    ]
+    if summary:
+        lines.append(f"- {summary.strip()}")
+    lines += [
+        f"- If it works: the price {'rises' if buy else 'falls'} to Rs {target:,.2f} and you make about "
+        f"{inr(gain)}.",
+        f"- If it fails: the price {'falls' if buy else 'rises'} to Rs {stop:,.2f}, it closes automatically "
+        f"and you lose about {inr(risk_rs)}.",
+        f"- So you risk {inr(risk_rs)} to try to make {inr(gain)} (before small fees). If neither "
+        "happens, it closes at 15:10.",
+    ]
+    return lines
+
+
 # -------------------------------------------------------------- proposals --
-def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news="none"):
+def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news="none", summary="",
+            ai_yes_pct=None):
     symbol, side = symbol.upper(), side.upper()
     ok, why, qty, risk_rs, rr = risk_gate(state, symbol, side, entry, stop, target)
     if not ok:
@@ -309,8 +355,16 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)
     risk_pct = round(risk_rs / state["balance"] * 100, 2)
     need = qty * entry / config.INTRADAY_LEVERAGE
+    advice = advisor.assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct)
     lines = [
         f"[MOCK] {side} {symbol}  ({setup})",
+        *advice["lines"],
+        "",
+        *plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summary),
+        "",
+        *advice["market_lines"],
+        "",
+        "Details:",
         f"Entry ~{entry:,.2f} | SL {stop:,.2f} | Target {target:,.2f}",
         f"Qty {qty} | Risk Rs {risk_rs:,.0f} ({risk_pct}%) | R:R {rr}",
         f"Uses {inr(need)} margin of {inr(state['balance'] - margin_used(state))} free",
@@ -327,11 +381,13 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         "stop": stop, "target": target, "qty": qty, "risk_rs": risk_rs, "rr": rr,
         "reasons": reasons[:3], "invalid_if": invalid_if, "status": "pending",
         "sent_at": _now(), "valid_until": valid_until.strftime("%Y-%m-%d %H:%M:%S"),
-        "message_id": msg_id, "text": text,
+        "message_id": msg_id, "text": text, "suggested_yes_pct": advice["yes_pct"],
     }
     journal("proposed", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
-            target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]))
+            target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]),
+            note=f"suggested {advice['verdict']} {advice['yes_pct']}%")
     return {"status": "pending", "proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
+            "suggestion": f"{advice['verdict']} {advice['yes_pct']}%",
             "valid_until": state["proposals"][pid]["valid_until"]}
 
 
@@ -356,9 +412,9 @@ def wait_decision(state, pid, max_wait=45):
             p["decided_at"] = _now()
             if _expired(p) and p["status"] == "approved":
                 p["status"] = "expired"
-                tg.edit(p["message_id"], p["text"] + "\n\n-> YES arrived after expiry. Not placed.")
+                tg.edit(p["message_id"], p["text"] + "\n\n-> YES arrived after expiry. Not placed, no money used.")
             elif p["status"] == "rejected":
-                tg.edit(p["message_id"], p["text"] + "\n\n-> Skipped (NO).")
+                tg.edit(p["message_id"], p["text"] + "\n\n-> Skipped (NO). Not placed, no money used.")
                 journal("rejected", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], side=p["side"],
                         entry=p["entry"], stop=p["stop"], target=p["target"], user_reply="NO")
             if p["status"] == "expired":
@@ -368,7 +424,7 @@ def wait_decision(state, pid, max_wait=45):
             break
     if _expired(p):
         p["status"] = "expired"
-        tg.edit(p["message_id"], p["text"] + "\n\n-> Expired with no reply. Not placed.")
+        tg.edit(p["message_id"], p["text"] + "\n\n-> Expired with no reply (3 minutes). Not placed, no money used.")
         journal("expired", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], side=p["side"],
                 entry=p["entry"], stop=p["stop"], target=p["target"], user_reply="none")
         return {"status": "expired"}
@@ -398,7 +454,9 @@ def execute(state, pid):
         reason = why
     if reason:
         p["status"] = "skipped_after_approval"
-        tg.send(f"Skipped {p['symbol']}: {reason}.")
+        tg.send(f"[MOCK] Skipped {p['symbol']} even though you said YES: {reason}.\n"
+                "In plain words: the price moved too much before the order, so it was no longer the trade "
+                "you approved. Nothing was bought or sold.")
         journal("skipped_after_approval", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], note=reason)
         return {"status": "skipped", "reason": reason}
 
@@ -413,7 +471,11 @@ def execute(state, pid):
     p["status"] = "filled"
     tg.edit(p["message_id"], p["text"] + f"\n\n-> Placed @ {fill:,.2f}")
     tg.send(f"Placed [MOCK] {p['side']} {p['symbol']} {p['qty']} @ {fill:,.2f}. "
-            f"SL {p['stop']:,.2f}, TGT {p['target']:,.2f}.\n{ledger_line(state)}")
+            f"SL {p['stop']:,.2f}, TGT {p['target']:,.2f}.\n"
+            f"In plain words: you now {'own' if p['side'] == 'BUY' else 'are short'} {p['qty']} {p['symbol']} "
+            f"shares. It closes by itself at Rs {p['target']:,.2f} (profit) or Rs {p['stop']:,.2f} "
+            f"(small loss), or at 15:10 whatever the price. Send EXIT {p['symbol']} to close earlier.\n"
+            f"{ledger_line(state)}")
     journal("filled", proposal_id=pid, risk_rs=p["risk_rs"], fees_rs=costs(fill * p["qty"]),
             symbol=p["symbol"], setup=p["setup"], side=p["side"], entry=p["entry"],
             stop=p["stop"], target=p["target"], qty=p["qty"], fill_price=fill, user_reply="YES",
@@ -438,7 +500,10 @@ def close(state, symbol, exit_price, reason, notify=True):
             exit_price=exit_fill, exit_reason=reason, pnl_rs=net)
     if notify:
         tg.send(f"[MOCK] Closed {symbol} ({reason}) @ {exit_fill:,.2f}. "
-                f"P&L {inr(net, sign=True)}.\n{ledger_line(state)}")
+                f"P&L {inr(net, sign=True)}.\n"
+                f"In plain words: {EXIT_PLAIN.get(reason, 'It was closed.')} "
+                f"{'You made' if net > 0 else 'You lost'} {inr(abs(net))} on this trade, after fees.\n"
+                f"{ledger_line(state)}")
     return {"status": "closed", "symbol": symbol, "exit_price": exit_fill, "pnl_rs": net}
 
 
@@ -483,7 +548,7 @@ def monitor(state):
     for pid, p in state["proposals"].items():
         if p["status"] == "pending" and _expired(p):
             p["status"] = "expired"
-            tg.edit(p["message_id"], p["text"] + "\n\n-> Expired with no reply. Not placed.")
+            tg.edit(p["message_id"], p["text"] + "\n\n-> Expired with no reply (3 minutes). Not placed, no money used.")
             journal("expired", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], user_reply="none")
     return {"events": events, "account": account(state)}
 
