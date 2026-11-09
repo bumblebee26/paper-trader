@@ -11,9 +11,9 @@
 | **4** | Yahoo → session | 1-minute and 5-minute NSE candles for scanning, fills and exits. |
 | **5–6** | Session ↔ Telegram | Proposals with YES/NO buttons; your replies and `EXIT SYMBOL` messages come back through long polling. |
 | **7** | Session ↔ state bucket | Every tool call reads and writes the ledger; every event is appended to the day's journal. |
-| **8–9** | Scheduler → guardian ↔ state bucket | 15:12 square-off and 15:40 report, only if the session didn't. |
-| **10** | Guardian → lakehouse volume | 15:45 export of the day's journal (`landing/trades/`), the lakehouse's input for the trading tables. |
-| **11–12** | Scheduler → responder ↔ Telegram | Every 2 minutes, only when no session is live (fresh heartbeat or a phase claimed in the last 10 min): answers `/help`, `/ledger`, `/plan`, `/pause`, `/resume` from the S3 ledger. Telegram allows one reader, so the responder and the session never poll at the same time. |
+| **8–9** | Scheduler → guardian ↔ state bucket | 15:12 square-off and 15:40 report, only if the session didn't; 15:14 swing pool parked in NIFTYBEES; Fri 17:55 weekly report. |
+| **10** | Guardian → lakehouse volume | 15:45 export of the day's journal (`landing/trades/`) and a portfolio snapshot of all pools and holdings (`landing/portfolio/`), the lakehouse's input for the trading and portfolio tables. |
+| **11–12** | Scheduler → responder ↔ Telegram | Every 2 minutes, only when no session is live (fresh heartbeat or a phase claimed in the last 10 min): answers every command (`/help`, `/ledger`, `/plan`, `/news`, `/portfolio`, `/pause`, `/stop`, `/resume`) from the S3 state. Telegram allows one reader, so the responder and the session never poll at the same time. |
 
 Dotted arrows: secrets read from SSM at runtime.
 
@@ -26,8 +26,9 @@ In detail:
 ![Platform: stocks_lakehouse and paper-trader](diagrams/01_platform.png)
 
 This repo is half of a platform with [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse)
-(purple = this repo). The two meet twice a day: the session reads gold before the open, and the guardian sends
-the journal back at 15:45. The same diagram is in the lakehouse as `docs/diagrams/05_platform.mmd`.
+(purple = this repo). The two meet at a few fixed points: the session reads gold before the open and the news
+file during the day, the guardian sends the journal and portfolio snapshot back at 15:45, and the Saturday
+fundamentals job sends company financials. The same diagram is in the lakehouse as `docs/diagrams/05_platform.mmd`.
 The written overview of both repos together is [PLATFORM.md](PLATFORM.md).
 
 ### The life of one trade
@@ -50,8 +51,12 @@ would have made.
 | **Kicker Lambda** | Starts each session on time through the GitHub API. GitHub's own cron is kept as a backup. |
 | **Risk reviewer** | `trader/reviewer.py`, inside the session: before each proposal is sent, a second Claude (`claude -p`, no tools, same subscription) gets only code-gathered facts (trade, live Nifty/Sensex/sector, recent candles, plan, today's earlier trades) and argues against it. Its verdict and % join the suggestion. Off unless `REVIEWER=on` (the workflow sets it); any failure just leaves it out. |
 | **Responder Lambda** | Answers Telegram commands outside sessions (evenings, weekends, holidays) within ~2 minutes. `/pause` sent after 14:30 applies to the next trading day. Skips while a session is live. |
-| **Guardian Lambda** | Runs without Claude. Squares off at 15:12 and sends the report at 15:40 if the session didn't (crash, usage limit, runner failure). At 15:45 it exports the day's journal to the lakehouse. |
-| **Backup feed** (`trader/export.py`) | The day's journal as JSON lines (every event has a unique `event_id`, plus a final ledger snapshot) written to S3 `exports/` and to the lakehouse volume `landing/trades/`. The lakehouse turns it into `stocks.gold.trades`, `trading_daily` (with a reconciliation against the ledger), `trading_by_setup`, `trading_by_hour` and `trading_decisions`, and a **Paper trading** dashboard page. |
+| **Guardian Lambda** | Runs without Claude. Squares off at 15:12 and sends the report at 15:40 if the session didn't (crash, usage limit, runner failure). At 15:14 it puts the swing pool's idle cash into NIFTYBEES, at 15:45 it exports the day's journal and portfolio snapshot to the lakehouse, and on Fridays at 17:55 it sends the weekly report. |
+| **Pools** (`trader/pools.py`) | Ledgers for the swing (Rs 60,000, held in NIFTYBEES while its rules are on hold) and long-term (Rs 1,00,000) pools, and the portfolio circuit breaker: all pools 12% below their peak stops new buys until `/resume`. |
+| **News** (`trader/news.py`) | Reads the lakehouse's `latest.jsonl` news file (today and the last day) through the Databricks Files API for each proposal and `/news`. Any failure means "news unavailable", never a stopped session. |
+| **Backup feed** (`trader/export.py`) | The day's journal as JSON lines (every event has a unique `event_id`, plus a final ledger snapshot) written to S3 `exports/` and to the lakehouse volume `landing/trades/`. The lakehouse turns it into `stocks.gold.trades`, `trading_daily` (with a reconciliation against the ledger), `trading_by_setup`, `trading_by_hour` and `trading_decisions`, and the **Intraday trading** dashboard page. The same 15:45 run writes `exports/portfolio/date=<day>/portfolio.jsonl` (one row per pool and per holding) and pushes it to `landing/portfolio/`, which feeds `stocks.gold.portfolio_daily`, `holdings_latest` and the **Portfolio** page. |
+| **Company fundamentals** (`jobs/fundamentals.py`) | GitHub Actions, Saturdays 07:15 IST, no Claude. Reads NSE's Nifty 200 list (falls back to the 250 most traded NSE stocks if it can't), adds the watchlist, fetches 4 years of annual and recent quarterly figures from Yahoo, and pushes them to `landing/fundamentals/` and the list itself to `landing/index_members/`. The lakehouse builds `company_fundamentals` and `longterm_candidates` from them. |
+| **Swing backtest** (`backtest/`) | Manual GitHub Actions run, no Claude: tests the swing rules on the lakehouse's NSE daily prices and sends a plain-words summary to Telegram. |
 | **CI/CD** | Same as stocks_lakehouse: checks on every push, plan on PR, apply on merge to `main`. |
 
 ## Why it's built this way
@@ -107,8 +112,8 @@ rate-limit cloud addresses. The `test` session reports whether prices work from 
 | Identity | Can | Cannot |
 |---|---|---|
 | You (`aws login`) | Everything in the project | — |
-| `stocks-gha-trader` (session) | Read/write the trader state bucket; read Telegram + Databricks SSM parameters | Delete objects, anything else |
-| `stocks-trader-guardian-role` | Read/write the trader state bucket; read Telegram and Databricks push parameters | Anything else |
+| `stocks-gha-trader` (session, fundamentals and backtest jobs) | Read/write the trader state bucket; read Telegram + Databricks SSM parameters | Delete objects, anything else |
+| `stocks-trader-guardian-role` (guardian and responder) | Read/write the trader state bucket; read Telegram and Databricks push parameters | Anything else |
 | `stocks-trader-kicker-role` | Read the GitHub dispatch token | Anything else |
 | `stocks-trader-scheduler-role` | Invoke the kicker and guardian | Anything else |
 | Claude in a session | Only the paper-trader MCP tools (`--allowedTools`, `--permission-mode dontAsk`) | Shell, files, web |

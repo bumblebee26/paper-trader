@@ -13,10 +13,10 @@
 | 15:12 | Guardian: square-off if no live session | — |
 | 15:14 | Guardian: puts the swing pool's idle cash into NIFTYBEES (once; nothing to do afterwards) | `state/pools/swing.json` |
 | 15:40 | Guardian: report if none was sent; daily portfolio snapshot (circuit breaker at 12% below the peak) | `state/portfolio.json` |
-| every 2 min | Responder: answers Telegram commands when no session is live | — |
-| Sat 07:15 | GitHub Actions *Company fundamentals*: financials for ~250 large NSE companies → lakehouse `landing/fundamentals/` (feeds `stocks.gold.company_fundamentals`) | `fundamentals/date=<date>/fundamentals.jsonl` |
+| 15:45 | Guardian: export the day's journal and a portfolio snapshot (every pool and holding, swing and long-term prices refreshed) | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/`; `exports/portfolio/date=<date>/portfolio.jsonl` + volume `portfolio/` |
 | Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools) | `reports/weekly/<date>.json` |
-| 15:45 | Guardian: export the day's journal | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/` |
+| Sat 07:15 | GitHub Actions *Company fundamentals*: NSE's Nifty 200 list (the 250 most traded NSE stocks if the list can't be read) plus the watchlist; financials → lakehouse `landing/fundamentals/` (feeds `stocks.gold.company_fundamentals`), the list → `landing/index_members/` | `fundamentals/date=<date>/fundamentals.jsonl`, `index_members/date=<date>/nifty200.jsonl` |
+| every 2 min | Responder: answers Telegram commands when no session is live | — |
 
 ## Risk limits (intraday)
 
@@ -42,6 +42,8 @@
 |---|---|
 | Trade selection rules, bias handling | `prompts/trading_rules.md` |
 | Watchlist and sectors | `trader/sectors.py` (36 stocks, 11 sectors; sector index for the market check) |
+| Pools, circuit breaker, weekly report | `trader/pools.py`, `trader/weekly.py`, capitals in `trader/config.py` |
+| Fundamentals universe | `NIFTY200_URLS` and fallback query in `jobs/fundamentals.py`; schedule in `.github/workflows/fundamentals.yml` |
 | Risk limits, capital, costs, times | defaults in `trader/config.py` (or `env:` in the workflow) |
 | VIX → risk scaling, bias thresholds | `risk_for_vix` / `build_plan` in `trader/brief.py` |
 | Setups (ORB, VWAP, PDH/PDL) | `trader/scanner.py` |
@@ -56,7 +58,7 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Want to | Do |
 |---|---|
 | Test without trading | Actions → Trading session → Run workflow → `test` |
-| Swing backtest | Actions → Swing backtest → Run workflow (about 2 min, no Claude). Telegram summary; full results in `backtests/swing/<date>.json` in the state bucket |
+| Swing backtest | Actions → Swing backtest → Run workflow (about 2 min, no Claude). Mode `study` (default) tunes 16 rule versions on 15 May 2025–30 Apr 2026 and judges the best once on the months from 1 May 2026, against the original rules and holding NIFTYBEES; `original` runs the first four variants over the whole period. Telegram summary; full results in `backtests/swing/<date>.json` in the state bucket |
 | Re-run a phase today | Delete `sessions/<date>/<phase>` from the state bucket, then Run workflow |
 | Skip trading today | Actions → Trading session → **Disable workflow** (enable it again afterwards) |
 | All commands | Send `/help` (or `/prompts`, or "what can you do?") on Telegram; they're also in the bot's `/` menu |
@@ -70,7 +72,8 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Reset the intraday pool to Rs 40,000 | Delete `state/ledger.json` from the state bucket |
 | Pool ledgers | Swing and long-term: `state/pools/<pool>.json` and `journal/pools/<pool>/<date>.csv` (trading starts in phases 3 and 4) |
 | Resize a pool | Change `STARTING_CAPITAL` (intraday), `SWING_CAPITAL` or `LONG_TERM_CAPITAL` in `trader/config.py`; the next day the balance moves by the same amount, keeping the P&L so far |
-| Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`) |
+| Fetch company fundamentals now | Actions → Company fundamentals → Run workflow (tick *dry run* to only print) |
+| Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`). A single `date` also writes a portfolio snapshot under that date, taken from the pools as they are now; a range re-sends journals only |
 
 ```
 aws s3 rm s3://stocks-trader-state-<account-id>/state/ledger.json --region ap-southeast-2
@@ -81,6 +84,7 @@ aws s3 rm s3://stocks-trader-state-<account-id>/state/ledger.json --region ap-so
 | Check | How |
 |---|---|
 | Session log | GitHub → Actions → Trading session → the run |
+| Fundamentals / backtest runs | GitHub → Actions → Company fundamentals or Swing backtest → the run |
 | Today's journal | `aws s3 cp s3://stocks-trader-state-<account-id>/journal/<date>.csv - --region ap-southeast-2` |
 | Ledger | `aws s3 cp s3://stocks-trader-state-<account-id>/state/ledger.json - --region ap-southeast-2` |
 | Guardian / kicker logs | `aws logs tail /aws/lambda/stocks-trader-guardian --since 1h --region ap-southeast-2` |

@@ -68,5 +68,19 @@ prices are fresh again; open positions are still checked. Nothing to do unless i
 Yahoo rate-limits or blocks some cloud addresses. Re-run the test later; if it persists, the data source
 needs changing (`trader/market.py`).
 
+### Company fundamentals: `More than half the companies failed: Yahoo is probably blocking; nothing pushed.`
+Yahoo refused most requests from the GitHub runner. Nothing was written, so last week's figures stay in the
+lakehouse. Run the workflow again later (Actions → Company fundamentals → Run workflow).
+
+### Company fundamentals log says `Nifty 200 list unavailable: using the 250 most traded stocks instead`
+NSE's index list couldn't be downloaded from any of `NIFTY200_URLS` in `jobs/fundamentals.py`. The run still
+works on the 250 most traded NSE stocks, but no new `index_members/` file is pushed, so the lakehouse keeps the
+last Nifty 200 list it had.
+
+### Guardian export returns `portfolio_error`
+The 15:45 journal export worked, but the portfolio snapshot failed; the reason is in `portfolio_error` and in
+the guardian log (`portfolio export failed: ...`). Fix the cause, then re-send the day with the `export`
+payload in OPERATIONS "Manual runs".
+
 ### No Nifty candle for today
 Market holiday: the morning session sends "No market today" and stops.
