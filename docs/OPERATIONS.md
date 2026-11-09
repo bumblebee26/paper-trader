@@ -58,6 +58,7 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Want to | Do |
 |---|---|
 | Test without trading | Actions → Trading session → Run workflow → `test` |
+| Long-term backtest | Actions → Long-term backtest → Run workflow (about 2 min, no Claude): the phase 4 selection as of 1 Jul 2025, held to today, vs NIFTYBEES. Results in `backtests/longterm/<date>.json` |
 | Swing backtest | Actions → Swing backtest → Run workflow (about 2 min, no Claude). Mode `study` (default) tunes 16 rule versions on 15 May 2025–30 Apr 2026 and judges the best once on the months from 1 May 2026, against the original rules and holding NIFTYBEES; `original` runs the first four variants over the whole period. Telegram summary; full results in `backtests/swing/<date>.json` in the state bucket |
 | Re-run a phase today | Delete `sessions/<date>/<phase>` from the state bucket, then Run workflow |
 | Skip trading today | Actions → Trading session → **Disable workflow** (enable it again afterwards) |
