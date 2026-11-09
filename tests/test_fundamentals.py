@@ -35,21 +35,34 @@ class FundamentalsTest(unittest.TestCase):
                                    "fetched_at_ist": "2026-11-14 07:15:00"})
         self.assertEqual((rows[2]["metric"], rows[2]["period_type"]), ("DilutedEPS", "3M"))
 
-    def test_run_pushes_one_file(self):
+    def test_members_csv(self):
+        text = ("Company Name,Industry,Symbol,Series,ISIN Code\n"
+                "Tata Consultancy Services Ltd.,Information Technology,TCS,EQ,INE467B01029\n"
+                "Mahindra & Mahindra Ltd.,Automobile and Auto Components,M&M,EQ,INE101A01026\n")
+        m = fundamentals.parse_members(text)
+        self.assertEqual(m["M&M"], {"company": "Mahindra & Mahindra Ltd.", "industry": "Automobile and Auto Components",
+                                    "isin": "INE101A01026"})
+
+    def test_run_pushes_figures_and_members(self):
+        members = {"TCS": {"company": "TCS", "industry": "Information Technology", "isin": "X"}}
         with Env(capital=40_000):
-            with mock.patch.object(fundamentals, "universe", return_value=["TCS", "M&M"]), \
+            with mock.patch.object(fundamentals, "nifty200", return_value=members), \
+                    mock.patch.object(fundamentals, "universe", return_value=["TCS", "M&M"]), \
                     mock.patch.object(fundamentals, "request", return_value=SAMPLE) as req, \
                     mock.patch.object(fundamentals.time, "sleep"), \
                     mock.patch("export._push", return_value="/Volumes/x") as push:
                 fundamentals.main(["x"])
             self.assertIn("M%26M.NS", req.call_args_list[1].args[1])
-            rel, body = push.call_args.args
+            (rel, body), (rel2, body2) = (c.args for c in push.call_args_list)
             self.assertEqual(rel, "fundamentals/date=2026-11-09/fundamentals.jsonl")
             self.assertEqual(body.count("\n"), 6)
+            self.assertEqual(rel2, "index_members/date=2026-11-09/nifty200.jsonl")
+            self.assertIn('"industry":"Information Technology"', body2)
 
     def test_mostly_failing_pushes_nothing(self):
         with Env(capital=40_000):
-            with mock.patch.object(fundamentals, "universe", return_value=["A", "B", "C"]), \
+            with mock.patch.object(fundamentals, "nifty200", return_value={}), \
+                    mock.patch.object(fundamentals, "universe", return_value=["A", "B", "C"]), \
                     mock.patch.object(fundamentals, "request", side_effect=RuntimeError("HTTP 429")), \
                     mock.patch.object(fundamentals.time, "sleep"), \
                     mock.patch("export._push") as push:

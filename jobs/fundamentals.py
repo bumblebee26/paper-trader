@@ -3,8 +3,9 @@
   python jobs/fundamentals.py            # needs AWS credentials (SSM: Databricks settings)
   python jobs/fundamentals.py --dry-run  # fetch and print, push nothing
 
-Companies: the 250 most traded NSE stocks of the last 120 sessions (a stand-in for Nifty 200,
-from stocks.silver.nse_eq_daily) plus the intraday watchlist. For each, Yahoo's fundamentals
+Companies: NSE's official Nifty 200 list (with each company's industry, also pushed to the
+lakehouse as index_members/) plus the intraday watchlist. If the list can't be read, the 250 most
+traded NSE stocks of the last 120 sessions stand in for it. For each, Yahoo's fundamentals
 time series gives 4 fiscal years of annual figures and the last quarters. One JSON line per
 company x metric x period goes to the lakehouse landing volume, fundamentals/date=<today>/,
 where stocks.gold.company_fundamentals turns them into the long-term quality tests.
@@ -41,12 +42,50 @@ WHERE series = 'EQ'
 GROUP BY symbol HAVING sessions >= 100 ORDER BY median_turnover DESC LIMIT 250
 """
 SKIP = {"NIFTYBEES", "BANKBEES", "GOLDBEES", "LIQUIDBEES", "SILVERBEES"}  # funds have no accounts
+NIFTY200_URLS = [
+    "https://nsearchives.nseindia.com/content/indices/ind_nifty200list.csv",
+    "https://archives.nseindia.com/content/indices/ind_nifty200list.csv",
+    "https://niftyindices.com/IndexConstituent/ind_nifty200list.csv",
+]
 
 
-def universe():
-    import run_swing  # SQL with result chunks
+def parse_members(text):
+    """NSE index list CSV (Company Name, Industry, Symbol, Series, ISIN Code) -> {symbol: row}."""
+    import csv
+    import io
 
-    syms = [r["symbol"] for r in run_swing.sql_all(UNIVERSE_SQL)]
+    out = {}
+    for row in csv.DictReader(io.StringIO(text)):
+        row = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+        sym = row.get("symbol")
+        if sym:
+            out[sym] = {"company": row.get("company name", ""), "industry": row.get("industry", ""),
+                        "isin": row.get("isin code", "")}
+    return out
+
+
+def nifty200():
+    for url in NIFTY200_URLS:
+        try:
+            body = request("GET", url, headers={**HEADERS, "Accept": "text/csv,*/*",
+                                                "Referer": "https://www.nseindia.com/"}, timeout=30)
+            members = parse_members(body.decode("utf-8-sig", "replace") if isinstance(body, bytes) else body)
+            if len(members) >= 150:
+                print(f"Nifty 200 list: {len(members)} companies from {url}")
+                return members
+        except Exception as err:  # noqa: BLE001 - try the next source
+            log.warning("Nifty 200 list from %s failed: %s", url, err)
+    return {}
+
+
+def universe(members=None):
+    if members:
+        syms = list(members)
+    else:
+        import run_swing  # SQL with result chunks
+
+        print("Nifty 200 list unavailable: using the 250 most traded stocks instead")
+        syms = [r["symbol"] for r in run_swing.sql_all(UNIVERSE_SQL)]
     return [s for s in dict.fromkeys(syms + list(sectors.WATCHLIST)) if s not in SKIP and not s.endswith("BEES")]
 
 
@@ -87,7 +126,8 @@ def main(argv):
     dry = "--dry-run" in argv
     now = market.now_ist()
     fetched_at = now.strftime("%Y-%m-%d %H:%M:%S")
-    symbols = universe()
+    members = nifty200()
+    symbols = universe(members)
     print(f"{len(symbols)} companies")
     rows, failed, empty = [], [], []
     for i, s in enumerate(symbols):
@@ -106,14 +146,20 @@ def main(argv):
     if len(failed) > len(symbols) / 2:
         raise SystemExit("More than half the companies failed: Yahoo is probably blocking; nothing pushed.")
     body = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows)
+    day = now.strftime("%Y-%m-%d")
+    members_body = "".join(json.dumps({"symbol": s, **m, "index_name": "NIFTY 200", "as_of": day},
+                                      separators=(",", ":")) + "\n" for s, m in members.items())
     if dry:
         print(body[:1500])
+        print(members_body[:600])
         return 0
-    day = now.strftime("%Y-%m-%d")
     storage.backend().put(f"fundamentals/date={day}/fundamentals.jsonl", body)
     import export
 
     print("pushed to", export._push(f"fundamentals/date={day}/fundamentals.jsonl", body))
+    if members_body:
+        storage.backend().put(f"index_members/date={day}/nifty200.jsonl", members_body)
+        print("pushed to", export._push(f"index_members/date={day}/nifty200.jsonl", members_body))
     return 0
 
 
