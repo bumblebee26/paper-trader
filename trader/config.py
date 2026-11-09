@@ -78,6 +78,9 @@ INTRADAY_LEVERAGE = _f("INTRADAY_LEVERAGE", 5.0)
 SLIPPAGE_PCT = _f("SLIPPAGE_PCT", 0.05)
 BROKERAGE_PER_ORDER = _f("BROKERAGE_PER_ORDER", 20.0)
 APPROVAL_TIMEOUT_SEC = _i("APPROVAL_TIMEOUT_SEC", 180)
+# Independent risk reviewer (trader/reviewer.py); switched on by REVIEWER=on in the session workflow.
+REVIEWER_MODEL = os.environ.get("REVIEWER_MODEL", "sonnet")
+REVIEWER_TIMEOUT_SEC = _i("REVIEWER_TIMEOUT_SEC", 90)
 ENTRY_TOLERANCE_PCT = _f("ENTRY_TOLERANCE_PCT", 0.3)
 
 ENTRY_START = os.environ.get("ENTRY_START", "09:30")

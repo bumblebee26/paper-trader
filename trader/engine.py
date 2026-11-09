@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import advisor
 import config
 import market
+import reviewer
 import storage
 import telegram_bot as tg
 
@@ -352,10 +353,13 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         return {"status": "blocked", "reason": why}
 
     pid = uuid.uuid4().hex[:8]
-    valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)
     risk_pct = round(risk_rs / state["balance"] * 100, 2)
     need = qty * entry / config.INTRADAY_LEVERAGE
     advice = advisor.assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct)
+    review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"])
+    if review:
+        advice = advisor.combine(advice, ai_yes_pct, review)
+    valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)  # after the review
     lines = [
         f"[MOCK] {side} {symbol}  ({setup})",
         *advice["lines"],
@@ -382,10 +386,13 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         "reasons": reasons[:3], "invalid_if": invalid_if, "status": "pending",
         "sent_at": _now(), "valid_until": valid_until.strftime("%Y-%m-%d %H:%M:%S"),
         "message_id": msg_id, "text": text, "suggested_yes_pct": advice["yes_pct"],
+        "review": review,
     }
     journal("proposed", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
             target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]),
-            note=f"suggested {advice['verdict']} {advice['yes_pct']}%")
+            note=(f"suggested {advice['verdict']} {advice['yes_pct']}% | checks {advice['checks_pct']}%"
+                  f" | agent {ai_yes_pct if ai_yes_pct is not None else '-'}%"
+                  f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '-'}"))
     return {"status": "pending", "proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
             "suggestion": f"{advice['verdict']} {advice['yes_pct']}%",
             "valid_until": state["proposals"][pid]["valid_until"]}

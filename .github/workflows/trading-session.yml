@@ -41,6 +41,8 @@ env:
   DATABRICKS_TOKEN_PARAM: /stocks/databricks-pusher-token
   DATABRICKS_WAREHOUSE_PARAM: /stocks/databricks-warehouse-id
   CLAUDE_MODEL: sonnet
+  REVIEWER: "on"          # independent risk reviewer on each proposal (trader/reviewer.py)
+  REVIEWER_MODEL: sonnet
 
 jobs:
   session:
