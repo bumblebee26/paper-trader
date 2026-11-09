@@ -105,3 +105,51 @@ def export_range(start, end, push=True):
             out.append(export_day(d.isoformat(), push=push))
         d += timedelta(days=1)
     return out
+
+
+# ---------------------------------------------------------------- portfolio --
+# One file per day with every pool and every holding, so the lakehouse dashboard can show
+# current holdings, allocation and the value of each pool over time.
+#   S3:          exports/portfolio/date=YYYY-MM-DD/portfolio.jsonl
+#   Databricks:  /Volumes/stocks/bronze/landing/portfolio/date=YYYY-MM-DD/portfolio.jsonl
+def build_portfolio(day):
+    import pools
+    import sectors
+
+    rows = []
+    state = storage.get_json(storage.LEDGER_KEY) or {}
+    if state:
+        bal = float(state.get("balance", 0.0))
+        rows.append({"record_type": "pool", "snapshot_date": day, "pool": "intraday",
+                     "capital": float(state.get("starting_capital", config.STARTING_CAPITAL)),
+                     "cash": bal, "holdings_value": 0.0, "equity": bal})
+        for sym, pos in (state.get("positions") or {}).items():
+            rows.append({"record_type": "holding", "snapshot_date": day, "pool": "intraday", "symbol": sym,
+                         "sector": sectors.sector(sym), "qty": float(pos.get("qty", 0)),
+                         "avg_cost": float(pos.get("fill_price", 0)), "last_price": float(pos.get("fill_price", 0)),
+                         "value": float(pos.get("qty", 0)) * float(pos.get("fill_price", 0)), "pnl": 0.0,
+                         "opened": day})
+    for name in pools.POOLS:
+        p = pools.refresh_prices(pools.load(name))
+        pools.save(p)
+        hv = pools.holdings_value(p)
+        rows.append({"record_type": "pool", "snapshot_date": day, "pool": name, "capital": float(p["capital"]),
+                     "cash": round(p["cash"], 2), "holdings_value": hv, "equity": round(p["cash"] + hv, 2)})
+        for sym, h in p["holdings"].items():
+            last = float(h.get("last_price") or h["avg_cost"])
+            value = round(h["qty"] * last, 2)
+            cost = round(h["qty"] * h["avg_cost"], 2)
+            rows.append({"record_type": "holding", "snapshot_date": day, "pool": name, "symbol": sym,
+                         "sector": "Index fund" if sym in pools.INDEX_FUNDS else sectors.sector(sym),
+                         "qty": float(h["qty"]), "avg_cost": round(h["avg_cost"], 4), "last_price": last,
+                         "value": value, "pnl": round(value - cost, 2), "opened": h.get("opened")})
+    return "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows)
+
+
+def export_portfolio(day, push=True):
+    body = build_portfolio(day)
+    storage.backend().put(f"exports/portfolio/date={day}/portfolio.jsonl", body)
+    result = {"date": day, "portfolio_rows": body.count("\n")}
+    if push:
+        result["portfolio_path"] = _push(f"portfolio/date={day}/portfolio.jsonl", body)
+    return result
