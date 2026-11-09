@@ -81,3 +81,26 @@ class ExportTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PortfolioExportTest(unittest.TestCase):
+    def test_pools_and_holdings(self):
+        import json as _json
+        from unittest import mock
+        import pools
+        with Env(capital=40_000) as env:
+            env.prices["NIFTYBEES"] = 280.0
+            pools.park("swing")
+            env.prices["NIFTYBEES"] = 285.0
+            engine.save(engine.load())
+            with mock.patch.object(export, "_push", return_value="/Volumes/x") as push:
+                out = export.export_portfolio("2026-11-10")
+            rows = [_json.loads(x) for x in push.call_args.args[1].splitlines()]
+            self.assertEqual(push.call_args.args[0], "portfolio/date=2026-11-10/portfolio.jsonl")
+            pools_ = {r["pool"]: r for r in rows if r["record_type"] == "pool"}
+            self.assertEqual(set(pools_), {"intraday", "swing", "long_term"})
+            self.assertEqual(pools_["long_term"]["equity"], 100_000)
+            h = [r for r in rows if r["record_type"] == "holding"][0]
+            self.assertEqual((h["pool"], h["symbol"], h["sector"], h["last_price"]), ("swing", "NIFTYBEES", "Index fund", 285.0))
+            self.assertGreater(h["pnl"], 0)
+            self.assertEqual(out["portfolio_rows"], 4)

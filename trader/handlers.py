@@ -89,7 +89,14 @@ def guardian(event, context):
         ev = event or {}
         if ev.get("start"):
             return {"exports": export.export_range(ev["start"], ev.get("end", ev["start"]))}
-        return export.export_day(ev.get("date") or engine._today())
+        day = ev.get("date") or engine._today()
+        out = export.export_day(day)
+        try:
+            out.update(export.export_portfolio(day))
+        except Exception as err:  # noqa: BLE001 - the journal export must not fail because of this
+            log.warning("portfolio export failed: %s", err)
+            out["portfolio_error"] = str(err)
+        return out
     raise ValueError(f"unknown action {action}")
 
 
