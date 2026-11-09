@@ -68,6 +68,10 @@ def main(argv):
             print(f"{phase} already ran today, skipping")
             return 3
         print(f"claimed {phase}")
+        try:
+            tg.set_commands()  # keeps the "/" menu in Telegram up to date
+        except Exception as err:  # noqa: BLE001 - cosmetic, never block a session
+            print(f"could not register Telegram commands: {err}")
     elif cmd == "prompt":
         phase = argv[2]
         p = PHASES[phase]

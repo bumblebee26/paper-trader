@@ -61,6 +61,8 @@ def _new_day(state: dict) -> None:
     state["proposals"] = {k: v for k, v in state["proposals"].items() if v.get("day") == _today()}
     state["decisions"] = {}
     state["exit_requests"] = []
+    state["requests"] = []
+    state["paused"] = False
     state["day_risk_pct"] = config.RISK_PER_TRADE_PCT
     state["plan"] = None
     state["focus"] = []
@@ -167,12 +169,51 @@ def ledger_statement(state) -> str:
     return "\n".join(lines)
 
 
-def answer_ledger_requests(state) -> bool:
-    """Reply to a LEDGER message from Telegram, if one came in."""
-    if not state.pop("ledger_requested", False):
-        return False
-    tg.send(ledger_statement(state))
-    return True
+HELP_TEXT = """[MOCK] paper-trader: what I can do
+
+Commands (with or without the /):
+/ledger  money now: balance, in use, free, open positions with live P&L (also /balance, /status)
+/plan  today's plan: US move, VIX, risk per trade, bias, focus list
+/exit SYMBOL  close that position now, e.g. /exit HDFCBANK
+/pause  no new proposals today; open positions are still managed
+/resume  allow new proposals again
+YES / NO  answer the latest proposal (or tap its buttons)
+/help  this list (also /prompts, /commands, or ask "what can you do?")
+
+On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30, each needs your YES within 3 min; stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse.
+I reply during sessions only (09:08-15:25 IST). Dummy money only."""
+
+
+def _plan_text(state) -> str:
+    plan = state.get("plan")
+    if not plan:
+        return "[MOCK] No plan yet today. It is set at the start of the morning session (09:08 IST)."
+    import brief
+
+    text = brief.plan_message({**plan, "risk_per_trade_pct": state.get("day_risk_pct")}, state.get("focus", []))
+    if state.get("paused"):
+        text += "\nNew proposals: PAUSED (send /resume)"
+    return text
+
+
+def answer_requests(state) -> int:
+    """Reply to Telegram commands that came in (ledger, help, plan, pause, resume)."""
+    asks = list(dict.fromkeys(state.pop("requests", [])))
+    for ask in asks:
+        if ask == "ledger":
+            tg.send(ledger_statement(state))
+        elif ask == "help":
+            tg.send(HELP_TEXT)
+        elif ask == "plan":
+            tg.send(_plan_text(state))
+        elif ask == "paused":
+            journal("paused_by_user")
+            tg.send("[MOCK] Paused: no new proposals today. Open positions are still watched and squared off "
+                    "at 15:10. Send /resume to allow proposals again.")
+        elif ask == "resumed":
+            journal("resumed_by_user")
+            tg.send("[MOCK] Resumed: proposals allowed again (entries until 14:30).")
+    return len(asks)
 
 
 def account(state: dict) -> dict:
@@ -188,6 +229,7 @@ def account(state: dict) -> dict:
         "entry_window_open": in_entry_window(),
         "risk_per_trade_pct_today": state.get("day_risk_pct", config.RISK_PER_TRADE_PCT),
         "focus": state.get("focus", []),
+        "paused_by_user": state.get("paused", False),
         "carried_over_warning": state.get("carried_over_warning"),
     }
 
@@ -204,6 +246,8 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     if (side == "BUY" and not (stop < entry < target)) or (side == "SELL" and not (target < entry < stop)):
         return False, "for BUY need stop < entry < target; for SELL need target < entry < stop", 0, 0, 0
     rr = round(abs(target - entry) / per_share, 2)
+    if state.get("paused"):
+        return False, "paused by you on Telegram (send /resume)", 0, 0, rr
     if not in_entry_window():
         return False, f"outside entry window {config.ENTRY_START}-{config.ENTRY_END} IST (weekdays)", 0, 0, rr
     if symbol in state["positions"]:
@@ -377,7 +421,7 @@ def monitor(state):
     """Check stops/targets, EXIT commands, and square-off time. Call every few minutes."""
     events = []
     tg.poll(state, wait=0)
-    answer_ledger_requests(state)
+    answer_requests(state)
     for sym in list(dict.fromkeys(state.get("exit_requests", []))):
         if sym in state["positions"]:
             price, _ = market.last_price(sym)

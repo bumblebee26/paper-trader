@@ -185,7 +185,7 @@ def wait_for_next_candle(session_end: str = "15:45") -> dict:
         state = engine.load()
         try:
             tg.poll(state, wait=max(1, min(25, left)))
-            engine.answer_ledger_requests(state)
+            engine.answer_requests(state)
         except Exception:  # noqa: BLE001 - network blip: just sleep
             time.sleep(max(1, min(25, left)))
         finally:

@@ -42,6 +42,9 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Test without trading | Actions → Trading session → Run workflow → `test` |
 | Re-run a phase today | Delete `sessions/<date>/<phase>` from the state bucket, then Run workflow |
 | Skip trading today | Actions → Trading session → **Disable workflow** (enable it again afterwards) |
+| All commands | Send `/help` (or `/prompts`, or "what can you do?") on Telegram; they're also in the bot's `/` menu |
+| Stop new proposals for today | Send `/pause` (open positions are still managed); `/resume` to undo. Resets every morning |
+| See today's plan again | Send `/plan` |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session |
 | Reset to Rs 1 lakh | Delete `state/ledger.json` from the state bucket |

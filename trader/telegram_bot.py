@@ -40,6 +40,21 @@ def setup() -> dict:
     return _api("getMe")
 
 
+# Shown in Telegram's "/" menu (registered at the start of each session).
+COMMANDS = [
+    ("ledger", "Money: balance, in use, free, open positions with live P&L"),
+    ("plan", "Today's plan: US move, VIX, risk per trade, bias, focus list"),
+    ("exit", "Close a position now, e.g. /exit HDFCBANK"),
+    ("pause", "No new proposals today (open positions still managed)"),
+    ("resume", "Allow new proposals again"),
+    ("help", "All commands and what the trader does"),
+]
+
+
+def set_commands() -> None:
+    _api("setMyCommands", commands=[{"command": c, "description": d} for c, d in COMMANDS])
+
+
 def send(text, buttons=None) -> int:
     params = {"chat_id": config.telegram_chat_id(), "text": text}
     if buttons:
@@ -60,8 +75,8 @@ def poll(state, wait=0) -> None:
     """Read new updates once (long-polling up to `wait` seconds) into `state`.
 
     Button yes:<id> / no:<id> -> state["decisions"][id]; typed YES/NO -> newest pending
-    proposal; "EXIT RELIANCE" -> state["exit_requests"]; "LEDGER" / "BALANCE" / "STATUS" ->
-    state["ledger_requested"]. Other senders are ignored.
+    proposal; "EXIT RELIANCE" -> state["exit_requests"]; LEDGER, HELP, PLAN, PAUSE, RESUME ->
+    state["requests"] (answered by engine.answer_requests). Other senders are ignored.
     """
     allowed = str(config.allowed_user_id())
     updates = _api("getUpdates", http_timeout=wait + 15, offset=state.get("tg_offset", 0),
@@ -84,12 +99,25 @@ def poll(state, wait=0) -> None:
             msg = u["message"]
             if str(msg.get("from", {}).get("id")) != allowed:
                 continue
-            parts = (msg.get("text") or "").strip().upper().split()
-            if len(parts) == 2 and parts[0] == "EXIT":
+            # "/ledger", "/exit@mock_26_trader_bot reliance" -> LEDGER, EXIT RELIANCE
+            parts = [w.lstrip("/").split("@")[0] for w in (msg.get("text") or "").strip().upper().split()]
+            cmd = parts[0] if parts else ""
+            asks = state.setdefault("requests", [])
+            if len(parts) == 2 and cmd == "EXIT":
                 state.setdefault("exit_requests", []).append(parts[1])
-            elif parts and parts[0] in ("LEDGER", "BALANCE", "STATUS"):
-                state["ledger_requested"] = True
-            elif parts and parts[0] in ("YES", "NO"):
+            elif cmd in ("LEDGER", "BALANCE", "STATUS"):
+                asks.append("ledger")
+            elif cmd in ("HELP", "PROMPTS", "COMMANDS", "START", "MENU") or "WHAT CAN YOU DO" in " ".join(parts):
+                asks.append("help")
+            elif cmd == "PLAN":
+                asks.append("plan")
+            elif cmd == "PAUSE":
+                state["paused"] = True
+                asks.append("paused")
+            elif cmd == "RESUME":
+                state["paused"] = False
+                asks.append("resumed")
+            elif cmd in ("YES", "NO"):
                 pending = [p for p, v in state.get("proposals", {}).items() if v["status"] == "pending"]
                 if pending:
                     state.setdefault("decisions", {}).setdefault(pending[-1], parts[0].lower())
