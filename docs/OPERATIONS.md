@@ -58,6 +58,9 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | All commands | Send `/help` (or `/prompts`, or "what can you do?") on Telegram; they're also in the bot's `/` menu |
 | Stop new proposals for a day | Send `/pause`: before 14:30 on a trading day it applies to today, otherwise to the next trading day. Open positions are still managed; `/resume` undoes it |
 | See today's plan again | Send `/plan` |
+| A company's latest filings | Send `/news SYMBOL` (NSE announcements, results, board meetings; from the lakehouse news feed) |
+| All pools | Send `/portfolio`: intraday (live), swing Rs 60,000 and long-term Rs 1,00,000 (reserved) |
+| Kill switch | Send `/stop`: no new proposals on any day until `/resume`; open positions are still managed |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session, ~2 min otherwise |
 | Reset the intraday pool to Rs 40,000 | Delete `state/ledger.json` from the state bucket |

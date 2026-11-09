@@ -59,7 +59,7 @@ class CommandsTest(unittest.TestCase):
 
     def test_menu_lists_every_command(self):
         names = [c for c, _ in tg.COMMANDS]
-        self.assertEqual(names, ["ledger", "plan", "exit", "pause", "resume", "help"])
+        self.assertEqual(names, ["ledger", "plan", "exit", "news", "portfolio", "pause", "stop", "resume", "help"])
         self.assertTrue(all(len(d) <= 256 for _, d in tg.COMMANDS))  # Telegram limit
 
 

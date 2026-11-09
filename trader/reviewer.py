@@ -14,6 +14,7 @@ import subprocess
 
 import config
 import market
+import news
 import sectors
 import storage
 from http_client import log
@@ -72,6 +73,13 @@ def facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines
     lines.append(f"Sector: {sec}; closed trades in this sector today: {len(same)}"
                  + (" (" + "; ".join(f"{r['symbol']} P&L Rs {r['pnl_rs']}" for r in same) + ")" if same else ""))
     lines.append(f"Losses in a row so far: {state.get('loss_streak', 0)}")
+    found = news.for_symbol(symbol)
+    if found is None:
+        lines.append("NSE filings for this company: feed unavailable")
+    elif found:
+        lines.append("NSE filings for this company (today/yesterday): " + " | ".join(news.describe(i) for i in found))
+    else:
+        lines.append("NSE filings for this company (today/yesterday): none")
     lines.append(f"Realized P&L today: Rs {state.get('realized_today', 0):,.0f}")
     return "\n".join(lines)
 

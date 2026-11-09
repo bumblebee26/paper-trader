@@ -104,6 +104,8 @@ resource "aws_lambda_function" "responder" {
       STATE_BUCKET           = module.state.id
       TELEGRAM_TOKEN_PARAM   = local.lakehouse_params.telegram_token
       TELEGRAM_CHAT_ID_PARAM = local.lakehouse_params.telegram_chat_id
+      DATABRICKS_URL_PARAM   = local.lakehouse_params.databricks_url
+      DATABRICKS_TOKEN_PARAM = local.lakehouse_params.databricks_token
     }
   }
 

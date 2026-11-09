@@ -45,7 +45,10 @@ COMMANDS = [
     ("ledger", "Money: balance, in use, free, open positions with live P&L"),
     ("plan", "Today's plan: US move, VIX, risk per trade, bias, focus list"),
     ("exit", "Close a position now, e.g. /exit HDFCBANK"),
+    ("news", "Latest NSE filings for a stock, e.g. /news RELIANCE"),
+    ("portfolio", "All dummy pools: intraday, swing, long-term"),
     ("pause", "No new proposals today (open positions still managed)"),
+    ("stop", "Kill switch: no new proposals until /resume"),
     ("resume", "Allow new proposals again"),
     ("help", "All commands and what the trader does"),
 ]
@@ -109,6 +112,12 @@ def poll(state, wait=0) -> None:
                 asks.append("ledger")
             elif cmd in ("HELP", "PROMPTS", "COMMANDS", "START", "MENU") or "WHAT CAN YOU DO" in " ".join(parts):
                 asks.append("help")
+            elif cmd == "NEWS" and len(parts) == 2:
+                asks.append(f"news:{parts[1]}")
+            elif cmd in ("PORTFOLIO", "POOLS"):
+                asks.append("portfolio")
+            elif cmd in ("STOP", "KILL"):
+                asks.append("stop")
             elif cmd == "PLAN":
                 asks.append("plan")
             elif cmd == "PAUSE":

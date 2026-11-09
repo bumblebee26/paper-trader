@@ -9,6 +9,7 @@ sys.modules.setdefault("boto3", mock.MagicMock())
 
 import config  # noqa: E402
 import market  # noqa: E402
+import news  # noqa: E402
 import storage  # noqa: E402
 import telegram_bot as tg  # noqa: E402
 
@@ -64,6 +65,9 @@ class Env:
             mock.patch.object(market, "candles", lambda s, i="5m", d=1: self.bars.get((s, i), [])),
             mock.patch.object(config, "STARTING_CAPITAL", self.capital),
         ]
+        news.reset_cache()
+        self.news_files = {}  # date -> list of items; empty = feed unavailable
+        self._patches.append(mock.patch.object(news, "_read", self._fake_news))
         for p in self._patches:
             p.start()
         return self
@@ -72,6 +76,19 @@ class Env:
         for p in self._patches:
             p.stop()
         storage.reset_backend(None)
+
+    def _fake_news(self, day):
+        if day not in self.news_files:
+            raise RuntimeError("HTTP 404")
+        return self.news_files[day]
+
+    def add_news(self, symbol, category, description, when="2026-11-09 10:05:00", link="https://x/y.pdf"):
+        day = when[:10]
+        self.news_files.setdefault(day, []).append({
+            "id": f"{symbol}{len(self.news_files[day])}", "feed": "announcement", "symbol": symbol,
+            "category": category, "title": symbol, "description": description, "link": link,
+            "published_ist": when, "fetched_at_ist": when})
+        news.reset_cache()
 
     def at(self, h, m):
         self.clock = self.clock.replace(hour=h, minute=m)
