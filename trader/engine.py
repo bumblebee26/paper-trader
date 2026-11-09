@@ -113,7 +113,7 @@ def _at(hhmm: str) -> datetime:
 
 def in_entry_window() -> bool:
     now = market.now_ist()
-    return now.weekday() < 5 and _at(config.ENTRY_START) <= now <= _at(config.ENTRY_END)
+    return market.is_trading_day(now) and _at(config.ENTRY_START) <= now <= _at(config.ENTRY_END)
 
 
 def past_square_off() -> bool:
@@ -223,14 +223,11 @@ def _plan_text(state) -> str:
 
 
 def next_trading_day() -> str:
-    """Today if entries are still possible today, else the next weekday (holidays not known)."""
+    """Today if entries are still possible today, else the next trading day (weekends and NSE holidays skipped)."""
     now = market.now_ist()
-    if now.weekday() < 5 and now <= _at(config.ENTRY_END):
+    if market.is_trading_day(now) and now <= _at(config.ENTRY_END):
         return now.strftime("%Y-%m-%d")
-    d = now + timedelta(days=1)
-    while d.weekday() >= 5:
-        d += timedelta(days=1)
-    return d.strftime("%Y-%m-%d")
+    return market.next_trading_day_after(now).strftime("%Y-%m-%d")
 
 
 def is_paused(state) -> bool:
@@ -271,7 +268,7 @@ def data_health(state, nifty) -> None:
     also warn once a day if the news feed is more than 90 minutes behind."""
     now = market.now_ist()
     t = now.strftime("%H:%M")
-    live = now.weekday() < 5 and "09:30" <= t <= "15:25"
+    live = market.is_trading_day(now) and "09:30" <= t <= "15:25"
     stale = False
     if live:
         last = (nifty or {}).get("time")

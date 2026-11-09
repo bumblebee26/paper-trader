@@ -63,8 +63,17 @@ def main(argv):
         phase = argv[2]
         if phase == "test":
             return 0
-        if market.now_ist().weekday() >= 5:
+        now = market.now_ist()
+        if now.weekday() >= 5:
             print("weekend, skipping")
+            return 3
+        name = market.holiday(now)
+        if name:
+            print(f"NSE holiday ({name}), skipping")
+            if phase == "morning" and engine.claim_session("holiday_notice"):  # tell the user once
+                nxt = market.next_trading_day_after(now)
+                tg.send(f"[MOCK] No market today: NSE is closed for {name}. No sessions today; "
+                        f"the next one starts {nxt:%a %d %b} at 09:08.")
             return 3
         if not engine.claim_session(phase):
             print(f"{phase} already ran today, skipping")

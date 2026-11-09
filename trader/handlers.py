@@ -65,9 +65,12 @@ def guardian(event, context):
         finally:
             engine.save(state)
     if action == "park":
+        import market
         import pools
         import telegram_bot as tg
 
+        if not market.is_trading_day(market.now_ist()):
+            return {"skipped": "market closed today"}
         out = pools.park("swing")
         if out["status"] == "bought":
             tg.send(f"[MOCK] Swing pool: bought {out['qty']} NIFTYBEES at Rs {out['fill']:,.2f} "

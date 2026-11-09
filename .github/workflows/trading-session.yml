@@ -40,7 +40,7 @@ env:
   DATABRICKS_URL_PARAM: /stocks/databricks-workspace-url
   DATABRICKS_TOKEN_PARAM: /stocks/databricks-pusher-token
   DATABRICKS_WAREHOUSE_PARAM: /stocks/databricks-warehouse-id
-  CLAUDE_MODEL: sonnet
+  CLAUDE_MODEL: opus      # trading agent (morning and afternoon sessions); "sonnet" uses less of the plan
   REVIEWER: "on"          # independent risk reviewer on each proposal (trader/reviewer.py)
   REVIEWER_MODEL: sonnet
 
