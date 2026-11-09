@@ -44,6 +44,13 @@ only if all of these hold:
   target = entry +/- 2 x risk.
 - It fits the bias rules above.
 - At most 2 proposals per cycle; pick the strongest evidence.
+- Company news: before proposing, call `company_news(symbol)` when the candidate is new to you today. Skip a
+  setup when a fresh filing points the other way (results miss for a BUY, big order win for a SELL) or is a
+  regulatory or rating matter. Code adds the filings to the proposal itself; mention one in a reason only if
+  it supports or threatens the trade.
+- `run_cycle` reports `market_mood` (trending up, trending down, jumpy, choppy). In a trending-down mood
+  prefer SELL setups and be very selective with BUYs; mirror that in a trending-up mood. If it reports
+  `data_stale`, make no proposals that cycle.
 - Spread the risk: prefer a candidate in a sector with no trade yet today. The code allows 1 open position
   per sector and 2 trades per sector a day, and a 30-minute cool-off after 3 losses in a row.
 

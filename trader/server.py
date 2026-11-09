@@ -14,10 +14,12 @@ try:  # mcp 1.x
 except ImportError:  # mcp 2.x
     from mcp.server.mcpserver import MCPServer as _Server
 
+import advisor
 import brief
 import config
 import engine
 import market
+import news
 import scanner
 import sectors
 import telegram_bot as tg
@@ -110,6 +112,9 @@ def run_cycle() -> dict:
     try:
         mon = engine.monitor(state)
         focus = state.get("focus") or DEFAULT_WATCHLIST
+        nifty = scanner.nifty_context() if mon["account"]["entry_window_open"] else None
+        if nifty is not None:
+            engine.data_health(state, nifty)
     finally:
         engine.save(state)
     engine.heartbeat()
@@ -123,9 +128,26 @@ def run_cycle() -> dict:
         "entry_window_open": acct["entry_window_open"],
     }
     if acct["entry_window_open"]:
-        out["nifty"] = scanner.nifty_context()
-        out["candidates"] = _scan(focus)
+        out["nifty"] = nifty
+        out["market_mood"] = advisor.market_mood(nifty.get("change_from_open_pct"),
+                                                 (state.get("plan") or {}).get("vix"))
+        if state.get("data_stale"):
+            out["data_stale"] = "prices look stale: no proposals this cycle"
+        else:
+            out["candidates"] = _scan(focus)
     return out
+
+
+@mcp.tool()
+def company_news(symbol: str) -> dict:
+    """The company's NSE filings from today and the last trading day (results, orders, management
+    changes, regulatory matters, board meetings...), newest first, from the lakehouse news feed."""
+    found = news.for_symbol(symbol.upper(), limit=6)
+    if found is None:
+        return {"symbol": symbol.upper(), "news": "unavailable"}
+    return {"symbol": symbol.upper(), "items": [
+        {"when": news.when(i), "category": i.get("category"), "text": news.describe(i), "link": i.get("link")}
+        for i in found]}
 
 
 @mcp.tool()
@@ -133,7 +155,8 @@ def propose_trade(symbol: str, side: str, setup: str, entry: float, stop: float,
                   reasons: list[str], invalid_if: str, news: str = "none", summary: str = "",
                   ai_yes_pct: int | None = None) -> dict:
     """Risk gate + position size + Telegram proposal with YES/NO buttons. Returns proposal_id.
-    side: BUY or SELL. reasons: up to 3 short, number-based. Never invent news; use "none".
+    side: BUY or SELL. reasons: up to 3 short, number-based. news: leave "none" (code adds the company's
+    NSE filings from the lakehouse itself); only add a note if company_news showed something that matters.
     summary: one or two plain-English sentences for a non-trader (no jargon, no abbreviations) on why
     this looks good and the main thing that could go wrong. Money amounts are added by code.
     ai_yes_pct: your honest 0-100 view of whether the user should say YES. Code adds live Nifty, Sensex and

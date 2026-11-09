@@ -101,7 +101,7 @@ jobs:
           tools="$tools,mcp__paper-trader__market_snapshot,mcp__paper-trader__scan_setups,mcp__paper-trader__run_cycle"
           tools="$tools,mcp__paper-trader__propose_trade,mcp__paper-trader__wait_for_decision"
           tools="$tools,mcp__paper-trader__execute_approved_trade,mcp__paper-trader__monitor_positions"
-          tools="$tools,mcp__paper-trader__close_position,mcp__paper-trader__notify"
+          tools="$tools,mcp__paper-trader__close_position,mcp__paper-trader__notify,mcp__paper-trader__company_news"
           tools="$tools,mcp__paper-trader__wait_for_next_candle,mcp__paper-trader__end_of_day_report"
           claude -p "$(python trader/session_ctl.py prompt "$PHASE")" \
             --append-system-prompt-file prompts/trading_rules.md \

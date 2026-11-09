@@ -108,3 +108,5 @@ DATABRICKS_URL_PARAM = os.environ.get("DATABRICKS_URL_PARAM", "")
 DATABRICKS_TOKEN_PARAM = os.environ.get("DATABRICKS_TOKEN_PARAM", "")
 DATABRICKS_WAREHOUSE_PARAM = os.environ.get("DATABRICKS_WAREHOUSE_PARAM", "")
 LANDING_VOLUME_PATH = os.environ.get("LANDING_VOLUME_PATH", "/Volumes/stocks/bronze/landing")
+NEWS_VOLUME_PATH = os.environ.get("NEWS_VOLUME_PATH", "/Volumes/stocks/bronze/news")  # lakehouse news fetcher
+DATA_STALE_MIN = _i("DATA_STALE_MIN", 15)   # Nifty candles older than this during market hours = stale

@@ -26,6 +26,10 @@ life of one trade).
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | The day's journal is copied to the lakehouse (backup feed); its pipeline builds the trading analysis tables and dashboard page |
 
+Each proposal also lists the company's **NSE filings** from today and the last trading day (from the
+lakehouse news feed), flags worrying ones (regulatory, rating, pledge) and an upcoming board meeting, and
+names the **market mood** (trending up or down, jumpy, choppy). Stale prices pause proposals with an alert.
+
 Each proposal starts with **a suggestion** ("YES, 65% for and 35% against") and explains itself in plain
 words: what you'd buy or sell, why now, what you'd make or lose, and a **market check** of Nifty 50,
 Sensex, the stock's sector index (Bank Nifty, Nifty IT), whether the price has already run, and the time

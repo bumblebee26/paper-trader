@@ -6,6 +6,7 @@ reward vs risk, the pre-market bias). If Claude gives its own view (ai_yes_pct),
 The user always makes the final call.
 """
 import market
+import news
 import sectors
 
 SECTOR_INDEX = sectors.SECTOR_INDEX
@@ -44,10 +45,59 @@ def _index_check(name, pct, side, weight):
     return WARN, f"{name} {words}, against this {side}.", -weight
 
 
+def market_mood(nifty_pct, vix=None):
+    """A one-word label for the day so far: trending up, trending down, jumpy or choppy."""
+    if nifty_pct is None:
+        return None
+    if nifty_pct >= 0.4:
+        return "trending up"
+    if nifty_pct <= -0.4:
+        return "trending down"
+    if vix is not None and vix >= 22:
+        return "jumpy"
+    return "choppy"
+
+
+def shadow_blocks(side, nifty_pct, mood, now):
+    """Alternative rules we are testing without trading them: which would have blocked this trade.
+    Recorded in the journal so the 2-week review can compare them with the real results."""
+    out = []
+    if nifty_pct is not None and ((side == "BUY" and nifty_pct <= -0.3) or (side == "SELL" and nifty_pct >= 0.3)):
+        out.append("nifty_against_0.3")
+    if (side == "BUY" and mood == "trending down") or (side == "SELL" and mood == "trending up"):
+        out.append("against_mood")
+    if now.hour * 60 + now.minute >= 14 * 60:
+        out.append("after_14h")
+    return out
+
+
+def news_check(symbol):
+    found = news.for_symbol(symbol)
+    if found is None:
+        return INFO, "News: couldn't check the NSE feed right now.", 0
+    worrying = [i for i in found if i.get("category") in news.WORRYING]
+    if worrying:
+        return WARN, (f"Recent filing to read first: {news.describe(worrying[0])}"), -10
+    soon = next((news.meeting_soon(i) for i in found if news.meeting_soon(i)), None)
+    if soon:
+        return WARN, f"Board meeting on {soon:%d %b} (often results): the price can jump either way.", -5
+    if any(i.get("category") == "results" for i in found):
+        return INFO, "Results were filed today or yesterday: expect bigger swings than usual.", 0
+    if found:
+        return OK, f"{len(found)} recent NSE filing(s), none worrying (see News below).", 0
+    return OK, "No NSE filings for this company today or yesterday.", 0
+
+
 def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
     """Return {"yes_pct", "verdict", "lines"} for the Telegram message."""
     checks = []  # (icon, text, points)
-    checks.append(_index_check("Nifty 50", index_move("^NSEI"), side, 15))
+    nifty_pct = index_move("^NSEI")
+    vix = (state.get("plan") or {}).get("vix")
+    mood = market_mood(nifty_pct, vix)
+    if mood:
+        checks.append((INFO, f"Market mood: {mood} (Nifty {nifty_pct:+.2f}% since the open"
+                             + (f", VIX {vix:g})." if vix is not None else ")."), 0))
+    checks.append(_index_check("Nifty 50", nifty_pct, side, 15))
     checks.append(_index_check("Sensex", index_move("^BSESN"), side, 5))
     if symbol in SECTOR_INDEX:
         idx, name, group = SECTOR_INDEX[symbol]
@@ -99,9 +149,12 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
         else:
             checks.append((WARN, f"The morning plan expected a {bias}, which goes against a {side}.", -5))
 
+    checks.append(news_check(symbol))
+
     checks_pct = int(round(max(5, min(95, 50 + sum(p for _, _, p in checks)))))
     market_lines = ["Market check:", *[f"{icon} {text}" for icon, text, _ in checks]]
-    out = {"checks_pct": checks_pct, "market_lines": market_lines}
+    out = {"checks_pct": checks_pct, "market_lines": market_lines, "mood": mood,
+           "shadow": shadow_blocks(side, nifty_pct, mood, market.now_ist())}
     return combine(out, ai_yes_pct, None)
 
 

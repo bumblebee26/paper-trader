@@ -53,6 +53,17 @@ Your plan's limit was reached. The guardian squares off at 15:12. See OPERATIONS
 gold tables refreshed (Databricks → Jobs & Pipelines). The day still runs with default risk and the
 watchlist.
 
+### Proposals say `News: unavailable` (or a "news feed is ... minutes old" alert)
+The trader reads `/Volumes/stocks/bronze/news/date=<today>/latest.jsonl`, written every 30 minutes
+(08:00–19:30 IST, Mon–Fri) by the lakehouse's `stocks-fetch-news` Lambda. Check that Lambda's log
+(`aws logs tail /aws/lambda/stocks-fetch-news --since 2h --region ap-southeast-2`): `All NSE news feeds failed`
+means NSE blocked the request; anything else is usually the Databricks pusher token. Trading continues
+without news.
+
+### `Data alert: market prices look stale`
+No fresh Nifty candle for 20 minutes during market hours (Yahoo delay or outage). New proposals pause until
+prices are fresh again; open positions are still checked. Nothing to do unless it lasts all day.
+
 ### `Prices: HTTP 429` or empty market data
 Yahoo rate-limits or blocks some cloud addresses. Re-run the test later; if it persists, the data source
 needs changing (`trader/market.py`).

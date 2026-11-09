@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import advisor
 import config
 import market
+import news
 import reviewer
 import sectors
 import storage
@@ -196,8 +197,11 @@ Commands (with or without the /):
 /ledger  money now: balance, in use, free, open positions with live P&L (also /balance, /status)
 /plan  today's plan: US move, VIX, risk per trade, bias, focus list
 /exit SYMBOL  close that position now, e.g. /exit HDFCBANK
+/news SYMBOL  the company's latest NSE filings with links, e.g. /news RELIANCE
+/portfolio  all dummy pools: intraday, swing and long-term (Rs 2 lakh in total)
+/stop  kill switch: no new proposals at all until /resume (open positions still managed)
 /pause  no new proposals for the day; open positions are still managed. After 14:30, at weekends or on holidays it applies to the next trading day
-/resume  allow new proposals again
+/resume  allow new proposals again (undoes /pause and /stop)
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
@@ -229,7 +233,62 @@ def next_trading_day() -> str:
 
 
 def is_paused(state) -> bool:
-    return state.get("paused_for") == _today()
+    return bool(state.get("stopped")) or state.get("paused_for") == _today()
+
+
+def news_text(symbol) -> str:
+    symbol = symbol.upper()
+    found = news.for_symbol(symbol, limit=6)
+    if found is None:
+        return f"[MOCK] News for {symbol}: the NSE feed isn't reachable right now. Try again in a while."
+    if not found:
+        return f"[MOCK] No NSE filings for {symbol} today or on the last trading day."
+    lines = [f"[MOCK] {symbol}: NSE filings, newest first"]
+    lines += [f"- {news.describe(i)}\n  {i.get('link', '')}".rstrip() for i in found]
+    return "\n".join(lines)
+
+
+def portfolio_text(state) -> str:
+    intraday = state["balance"]
+    pnl = intraday - state["starting_capital"]
+    total = intraday + config.SWING_CAPITAL + config.LONG_TERM_CAPITAL
+    start = state["starting_capital"] + config.SWING_CAPITAL + config.LONG_TERM_CAPITAL
+    return "\n".join([
+        "[MOCK] Dummy portfolio",
+        f"Intraday:  {inr(intraday)} (started {inr(state['starting_capital'])}, {inr(pnl, sign=True)}), live",
+        f"Swing:     {inr(config.SWING_CAPITAL)} reserved, starts in phase 3 (planned 7 Dec)",
+        f"Long-term: {inr(config.LONG_TERM_CAPITAL)} reserved, starts in phase 4 (planned 21 Dec)",
+        f"Total:     {inr(total)} of {inr(start)} ({inr(total - start, sign=True)})",
+        "Stopped with /stop: send /resume to restart." if state.get("stopped") else "",
+    ]).strip()
+
+
+def data_health(state, nifty) -> None:
+    """Flag stale prices during market hours (blocks new proposals) and tell the user once per episode;
+    also warn once a day if the news feed is more than 90 minutes behind."""
+    now = market.now_ist()
+    t = now.strftime("%H:%M")
+    live = now.weekday() < 5 and "09:30" <= t <= "15:25"
+    stale = False
+    if live:
+        last = (nifty or {}).get("time")
+        stale = (not last) or market.is_stale(last, config.DATA_STALE_MIN + 5)
+    if stale and not state.get("data_stale"):
+        tg.send(f"[MOCK] Data alert: market prices look stale (last Nifty candle "
+                f"{(nifty or {}).get('time', 'missing')}). No new proposals until fresh prices arrive; "
+                "open positions are still checked.")
+        journal("data_alert", note=f"stale prices, last Nifty candle {(nifty or {}).get('time')}")
+    elif not stale and state.get("data_stale"):
+        tg.send("[MOCK] Prices are fresh again; proposals allowed.")
+    state["data_stale"] = stale
+    if live and state.get("news_alert_day") != _today():
+        age = news.feed_age_min()
+        if age is None or age > 90:
+            state["news_alert_day"] = _today()
+            tg.send("[MOCK] Data alert: the company-news feed is "
+                    + ("unreachable" if age is None else f"{age} minutes old")
+                    + ". Proposals will say 'news unavailable' until it catches up.")
+            journal("data_alert", note=f"news feed age {age}")
 
 
 def answer_requests(state) -> int:
@@ -254,8 +313,18 @@ def answer_requests(state) -> int:
                         f"will make no proposals. Send /resume to undo.")
         elif ask == "resume":
             was = state.pop("paused_for", None)
+            stopped = state.pop("stopped", None)
             journal("resumed_by_user")
-            tg.send("[MOCK] Resumed: proposals allowed again." if was else "[MOCK] Nothing was paused.")
+            tg.send("[MOCK] Resumed: proposals allowed again." if (was or stopped) else "[MOCK] Nothing was paused.")
+        elif ask == "stop":
+            state["stopped"] = True
+            journal("stopped_by_user")
+            tg.send("[MOCK] Stopped: no new proposals in any pool until you send /resume, today or any later day. "
+                    "Open positions are still watched and closed by 15:10.")
+        elif ask == "portfolio":
+            tg.send(portfolio_text(state))
+        elif ask.startswith("news:"):
+            tg.send(news_text(ask.split(":", 1)[1]))
         elif ask == "nothing_pending":
             tg.send("[MOCK] There's no proposal waiting for an answer right now.")
         elif ask == "unknown":
@@ -354,8 +423,12 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     if (side == "BUY" and not (stop < entry < target)) or (side == "SELL" and not (target < entry < stop)):
         return False, "for BUY need stop < entry < target; for SELL need target < entry < stop", 0, 0, 0
     rr = round(abs(target - entry) / per_share, 2)
+    if state.get("stopped"):
+        return False, "stopped by you with /stop (send /resume to restart)", 0, 0, rr
     if is_paused(state):
         return False, "paused by you on Telegram (send /resume)", 0, 0, rr
+    if state.get("data_stale"):
+        return False, "prices look stale right now; no new proposals until they're fresh", 0, 0, rr
     if not in_entry_window():
         return False, f"outside entry window {config.ENTRY_START}-{config.ENTRY_END} IST (weekdays)", 0, 0, rr
     if symbol in state["positions"]:
@@ -437,7 +510,7 @@ def plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summa
 
 
 # -------------------------------------------------------------- proposals --
-def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news="none", summary="",
+def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news_note="none", summary="",
             ai_yes_pct=None):
     symbol, side = symbol.upper(), side.upper()
     ok, why, qty, risk_rs, rr = risk_gate(state, symbol, side, entry, stop, target)
@@ -462,13 +535,15 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         "",
         *advice["market_lines"],
         "",
+        *news.lines_for(symbol),
+        "",
         "Details:",
         f"Entry ~{entry:,.2f} | SL {stop:,.2f} | Target {target:,.2f}",
         f"Qty {qty} | Risk Rs {risk_rs:,.0f} ({risk_pct}%) | R:R {rr}",
         f"Uses {inr(need)} margin of {inr(state['balance'] - margin_used(state))} free",
         "Why:",
         *[f"{i}. {r}" for i, r in enumerate(reasons[:3], 1)],
-        f"News: {news}",
+        *([f"Agent's news note: {news_note}"] if news_note and news_note.strip().lower() != "none" else []),
         f"Invalid if: {invalid_if}",
         f"Valid until {valid_until.strftime('%H:%M:%S')} IST. Dummy money only.",
     ]
@@ -486,7 +561,8 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
             target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]),
             note=(f"suggested {advice['verdict']} {advice['yes_pct']}% | checks {advice['checks_pct']}%"
                   f" | agent {ai_yes_pct if ai_yes_pct is not None else '-'}%"
-                  f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '-'}"))
+                  f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '-'}"
+                  f" | mood {advice.get('mood') or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"))
     return {"status": "pending", "proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
             "suggestion": f"{advice['verdict']} {advice['yes_pct']}%",
             "valid_until": state["proposals"][pid]["valid_until"]}
