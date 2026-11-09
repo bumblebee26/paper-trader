@@ -14,6 +14,7 @@
 | 15:14 | Guardian: puts the swing pool's idle cash into NIFTYBEES (once; nothing to do afterwards) | `state/pools/swing.json` |
 | 15:40 | Guardian: report if none was sent; daily portfolio snapshot (circuit breaker at 12% below the peak) | `state/portfolio.json` |
 | every 2 min | Responder: answers Telegram commands when no session is live | — |
+| Sat 07:15 | GitHub Actions *Company fundamentals*: financials for ~250 large NSE companies → lakehouse `landing/fundamentals/` (feeds `stocks.gold.company_fundamentals`) | `fundamentals/date=<date>/fundamentals.jsonl` |
 | Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools) | `reports/weekly/<date>.json` |
 | 15:45 | Guardian: export the day's journal | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/` |
 
