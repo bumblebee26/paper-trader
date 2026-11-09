@@ -18,6 +18,10 @@ Dotted arrows: secrets read from SSM at runtime.
 
 ### Platform context
 
+![Platform at a glance](diagrams/platform_overview.png)
+
+In detail:
+
 ![Platform: stocks_lakehouse and paper-trader](diagrams/01_platform.png)
 
 This repo is half of a platform with [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse)
@@ -115,4 +119,5 @@ Same as stocks_lakehouse: work on `dev`, `main` only through pull requests, LF l
 
 Diagrams are Mermaid sources in `docs/diagrams/*.mmd` with the lakehouse's `theme.json`. After editing one,
 run `scripts/render_diagrams.sh` (needs `npm install -g @mermaid-js/mermaid-cli`) and commit the `.mmd`, `.svg`
-and `.png`. `01_platform.mmd` must stay identical to the lakehouse's `05_platform.mmd`.
+and `.png`. `01_platform.mmd` must stay identical to the lakehouse's `05_platform.mmd`. `platform_overview.png` isn't
+Mermaid: it's exported from the shared "Stocks Platform Architecture" doc, and the same image is in the lakehouse.
