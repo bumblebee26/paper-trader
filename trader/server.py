@@ -128,10 +128,12 @@ def run_cycle() -> dict:
 
 @mcp.tool()
 def propose_trade(symbol: str, side: str, setup: str, entry: float, stop: float, target: float,
-                  reasons: list[str], invalid_if: str, news: str = "none") -> dict:
+                  reasons: list[str], invalid_if: str, news: str = "none", summary: str = "") -> dict:
     """Risk gate + position size + Telegram proposal with YES/NO buttons. Returns proposal_id.
-    side: BUY or SELL. reasons: up to 3 short, number-based. Never invent news; use "none"."""
-    return _run(engine.propose, symbol, side, setup, entry, stop, target, reasons, invalid_if, news)
+    side: BUY or SELL. reasons: up to 3 short, number-based. Never invent news; use "none".
+    summary: one or two plain-English sentences for a non-trader (no jargon, no abbreviations) on why
+    this looks good and the main thing that could go wrong. Money amounts are added by code."""
+    return _run(engine.propose, symbol, side, setup, entry, stop, target, reasons, invalid_if, news, summary)
 
 
 @mcp.tool()

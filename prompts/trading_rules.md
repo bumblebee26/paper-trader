@@ -44,6 +44,11 @@ only if all of these hold:
 `propose_trade` needs: setup name, side, entry (the candidate's close), stop, target,
 reasons (max 3, number-based, include one honest risk if there is one),
 invalid_if (one concrete price condition), news ("none" unless a tool gave you news).
+summary: one or two plain-English sentences for someone who isn't a trader: what is happening in
+the market for this stock and the main thing that could go wrong. No jargon or abbreviations (say
+"today's average price", not "VWAP"; "the market", not "Nifty breadth"). Don't repeat money amounts;
+the code adds them. Example: "Banks are rising with the market today and this one just broke out with
+twice its usual buying. The risk: it's already up 2% today, so some buyers may take profits."
 If it returns `blocked`, move on.
 
 ## Approval flow
