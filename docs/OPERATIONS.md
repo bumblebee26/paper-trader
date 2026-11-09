@@ -15,6 +15,18 @@
 | every 2 min | Responder: answers Telegram commands when no session is live | — |
 | 15:45 | Guardian: export the day's journal | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/` |
 
+## Risk limits (intraday)
+
+| Limit | Default | Setting in `trader/config.py` |
+|---|---|---|
+| Trades per day | 10 (0 = no limit) | `MAX_TRADES_PER_DAY` |
+| Daily loss limit | Rs 10,000 of realized loss; lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_RS` (0 = use `DAILY_LOSS_LIMIT_PCT`) |
+| Cool-off | 30 min without new proposals after 3 losses in a row | `COOLOFF_AFTER_LOSSES`, `COOLOFF_MIN` |
+| Open positions | 3 in total, 1 per sector | `MAX_OPEN_POSITIONS`, `MAX_OPEN_PER_SECTOR` |
+| Trades per sector | 2 a day | `MAX_TRADES_PER_SECTOR` |
+| Position size | 1% risk (less when VIX is high), and at most 30% of the balance as margin | `RISK_PER_TRADE_PCT`, `MAX_POSITION_MARGIN_PCT` |
+| Focus list | up to 15 stocks, at least 6 sectors | `FOCUS_MAX`, morning prompt in `trader/session_ctl.py` |
+
 ## Making a change
 
 ```
@@ -26,7 +38,7 @@
 | To change | Edit |
 |---|---|
 | Trade selection rules, bias handling | `prompts/trading_rules.md` |
-| Default watchlist | `DEFAULT_WATCHLIST` in `trader/server.py` |
+| Watchlist and sectors | `trader/sectors.py` (36 stocks, 11 sectors; sector index for the market check) |
 | Risk limits, capital, costs, times | defaults in `trader/config.py` (or `env:` in the workflow) |
 | VIX → risk scaling, bias thresholds | `risk_for_vix` / `build_plan` in `trader/brief.py` |
 | Setups (ORB, VWAP, PDH/PDL) | `trader/scanner.py` |

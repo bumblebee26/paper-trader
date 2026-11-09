@@ -71,8 +71,15 @@ def allowed_user_id() -> str:
 STARTING_CAPITAL = _f("STARTING_CAPITAL", 100_000)
 RISK_PER_TRADE_PCT = _f("RISK_PER_TRADE_PCT", 1.0)
 MAX_OPEN_POSITIONS = _i("MAX_OPEN_POSITIONS", 3)
-MAX_TRADES_PER_DAY = _i("MAX_TRADES_PER_DAY", 5)
-DAILY_LOSS_LIMIT_PCT = _f("DAILY_LOSS_LIMIT_PCT", 2.0)
+MAX_TRADES_PER_DAY = _i("MAX_TRADES_PER_DAY", 10)        # 0 = no daily limit
+DAILY_LOSS_LIMIT_PCT = _f("DAILY_LOSS_LIMIT_PCT", 2.0)    # used only when DAILY_LOSS_LIMIT_RS is 0
+DAILY_LOSS_LIMIT_RS = _f("DAILY_LOSS_LIMIT_RS", 10_000)   # fixed rupee limit on the day's realized loss
+COOLOFF_AFTER_LOSSES = _i("COOLOFF_AFTER_LOSSES", 3)      # losses in a row that start a cool-off (0 = off)
+COOLOFF_MIN = _i("COOLOFF_MIN", 30)                       # minutes without new proposals
+MAX_POSITION_MARGIN_PCT = _f("MAX_POSITION_MARGIN_PCT", 30.0)  # one trade's margin, % of balance
+MAX_OPEN_PER_SECTOR = _i("MAX_OPEN_PER_SECTOR", 1)
+MAX_TRADES_PER_SECTOR = _i("MAX_TRADES_PER_SECTOR", 2)    # per day
+FOCUS_MAX = _i("FOCUS_MAX", 15)
 MIN_RR = _f("MIN_RR", 1.5)
 INTRADAY_LEVERAGE = _f("INTRADAY_LEVERAGE", 5.0)
 SLIPPAGE_PCT = _f("SLIPPAGE_PCT", 0.05)

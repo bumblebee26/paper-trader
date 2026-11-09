@@ -19,13 +19,13 @@ import config
 import engine
 import market
 import scanner
+import sectors
 import telegram_bot as tg
 
 mcp = _Server("paper-trader")
 
-DEFAULT_WATCHLIST = ["RELIANCE", "HDFCBANK", "ICICIBANK", "INFY", "TCS", "SBIN", "AXISBANK", "LT",
-                     "KOTAKBANK", "BHARTIARTL", "ITC", "HINDUNILVR", "BAJFINANCE", "MARUTI",
-                     "SUNPHARMA", "TATAMOTORS"]
+SCAN_PAUSE_SEC = 0.3
+DEFAULT_WATCHLIST = sectors.WATCHLIST  # 36 large caps across 11 sectors (trader/sectors.py)
 
 
 def _run(fn, *args, **kwargs):
@@ -50,9 +50,9 @@ def premarket_context() -> dict:
 @mcp.tool()
 def start_day(focus: list[str], plan: dict | None = None, send_to_telegram: bool = True) -> dict:
     """Lock in today's plan: risk per trade (from plan.risk_per_trade_pct, capped at the default)
-    and the focus list (max 10 NSE symbols). Sends the plan to Telegram."""
+    and the focus list (max 15 NSE symbols, spread across sectors). Sends the plan to Telegram."""
     plan = plan or {}
-    focus = [s.upper() for s in focus][:10]
+    focus = [s.upper() for s in focus][:config.FOCUS_MAX]
     result = _run(engine.start_day, plan, focus)
     if send_to_telegram:
         tg.send(brief.plan_message({**plan, "risk_per_trade_pct": result["risk_per_trade_pct"]}, focus))
@@ -81,7 +81,9 @@ def market_snapshot(symbols: list[str]) -> list[dict]:
 
 def _scan(symbols):
     found = []
-    for s in symbols:
+    for i, s in enumerate(symbols):
+        if i and i % 5 == 0:
+            time.sleep(SCAN_PAUSE_SEC)  # small batches, gentle on Yahoo's rate limits
         try:
             info = scanner.analyse(s)
             if info.get("signals"):

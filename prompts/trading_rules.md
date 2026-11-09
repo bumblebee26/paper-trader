@@ -44,6 +44,8 @@ only if all of these hold:
   target = entry +/- 2 x risk.
 - It fits the bias rules above.
 - At most 2 proposals per cycle; pick the strongest evidence.
+- Spread the risk: prefer a candidate in a sector with no trade yet today. The code allows 1 open position
+  per sector and 2 trades per sector a day, and a 30-minute cool-off after 3 losses in a row.
 
 ## Proposal content
 `propose_trade` needs: setup name, side, entry (the candidate's close), stop, target,

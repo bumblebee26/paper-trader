@@ -11,6 +11,7 @@ import advisor
 import config
 import market
 import reviewer
+import sectors
 import storage
 import telegram_bot as tg
 
@@ -58,6 +59,9 @@ def _new_day(state: dict) -> None:
     state["trades_today"] = 0
     state["realized_today"] = 0.0
     state["loss_limit_hit"] = False
+    state["loss_streak"] = 0
+    state["cooloff_until"] = None
+    state["sector_trades"] = {}
     for p in state["proposals"].values():
         if p["status"] in ("pending", "approved"):
             p["status"] = "expired"
@@ -264,7 +268,40 @@ def account(state: dict) -> dict:
 
 # -------------------------------------------------------------- risk gate --
 def loss_limit_rs(state) -> float:
+    if config.DAILY_LOSS_LIMIT_RS > 0:
+        return config.DAILY_LOSS_LIMIT_RS
     return state["day_start_balance"] * config.DAILY_LOSS_LIMIT_PCT / 100
+
+
+def trades_left_text(state) -> str:
+    if config.MAX_TRADES_PER_DAY <= 0:
+        return ""
+    used = state.get("trades_today", 0)
+    if used >= config.MAX_TRADES_PER_DAY:
+        return f", but all {config.MAX_TRADES_PER_DAY} trades for today are used"
+    return f" ({config.MAX_TRADES_PER_DAY - used} of {config.MAX_TRADES_PER_DAY} trades left today)"
+
+
+def in_cooloff(state) -> bool:
+    until = state.get("cooloff_until")
+    return bool(until) and _now() < until
+
+
+def record_result(state, net) -> None:
+    """Count losses in a row; after COOLOFF_AFTER_LOSSES of them, no new proposals for COOLOFF_MIN."""
+    if net >= 0:
+        state["loss_streak"] = 0
+        return
+    state["loss_streak"] = state.get("loss_streak", 0) + 1
+    n = config.COOLOFF_AFTER_LOSSES
+    if n > 0 and state["loss_streak"] % n == 0:
+        until = market.now_ist() + timedelta(minutes=config.COOLOFF_MIN)
+        state["cooloff_until"] = until.strftime("%Y-%m-%d %H:%M:%S")
+        tg.send(f"[MOCK] {state['loss_streak']} losses in a row, so a {config.COOLOFF_MIN}-minute cool-off: no new "
+                f"proposals until {until:%H:%M}. Open positions are still managed.\n"
+                "In plain words: a short break after a losing run, so the next trade isn't a reaction to the "
+                "last ones.")
+        journal("cooloff", note=f"{state['loss_streak']} losses in a row, until {until:%H:%M}")
 
 
 def loss_limit_reached(state) -> bool:
@@ -285,10 +322,7 @@ def check_loss_limit(state) -> None:
                 "trading resumes by itself.")
         journal("loss_limit_hit", pnl_rs=round(state["realized_today"], 2))
     else:
-        left = state.get("trades_today", 0)
-        more = (f" ({config.MAX_TRADES_PER_DAY - left} of {config.MAX_TRADES_PER_DAY} trades left today)"
-                if left < config.MAX_TRADES_PER_DAY else
-                f", but all {config.MAX_TRADES_PER_DAY} trades for today are used")
+        more = trades_left_text(state)
         tg.send(f"[MOCK] Back under the daily loss limit: today {today} (limit -{limit}). New proposals are "
                 f"allowed again{more}.")
         journal("loss_limit_cleared", pnl_rs=round(state["realized_today"], 2))
@@ -313,8 +347,18 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
         return False, f"already holding {symbol}", 0, 0, rr
     if len(state["positions"]) >= config.MAX_OPEN_POSITIONS:
         return False, "max open positions reached", 0, 0, rr
-    if state["trades_today"] >= config.MAX_TRADES_PER_DAY:
-        return False, "max trades for today reached", 0, 0, rr
+    if 0 < config.MAX_TRADES_PER_DAY <= state["trades_today"]:
+        return False, f"all {config.MAX_TRADES_PER_DAY} trades for today are used", 0, 0, rr
+    if in_cooloff(state):
+        return False, (f"cool-off after {state.get('loss_streak', 0)} losses in a row, until "
+                       f"{state['cooloff_until'][11:16]}"), 0, 0, rr
+    sec = sectors.sector(symbol)
+    open_in_sector = [s for s in state["positions"] if sectors.sector(s) == sec]
+    if len(open_in_sector) >= config.MAX_OPEN_PER_SECTOR:
+        return False, (f"already holding {', '.join(open_in_sector)} in {sec}; at most "
+                       f"{config.MAX_OPEN_PER_SECTOR} open per sector"), 0, 0, rr
+    if state.get("sector_trades", {}).get(sec, 0) >= config.MAX_TRADES_PER_SECTOR:
+        return False, f"already {config.MAX_TRADES_PER_SECTOR} {sec} trades today; pick another sector", 0, 0, rr
     if loss_limit_reached(state):
         return False, (f"daily loss limit reached (today {inr(state['realized_today'], sign=True)}, limit "
                        f"-{inr(loss_limit_rs(state))}); it lifts by itself if a winning exit brings the loss "
@@ -325,7 +369,9 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     qty = math.floor(risk_budget / per_share)
     free = state["balance"] - margin_used(state)
     max_qty_by_margin = math.floor(free * config.INTRADAY_LEVERAGE / entry)
-    qty = min(qty, max_qty_by_margin)
+    cap_margin = state["balance"] * config.MAX_POSITION_MARGIN_PCT / 100
+    max_qty_by_cap = math.floor(cap_margin * config.INTRADAY_LEVERAGE / entry)
+    qty = min(qty, max_qty_by_margin, max_qty_by_cap)
     if qty < 1:
         return False, "not enough free margin for even 1 share", 0, 0, rr
     return True, "ok", qty, round(qty * per_share, 2), rr
@@ -505,6 +551,8 @@ def execute(state, pid):
     state["realized_today"] -= costs(fill * p["qty"])
     check_loss_limit(state)
     state["trades_today"] += 1
+    sec = sectors.sector(p["symbol"])
+    state.setdefault("sector_trades", {})[sec] = state["sector_trades"].get(sec, 0) + 1
     state["positions"][p["symbol"]] = {
         "side": p["side"], "qty": p["qty"], "fill_price": fill, "stop": p["stop"],
         "target": p["target"], "opened_at": _now(), "setup": p["setup"], "proposal_id": pid,
@@ -546,6 +594,7 @@ def close(state, symbol, exit_price, reason, notify=True):
                 f"{'You made' if net > 0 else 'You lost'} {inr(abs(net))} on this trade, after fees.\n"
                 f"{ledger_line(state)}")
     check_loss_limit(state)
+    record_result(state, net)
     return {"status": "closed", "symbol": symbol, "exit_price": exit_fill, "pnl_rs": net}
 
 
