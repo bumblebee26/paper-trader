@@ -14,6 +14,7 @@ import subprocess
 
 import config
 import market
+import sectors
 import storage
 from http_client import log
 
@@ -66,6 +67,11 @@ def facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines
     if state.get("positions"):
         lines.append("Open positions: " + ", ".join(
             f"{p.get('side', '')} {s} @ {p.get('entry', p.get('fill_price', ''))}" for s, p in state["positions"].items()))
+    sec = sectors.sector(symbol)
+    same = [r for r in done if sectors.sector(r["symbol"]) == sec]
+    lines.append(f"Sector: {sec}; closed trades in this sector today: {len(same)}"
+                 + (" (" + "; ".join(f"{r['symbol']} P&L Rs {r['pnl_rs']}" for r in same) + ")" if same else ""))
+    lines.append(f"Losses in a row so far: {state.get('loss_streak', 0)}")
     lines.append(f"Realized P&L today: Rs {state.get('realized_today', 0):,.0f}")
     return "\n".join(lines)
 

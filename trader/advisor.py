@@ -6,14 +6,9 @@ reward vs risk, the pre-market bias). If Claude gives its own view (ai_yes_pct),
 The user always makes the final call.
 """
 import market
+import sectors
 
-SECTOR_INDEX = {
-    **{s: ("^NSEBANK", "Bank Nifty", "banks") for s in (
-        "HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "BANKBARODA", "PNB",
-        "FEDERALBNK", "IDFCFIRSTB", "AUBANK", "BANDHANBNK", "CANBK")},
-    **{s: ("^CNXIT", "Nifty IT", "IT companies") for s in (
-        "INFY", "TCS", "WIPRO", "HCLTECH", "TECHM", "LTIM", "MPHASIS", "PERSISTENT", "COFORGE")},
-}
+SECTOR_INDEX = sectors.SECTOR_INDEX
 FLAT_PCT = 0.15  # index moves smaller than this count as "flat"
 OK, WARN, INFO = "✅", "⚠️", "➖"
 

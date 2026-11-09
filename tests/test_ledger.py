@@ -1,9 +1,11 @@
 """Ledger details on Telegram: proposal margin line, fill/close ledger lines, LEDGER statement."""
 import unittest
+from unittest import mock
 from datetime import datetime
 
 from helpers import Env, minute_bars
 
+import config
 import engine
 
 
@@ -20,6 +22,11 @@ def hdfc_trade(env):
 
 
 class LedgerTest(unittest.TestCase):
+    def setUp(self):  # these tests check the money maths, not the 30% position cap
+        p = mock.patch.object(config, "MAX_POSITION_MARGIN_PCT", 100.0)
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_indian_rupees(self):
         self.assertEqual(engine.inr(100000), "Rs 1,00,000")
         self.assertEqual(engine.inr(1234567.4), "Rs 12,34,567")

@@ -1,6 +1,6 @@
 # paper-trader
 
-A **mock intraday trader for NSE stocks** with dummy money (Rs 1,00,000). Claude reads the market,
+A **mock intraday trader for NSE stocks** with dummy money (an Rs 40,000 intraday pool, part of an Rs 2,00,000 dummy portfolio). Claude reads the market,
 proposes trades with reasons on **Telegram**, and nothing happens unless you tap **YES**. No broker, demat
 or bank account is involved.
 
@@ -20,7 +20,7 @@ life of one trade).
 |---|---|
 | 08:45 | Lakehouse pre-market brief arrives on Telegram (unchanged) |
 | 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data, sends the day plan and focus list |
-| 09:20–12:25 | Every 5 minutes: check positions, scan the focus list, propose setups. You tap YES / NO |
+| 09:20–12:25 | Every 5 minutes: check positions, scan the focus list (up to 15 of 36 stocks across 11 sectors), propose setups. You tap YES / NO |
 | 12:27 | Afternoon session. New entries stop at 14:30 |
 | 15:10 | Everything squared off, then the day report |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |

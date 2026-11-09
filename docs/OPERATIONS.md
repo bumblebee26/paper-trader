@@ -15,6 +15,18 @@
 | every 2 min | Responder: answers Telegram commands when no session is live | — |
 | 15:45 | Guardian: export the day's journal | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/` |
 
+## Risk limits (intraday)
+
+| Limit | Default | Setting in `trader/config.py` |
+|---|---|---|
+| Trades per day | 10 (0 = no limit) | `MAX_TRADES_PER_DAY` |
+| Daily loss limit | Rs 10,000 of realized loss; lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_RS` (0 = use `DAILY_LOSS_LIMIT_PCT`) |
+| Cool-off | 30 min without new proposals after 3 losses in a row | `COOLOFF_AFTER_LOSSES`, `COOLOFF_MIN` |
+| Open positions | 3 in total, 1 per sector | `MAX_OPEN_POSITIONS`, `MAX_OPEN_PER_SECTOR` |
+| Trades per sector | 2 a day | `MAX_TRADES_PER_SECTOR` |
+| Position size | 1% risk (less when VIX is high), and at most 30% of the balance as margin | `RISK_PER_TRADE_PCT`, `MAX_POSITION_MARGIN_PCT` |
+| Focus list | up to 15 stocks, at least 6 sectors | `FOCUS_MAX`, morning prompt in `trader/session_ctl.py` |
+
 ## Making a change
 
 ```
@@ -26,7 +38,7 @@
 | To change | Edit |
 |---|---|
 | Trade selection rules, bias handling | `prompts/trading_rules.md` |
-| Default watchlist | `DEFAULT_WATCHLIST` in `trader/server.py` |
+| Watchlist and sectors | `trader/sectors.py` (36 stocks, 11 sectors; sector index for the market check) |
 | Risk limits, capital, costs, times | defaults in `trader/config.py` (or `env:` in the workflow) |
 | VIX → risk scaling, bias thresholds | `risk_for_vix` / `build_plan` in `trader/brief.py` |
 | Setups (ORB, VWAP, PDH/PDL) | `trader/scanner.py` |
@@ -48,7 +60,8 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | See today's plan again | Send `/plan` |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session, ~2 min otherwise |
-| Reset to Rs 1 lakh | Delete `state/ledger.json` from the state bucket |
+| Reset the intraday pool to Rs 40,000 | Delete `state/ledger.json` from the state bucket |
+| Resize a pool | Change `STARTING_CAPITAL` (intraday), `SWING_CAPITAL` or `LONG_TERM_CAPITAL` in `trader/config.py`; the next day the balance moves by the same amount, keeping the P&L so far |
 | Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`) |
 
 ```
