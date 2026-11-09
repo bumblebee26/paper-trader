@@ -84,7 +84,8 @@ def poll(state, wait=0) -> None:
             msg = u["message"]
             if str(msg.get("from", {}).get("id")) != allowed:
                 continue
-            parts = (msg.get("text") or "").strip().upper().split()
+            # "/ledger", "/exit@mock_26_trader_bot reliance" -> LEDGER, EXIT RELIANCE
+            parts = [w.lstrip("/").split("@")[0] for w in (msg.get("text") or "").strip().upper().split()]
             if len(parts) == 2 and parts[0] == "EXIT":
                 state.setdefault("exit_requests", []).append(parts[1])
             elif parts and parts[0] in ("LEDGER", "BALANCE", "STATUS"):

@@ -59,6 +59,15 @@ class LedgerTest(unittest.TestCase):
                 self.assertIn(part, stmt)
             self.assertFalse(st.get("ledger_requested"))
 
+    def test_slash_commands(self):
+        with Env(datetime(2026, 11, 9, 9, 50)) as env:
+            st, _ = hdfc_trade(env)
+            env.text("/LEDGER")
+            env.text("/exit@mock_26_trader_bot hdfcbank")
+            engine.monitor(st)
+            self.assertTrue(any(m.startswith("[MOCK] Ledger at") for m in env.sent))
+            self.assertNotIn("HDFCBANK", st["positions"])  # /exit closed it
+
 
 if __name__ == "__main__":
     unittest.main()
