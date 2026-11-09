@@ -23,6 +23,14 @@
   shows `HTTP 401` or `403`. Create a new fine-grained token (Actions: Read and write) and put it in SSM.
 - `HTTP 422 ... Workflow does not have 'workflow_dispatch' trigger`: the workflow must be on `main`.
 
+### The bot doesn't answer a command
+- During a session (09:08–15:25 IST): wait for the next 5-minute cycle (~30 s while waiting for a candle).
+- Outside sessions: the responder answers within ~2 minutes. Check it's on (`responder_enabled` in
+  `project.auto.tfvars`) and its log:
+  `aws logs tail /aws/lambda/stocks-trader-responder --since 30m --region ap-southeast-2`.
+- `Conflict: terminated by other getUpdates request` in that log right after 09:08 or 12:27 is harmless: a session
+  had just started and the responder stood back.
+
 ### "already ran today, skipping"
 A phase runs once per day. To re-run: delete `sessions/<date>/<phase>` from the state bucket.
 

@@ -112,12 +112,14 @@ def poll(state, wait=0) -> None:
             elif cmd == "PLAN":
                 asks.append("plan")
             elif cmd == "PAUSE":
-                state["paused"] = True
-                asks.append("paused")
+                asks.append("pause")
             elif cmd == "RESUME":
-                state["paused"] = False
-                asks.append("resumed")
+                asks.append("resume")
             elif cmd in ("YES", "NO"):
                 pending = [p for p, v in state.get("proposals", {}).items() if v["status"] == "pending"]
                 if pending:
                     state.setdefault("decisions", {}).setdefault(pending[-1], parts[0].lower())
+                else:
+                    asks.append("nothing_pending")
+            elif parts:
+                asks.append("unknown")

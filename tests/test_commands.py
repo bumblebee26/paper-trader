@@ -48,14 +48,14 @@ class CommandsTest(unittest.TestCase):
             self.assertEqual(engine.propose(st, "TCS", "BUY", "ORB long", 3000.0, 2990.0, 3020.0, ["a"], "x")["status"],
                              "pending")
 
-    def test_pause_resets_next_day(self):
+    def test_pause_lasts_only_its_day(self):
         with Env(datetime(2026, 11, 9, 10, 40)) as env:
             st = engine.load()
             env.text("/pause")
             engine.monitor(st)
             engine.save(st)
             env.clock = env.clock.replace(day=10)
-            self.assertFalse(engine.load()["paused"])
+            self.assertFalse(engine.account(engine.load())["paused_by_user"])
 
     def test_menu_lists_every_command(self):
         names = [c for c, _ in tg.COMMANDS]

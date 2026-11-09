@@ -96,7 +96,7 @@ resource "aws_iam_role_policy" "kicker" {
 # ----------------------------------------------------------------- scheduler --
 resource "aws_iam_role" "scheduler" {
   name               = "${local.prefix}-scheduler-role"
-  description        = "EventBridge Scheduler: invoke the kicker and guardian Lambdas only."
+  description        = "EventBridge Scheduler: invoke the trader Lambdas only."
   assume_role_policy = data.aws_iam_policy_document.scheduler_trust.json
 }
 
@@ -105,7 +105,7 @@ data "aws_iam_policy_document" "scheduler" {
     sid       = "InvokeTraderLambdas"
     effect    = "Allow"
     actions   = ["lambda:InvokeFunction"]
-    resources = [aws_lambda_function.kicker.arn, aws_lambda_function.guardian.arn]
+    resources = [aws_lambda_function.kicker.arn, aws_lambda_function.guardian.arn, aws_lambda_function.responder.arn]
   }
 }
 

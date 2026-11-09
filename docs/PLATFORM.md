@@ -53,6 +53,7 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 15:12 / 15:40 | Mon–Fri | Trader | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/`; pipeline builds the trading tables |
 | 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy for the day; pipeline refresh |
+| every 2 min | all week | Trader | Responder answers Telegram commands when no session is live |
 
 ## Components
 
@@ -74,6 +75,7 @@ there are no servers.
 | Trader state bucket | paper-trader | AWS S3 | Ledger, journal, plans, reports, exports |
 | Kicker Lambda | paper-trader | AWS Lambda | Starts each session on time via the GitHub API |
 | Guardian Lambda | paper-trader | AWS Lambda | No Claude: 15:12 square-off, 15:40 report, 15:45 export to the lakehouse |
+| Responder Lambda | paper-trader | AWS Lambda | Answers `/help`, `/ledger`, `/plan`, `/pause`, `/resume` outside sessions within ~2 min |
 
 ## Data flows and contracts
 
@@ -84,7 +86,8 @@ in the morning, and writes one JSON-lines file per day in the afternoon.
 |---|---|---|---|
 | Market data in | NSE, Massive, FRED → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 04:30, 06:00, 19:30 |
 | Pre-market context | gold tables → trader (`premarket_context`) | Read-only SQL on `nifty_after_us_moves_summary`, `global_snapshot`, `unusual_volume`, `silver.daily_bars` | ~09:10 |
-| Approvals | Trader ↔ Telegram | Proposal with YES/NO buttons; no reply in 3 min = skipped; `LEDGER` returns a money statement; `EXIT SYMBOL` closes | 09:20–14:30 |
+| Approvals | Trader ↔ Telegram | Proposal with YES/NO buttons; no reply in 3 min = skipped; `EXIT SYMBOL` closes | 09:20–14:30 |
+| Commands | You → Telegram → session or responder | `/help` (also "what can you do?"), `/ledger`, `/plan`, `/pause`, `/resume`, `/exit`. Telegram allows one reader: the session answers while live, the responder otherwise | any time |
 | Ledger | Trader ↔ S3 `state/ledger.json` | Read, change, write back on every tool call; versioned 30 days | all session |
 | Journal export | Trader → `landing/trades/date=YYYY-MM-DD/events.jsonl` | One line per event with unique `event_id` + `proposal_id`; last line `ledger_snapshot` | 15:45 |
 | Trading analysis | `trades_raw` → `trade_events` → `gold.trad*` | Newest copy per `event_id`; net P&L = exit `pnl_rs` − entry `fees_rs` | after 15:45 |
@@ -129,7 +132,7 @@ Each identity can do one job; no secret lives in code, and the only person with 
 | `stocks-gha-apply` | Both repos: apply on merge | Manage project services; IAM only for `stocks-*` roles and `stocks-gha-*` users |
 | `stocks-gha-trader` | Trading session | Read/write the trader state bucket (no delete); read Telegram + Databricks parameters |
 | Lakehouse Lambda roles | Fetchers, sync, pre-market | Their own bucket, parameters and the pusher token |
-| `stocks-trader-guardian-role` | Guardian Lambda | Trader state bucket; Telegram + Databricks push parameters |
+| `stocks-trader-guardian-role` | Guardian and responder Lambdas | Trader state bucket; Telegram + Databricks push parameters |
 | `stocks-trader-kicker-role` | Kicker Lambda | Read the GitHub dispatch token only |
 | Claude in a session | Trading session | Only the paper-trader MCP tools; no shell, files or web |
 

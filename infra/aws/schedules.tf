@@ -65,3 +65,29 @@ resource "aws_scheduler_schedule" "guard" {
     }
   }
 }
+
+# Every 2 minutes, all week. The handler exits at once while a session is live
+# (~1,700 of ~21,600 runs a month do any work), well inside the Lambda free tier.
+resource "aws_scheduler_schedule" "responder" {
+  name        = "${local.prefix}-responder"
+  description = "Answer Telegram commands when no trading session is running."
+  state       = var.responder_enabled ? "ENABLED" : "DISABLED"
+
+  schedule_expression          = "rate(2 minutes)"
+  schedule_expression_timezone = "Asia/Kolkata"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.responder.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({})
+
+    retry_policy {
+      maximum_retry_attempts       = 0
+      maximum_event_age_in_seconds = 60
+    }
+  }
+}

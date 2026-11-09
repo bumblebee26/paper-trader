@@ -12,6 +12,7 @@
 | 15:10 | Square-off, then end-of-day report | `reports/<date>.json` |
 | 15:12 | Guardian: square-off if no live session | — |
 | 15:40 | Guardian: report if none was sent | — |
+| every 2 min | Responder: answers Telegram commands when no session is live | — |
 | 15:45 | Guardian: export the day's journal | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/` |
 
 ## Making a change
@@ -43,10 +44,10 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Re-run a phase today | Delete `sessions/<date>/<phase>` from the state bucket, then Run workflow |
 | Skip trading today | Actions → Trading session → **Disable workflow** (enable it again afterwards) |
 | All commands | Send `/help` (or `/prompts`, or "what can you do?") on Telegram; they're also in the bot's `/` menu |
-| Stop new proposals for today | Send `/pause` (open positions are still managed); `/resume` to undo. Resets every morning |
+| Stop new proposals for a day | Send `/pause`: before 14:30 on a trading day it applies to today, otherwise to the next trading day. Open positions are still managed; `/resume` undoes it |
 | See today's plan again | Send `/plan` |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
-| See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session |
+| See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session, ~2 min otherwise |
 | Reset to Rs 1 lakh | Delete `state/ledger.json` from the state bucket |
 | Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`) |
 

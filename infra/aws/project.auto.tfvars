@@ -5,5 +5,8 @@
 # 15:12 square-off and 15:40 report backstops (no Claude needed).
 guardian_enabled = true
 
+# Responder: the bot answers /help, /ledger, /plan, /pause outside sessions (within ~2 min).
+responder_enabled = true
+
 # Kicker: start sessions at exact IST times. Turn on after the GitHub token is in SSM.
 dispatch_enabled = true
