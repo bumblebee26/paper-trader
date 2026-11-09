@@ -9,6 +9,7 @@ import sys
 
 import engine
 import market
+import nse_calendar
 import telegram_bot as tg
 
 PHASES = {
@@ -67,6 +68,7 @@ def main(argv):
         if now.weekday() >= 5:
             print("weekend, skipping")
             return 3
+        nse_calendar.refresh()  # NSE's live holiday list; also caches it for the Lambdas
         name = market.holiday(now)
         if name:
             print(f"NSE holiday ({name}), skipping")
