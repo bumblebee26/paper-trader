@@ -112,3 +112,7 @@ aws s3 rm s3://stocks-trader-state-<account-id>/state/ledger.json --region ap-so
 Two ~3-hour sessions a day use a noticeable part of a Pro plan's limits (shared with your chats). The
 rules keep calls minimal (one `run_cycle` + one wait per 5 minutes). If sessions stop on limits, the
 guardian still squares off; consider Max, a cheaper `CLAUDE_MODEL`, or only the morning session.
+
+Models (set in `.github/workflows/trading-session.yml`): the trading agent runs **Opus** (`CLAUDE_MODEL: opus`,
+from 10 Nov 2026) and the independent reviewer **Sonnet** (`REVIEWER_MODEL`). Opus uses the plan's limits
+noticeably faster than Sonnet; set `CLAUDE_MODEL: sonnet` to go back.
