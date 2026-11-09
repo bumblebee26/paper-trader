@@ -8,9 +8,9 @@ It builds on [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse)
 pre-market data (US move, India's usual opening gap after such days, VIX, unusual volume, ADRs) sets each
 day's risk level and focus list.
 
-![Platform: stocks_lakehouse and paper-trader across AWS, GitHub Actions, Databricks and Telegram](docs/diagrams/01_platform.png)
+![Platform at a glance: AWS Sydney, GitHub Actions and Databricks, meeting at the morning SQL read and the 15:45 journal export](docs/diagrams/platform_overview.png)
 
-The purple parts are this repo; the rest is [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse).
+Orange is this repo; blue is [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse).
 More pictures, each explained: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (this repo's architecture, the
 life of one trade).
 
@@ -58,6 +58,7 @@ edit on dev  ──push──▶  CI: tests, MCP check, terraform fmt + validate
 
 | Doc | Read it when |
 |---|---|
+| [docs/PLATFORM.md](docs/PLATFORM.md) | The whole platform with stocks_lakehouse: diagram, daily timeline, contracts, security, costs |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it fits together and why it's built this way |
 | [docs/SETUP.md](docs/SETUP.md) | Setting it up: every step in order, Windows commands |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Day to day: changes, rules, monitoring, secrets |
