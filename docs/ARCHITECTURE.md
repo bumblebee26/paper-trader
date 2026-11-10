@@ -19,17 +19,10 @@ Dotted arrows: secrets read from SSM at runtime.
 
 ### Platform context
 
-![Platform at a glance](diagrams/platform_overview.png)
-
-In detail:
-
-![Platform: stocks_lakehouse and paper-trader](diagrams/01_platform.png)
-
-This repo is half of a platform with [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse)
-(purple = this repo). The two meet at a few fixed points: the session reads gold before the open and the news
-file during the day, the guardian sends the journal and portfolio snapshot back at 15:45, and the Saturday
-fundamentals job sends company financials. The same diagram is in the lakehouse as `docs/diagrams/05_platform.mmd`.
-The written overview of both repos together is [PLATFORM.md](PLATFORM.md).
+This repo is half of a platform with [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse).
+The two meet at a few fixed points: the session reads gold before the open and the news file during the day,
+the guardian sends the journal and portfolio snapshot back at 15:45, and the Saturday fundamentals job sends
+company financials. Both repos together, with their diagrams: [PLATFORM.md](PLATFORM.md).
 
 ### The life of one trade
 
@@ -58,7 +51,6 @@ would have made.
 | **Long-term shadow** (`jobs/longterm_shadow.py`) | GitHub Actions, Saturdays 10:15 IST, no Claude. Reads this week's picks from `stocks.gold.longterm_candidates` and acts in a shadow ledger (`state/pools/long_term_shadow.json`, never in the portfolio totals): buys the next pick (two on a 5%+ Nifty dip), sells what stops qualifying, trims above 18%. Telegram report with reasons; weekly snapshot in `shadow/longterm/`. |
 | **Backtests** (`backtest/`) | Manual GitHub Actions jobs, no Claude, results to Telegram and `backtests/` in the state bucket. `swing.py` / `run_swing.py`: swing rules on NSE daily prices (failed: swing on hold). `longterm.py` / `run_longterm.py`: the long-term selection as of 1 Jul 2025 (and a 2026 re-pick) vs NIFTYBEES; `--universe=traded` picks from the most traded stocks of Apr–Jun 2025 to remove index-list hindsight. |
 | **Company fundamentals** (`jobs/fundamentals.py`) | GitHub Actions, Saturdays 07:15 IST, no Claude. Reads NSE's Nifty 200 list (falls back to the 250 most traded NSE stocks if it can't), adds the watchlist, fetches 4 years of annual and recent quarterly figures from Yahoo, and pushes them to `landing/fundamentals/` and the list itself to `landing/index_members/`. The lakehouse builds `company_fundamentals` and `longterm_candidates` from them. |
-| **Swing backtest** (`backtest/`) | Manual GitHub Actions run, no Claude: tests the swing rules on the lakehouse's NSE daily prices and sends a plain-words summary to Telegram. |
 | **CI/CD** | Same as stocks_lakehouse: checks on every push, plan on PR, apply on merge to `main`. |
 
 ## Why it's built this way

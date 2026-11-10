@@ -244,7 +244,7 @@ def reset_breaker():
 def summary_lines(intraday_state):
     lines = []
     for name, label, phase in (("swing", "Swing", "rules on hold; to be held in NIFTYBEES"),
-                               ("long_term", "Long-term", "phase 4, planned 21 Dec")):
+                               ("long_term", "Long-term", "shadow mode until the 18 Dec review")):
         p = refresh_prices(load(name))
         eq = equity(p)
         if list(p["holdings"]) == [s for s in p["holdings"] if s in INDEX_FUNDS] and p["holdings"]:

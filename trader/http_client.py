@@ -44,9 +44,3 @@ def request(method, url, *, headers=None, data=None, retries=3, backoff_seconds=
 
 def get_json(url, **kw):
     return json.loads(request("GET", url, **kw))
-
-
-def post_json(url, payload, *, headers=None, **kw):
-    h = {"Content-Type": "application/json"}
-    h.update(headers or {})
-    return json.loads(request("POST", url, headers=h, data=json.dumps(payload).encode(), **kw))

@@ -1,4 +1,4 @@
-"""Phase 1 intraday limits: Rs 10k loss limit, 10 trades, cool-off, sector and position caps."""
+"""Phase 1 intraday limits: Rs 4,000 loss limit, 10 trades, cool-off, sector and position caps."""
 import unittest
 
 from helpers import Env

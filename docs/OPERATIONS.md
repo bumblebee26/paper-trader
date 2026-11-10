@@ -1,6 +1,6 @@
 # Operations
 
-## What runs on its own (IST, Mon–Fri)
+## What runs on its own (IST)
 
 | Time | Job | Writes |
 |---|---|---|
@@ -14,9 +14,9 @@
 | 15:14 | Guardian: puts the swing pool's idle cash into NIFTYBEES (once; nothing to do afterwards) | `state/pools/swing.json` |
 | 15:40 | Guardian: report if none was sent; daily portfolio snapshot (circuit breaker at 12% below the peak) | `state/portfolio.json` |
 | 15:45 | Guardian: export the day's journal and a portfolio snapshot (every pool and holding, swing and long-term prices refreshed) | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/`; `exports/portfolio/date=<date>/portfolio.jsonl` + volume `portfolio/` |
-| Sat 10:15 | GitHub Actions *Long-term shadow*: what the long-term pool would buy or sell this week (shadow ledger `state/pools/long_term_shadow.json`, never in the real portfolio); Telegram report | `shadow/longterm/<date>.json` |
 | Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools) | `reports/weekly/<date>.json` |
 | Sat 07:15 | GitHub Actions *Company fundamentals*: NSE's Nifty 200 list (the 250 most traded NSE stocks if the list can't be read) plus the watchlist; financials → lakehouse `landing/fundamentals/` (feeds `stocks.gold.company_fundamentals`), the list → `landing/index_members/` | `fundamentals/date=<date>/fundamentals.jsonl`, `index_members/date=<date>/nifty200.jsonl` |
+| Sat 10:15 | GitHub Actions *Long-term shadow*: what the long-term pool would buy or sell this week (shadow ledger `state/pools/long_term_shadow.json`, never in the real portfolio); Telegram report | `shadow/longterm/<date>.json` |
 | every 2 min | Responder: answers Telegram commands when no session is live | — |
 
 **NSE holidays.** Fetched live from NSE's own list (`nseindia.com/api/holiday-master`, `trader/nse_calendar.py`):
@@ -58,7 +58,7 @@ when it finds no prices.
 | Setups (ORB, VWAP, PDH/PDL) | `trader/scanner.py` |
 | Session times | `trader/session_ctl.py`, `infra/aws/schedules.tf`, cron in `trading-session.yml` |
 | Kicker / guardian on or off | `infra/aws/project.auto.tfvars` |
-| Model | `CLAUDE_MODEL` in `trading-session.yml` |
+| Models | `CLAUDE_MODEL` (trading agent) and `REVIEWER_MODEL` in `trading-session.yml` |
 
 Run tests with `python -m unittest discover -s tests` and `terraform fmt -recursive infra` before pushing.
 
@@ -75,12 +75,12 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Stop new proposals for a day | Send `/pause`: before 14:30 on a trading day it applies to today, otherwise to the next trading day. Open positions are still managed; `/resume` undoes it |
 | See today's plan again | Send `/plan` |
 | A company's latest filings | Send `/news SYMBOL` (NSE announcements, results, board meetings; from the lakehouse news feed) |
-| All pools | Send `/portfolio`: intraday (live), swing Rs 60,000 and long-term Rs 1,00,000 (reserved) |
+| All pools | Send `/portfolio`: intraday (live), swing Rs 60,000 (held in NIFTYBEES) and long-term Rs 1,00,000 (shadow mode until the 18 Dec review) |
 | Kill switch | Send `/stop`: no new proposals on any day until `/resume`; open positions are still managed |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session, ~2 min otherwise |
 | Reset the intraday pool to Rs 40,000 | Delete `state/ledger.json` from the state bucket |
-| Pool ledgers | Swing and long-term: `state/pools/<pool>.json` and `journal/pools/<pool>/<date>.csv` (trading starts in phases 3 and 4) |
+| Pool ledgers | Swing, long-term and the long-term shadow: `state/pools/<pool>.json` and `journal/pools/<pool>/<date>.csv` |
 | Resize a pool | Change `STARTING_CAPITAL` (intraday), `SWING_CAPITAL` or `LONG_TERM_CAPITAL` in `trader/config.py`; the next day the balance moves by the same amount, keeping the P&L so far |
 | Fetch company fundamentals now | Actions → Company fundamentals → Run workflow (tick *dry run* to only print) |
 | Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`). A single `date` also writes a portfolio snapshot under that date, taken from the pools as they are now; a range re-sends journals only |
@@ -94,7 +94,7 @@ aws s3 rm s3://stocks-trader-state-<account-id>/state/ledger.json --region ap-so
 | Check | How |
 |---|---|
 | Session log | GitHub → Actions → Trading session → the run |
-| Fundamentals / backtest runs | GitHub → Actions → Company fundamentals or Swing backtest → the run |
+| Saturday jobs and backtests | GitHub → Actions → Company fundamentals, Long-term shadow, Swing backtest or Long-term backtest → the run |
 | Today's journal | `aws s3 cp s3://stocks-trader-state-<account-id>/journal/<date>.csv - --region ap-southeast-2` |
 | Ledger | `aws s3 cp s3://stocks-trader-state-<account-id>/state/ledger.json - --region ap-southeast-2` |
 | Guardian / kicker logs | `aws logs tail /aws/lambda/stocks-trader-guardian --since 1h --region ap-southeast-2` |

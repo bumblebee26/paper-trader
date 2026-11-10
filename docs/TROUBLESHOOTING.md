@@ -92,4 +92,5 @@ the guardian log (`portfolio export failed: ...`). Fix the cause, then re-send t
 payload in OPERATIONS "Manual runs".
 
 ### No Nifty candle for today
-Market holiday: the morning session sends "No market today" and stops.
+Usually a market holiday that NSE's holiday list didn't cover (or the list couldn't be read: see
+`state/nse_holidays.json`). The session finds no prices and stops by 09:30; nothing is traded.
