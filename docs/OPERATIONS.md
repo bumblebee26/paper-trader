@@ -67,7 +67,7 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Want to | Do |
 |---|---|
 | Test without trading | Actions → Trading session → Run workflow → `test` |
-| Long-term backtest | Actions → Long-term backtest → Run workflow (about 2 min, no Claude): the phase 4 selection as of 1 Jul 2025, held to today, vs NIFTYBEES. Results in `backtests/longterm/<date>.json` |
+| Long-term backtest | Actions → Long-term backtest → Run workflow (about 2 min, no Claude): the phase 4 selection as of 1 Jul 2025, held to today, vs NIFTYBEES. Universe `nifty200` (default, today's index list) or `traded` (the 250 most traded stocks of Apr–Jun 2025, no hindsight). Results in `backtests/longterm/<date>.json` |
 | Swing backtest | Actions → Swing backtest → Run workflow (about 2 min, no Claude). Mode `study` (default) tunes 16 rule versions on 15 May 2025–30 Apr 2026 and judges the best once on the months from 1 May 2026, against the original rules and holding NIFTYBEES; `original` runs the first four variants over the whole period. Telegram summary; full results in `backtests/swing/<date>.json` in the state bucket |
 | Re-run a phase today | Delete `sessions/<date>/<phase>` from the state bucket, then Run workflow |
 | Skip trading today | Actions → Trading session → **Disable workflow** (enable it again afterwards) |
@@ -116,8 +116,8 @@ Two ~3-hour sessions a day use a noticeable part of a Pro plan's limits (shared 
 rules keep calls minimal (one `run_cycle` + one wait per 5 minutes). If sessions stop on limits, the
 guardian still squares off; consider Max, a cheaper `CLAUDE_MODEL`, or only the morning session.
 
-Models (set in `.github/workflows/trading-session.yml`): the trading agent runs **Opus** (`CLAUDE_MODEL: opus`,
-from 10 Nov 2026) and the independent reviewer **Sonnet** (`REVIEWER_MODEL`). Opus uses the plan's limits
+Models (set in `.github/workflows/trading-session.yml`): the trading agent runs **Opus** (`CLAUDE_MODEL: opus`)
+and the independent reviewer **Sonnet** (`REVIEWER_MODEL`). Opus uses the plan's limits
 noticeably faster than Sonnet; set `CLAUDE_MODEL: sonnet` to go back.
 
 ## Security checks
@@ -131,7 +131,7 @@ secrets. Findings are in the repository's **Security → Code scanning** tab and
 | zizmor | Attacks on GitHub Actions: script injection, over-broad tokens, risky triggers, unpinned actions | High severity |
 | Checkov | Risky Terraform settings: public buckets, wide IAM, missing encryption | Report only; reviewed exceptions with reasons in `.checkov.yaml` |
 | pip-audit (paper-trader) | Known vulnerabilities in `requirements.txt` | Any |
-| Dependabot | Weekly grouped update PRs for actions (and pip) | — |
+| Dependabot | Saturday grouped update PRs for actions and pip, minor and patch versions only (majors by hand); the Terraform plan is skipped on its PRs (no secrets) | — |
 
 Every action is pinned to a commit hash with its version in a comment, so a hijacked tag can't swap in
 other code; Dependabot keeps the hashes current. Turn on in **Settings → Code security**: secret scanning
