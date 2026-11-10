@@ -119,3 +119,21 @@ guardian still squares off; consider Max, a cheaper `CLAUDE_MODEL`, or only the 
 Models (set in `.github/workflows/trading-session.yml`): the trading agent runs **Opus** (`CLAUDE_MODEL: opus`,
 from 10 Nov 2026) and the independent reviewer **Sonnet** (`REVIEWER_MODEL`). Opus uses the plan's limits
 noticeably faster than Sonnet; set `CLAUDE_MODEL: sonnet` to go back.
+
+## Security checks
+
+`.github/workflows/security.yml` runs on every pull request, on main and every Monday 03:47 IST; it uses no
+secrets. Findings are in the repository's **Security → Code scanning** tab and in each job's log.
+
+| Check | Looks for | Fails the PR on |
+|---|---|---|
+| CodeQL (Python, workflows) | Injection, request forgery, unsafe deserialisation, secrets in logs | High severity (`.github/scripts/sarif_summary.py`) |
+| zizmor | Attacks on GitHub Actions: script injection, over-broad tokens, risky triggers, unpinned actions | High severity |
+| Checkov | Risky Terraform settings: public buckets, wide IAM, missing encryption | Report only; reviewed exceptions with reasons in `.checkov.yaml` |
+| pip-audit (paper-trader) | Known vulnerabilities in `requirements.txt` | Any |
+| Dependabot | Weekly grouped update PRs for actions (and pip) | — |
+
+Every action is pinned to a commit hash with its version in a comment, so a hijacked tag can't swap in
+other code; Dependabot keeps the hashes current. Turn on in **Settings → Code security**: secret scanning
+with push protection, Dependabot alerts and security updates.
+
