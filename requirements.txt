@@ -1,4 +1,4 @@
 # Trading session (GitHub Actions) and laptop MCP mode. The Lambdas need none of these:
 # the trader code itself is standard library + boto3.
-mcp>=1.2.0
+mcp>=2.3.0
 boto3
