@@ -5,8 +5,9 @@ name: Security
 #   CodeQL    Python and the workflow files: injection, unsafe deserialisation, leaked secrets in logs, ...
 #   zizmor    GitHub Actions attacks: script injection from inputs, over-broad tokens, risky triggers
 #   Checkov   Terraform: risky AWS / Databricks settings (public buckets, wide IAM, missing encryption)
-# Findings appear under the repository's Security tab -> Code scanning. CodeQL and zizmor (high
-# severity) fail the check; Checkov reports only, see .checkov.yaml for the reviewed skips.
+# Findings appear under the repository's Security tab -> Code scanning and in each job's log. CodeQL
+# and zizmor fail the check on high severity; Checkov reports only (reviewed exceptions in .checkov.yaml).
+# Actions are pinned to commit hashes (a moved tag can't swap in other code); Dependabot updates them.
 on:
   pull_request:
   push:
@@ -36,17 +37,20 @@ jobs:
       matrix:
         language: [python, actions]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: github/codeql-action/init@v4
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: ${{ matrix.language }}
           build-mode: none
           queries: security-extended
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:${{ matrix.language }}
+          output: codeql-results
+      - name: List findings (fails on high severity)
+        run: python3 .github/scripts/sarif_summary.py codeql-results
 
   workflows:
     name: Workflow attacks (zizmor)
@@ -56,16 +60,16 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
       - run: pip install -q "zizmor>=1,<2"
       - name: Report all findings
         run: zizmor --format sarif . > zizmor.sarif || true
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: zizmor.sarif
           category: zizmor
@@ -80,16 +84,16 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
       - run: pip install -q checkov
       - name: Scan infra/
         run: checkov --config-file .checkov.yaml -d infra --output cli --output sarif --output-file-path console,checkov.sarif --soft-fail
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         if: always() && hashFiles('checkov.sarif') != ''
         with:
           sarif_file: checkov.sarif
@@ -100,10 +104,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
       - run: pip install -q pip-audit

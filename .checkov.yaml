@@ -1,6 +1,33 @@
-# Checkov settings for the Security workflow. Skips are reviewed decisions, each with its reason.
+# Checkov settings for the Security workflow (report only). Each skip is a reviewed decision for a
+# dummy-money project on the AWS free plan; anything not listed still shows up in Code scanning.
 framework:
   - terraform
 compact: true
 quiet: true
-skip-check: []
+skip-check:
+  # Cost: a customer-managed KMS key is ~$1/month each; AWS-managed encryption is already on for
+  # S3, CloudWatch Logs, Lambda environment variables, SSM SecureStrings and EventBridge Scheduler.
+  - CKV_AWS_145   # S3 encrypted with KMS (SSE-S3 is on)
+  - CKV_AWS_158   # CloudWatch log group KMS
+  - CKV_AWS_173   # Lambda environment variables KMS (no secrets in env; secrets are in SSM)
+  - CKV_AWS_297   # EventBridge Scheduler CMK
+  - CKV_AWS_337   # SSM parameters with a CMK (SecureStrings use the AWS-managed key)
+  - CKV2_AWS_34   # SSM String parameters: only the workspace URL and warehouse ID, not secrets
+  # Cost or no benefit at this size
+  - CKV_AWS_117   # Lambda in a VPC: needs a NAT gateway (~$35/month) to reach the internet
+  - CKV_AWS_116   # Lambda dead-letter queue: failures already alert on Telegram / retry on schedule
+  - CKV_AWS_115   # reserved concurrency: a new account's 10-execution limit can't be reserved from
+  - CKV_AWS_50    # X-Ray tracing
+  - CKV_AWS_272   # Lambda code signing: code is deployed only by Terraform from main
+  - CKV_AWS_338   # 1-year log retention: logs are kept 14-30 days to stay in the free tier
+  - CKV_AWS_18    # S3 access logging
+  - CKV_AWS_144   # S3 cross-region replication
+  - CKV2_AWS_62   # S3 event notifications
+  # GitHub CI uses IAM users with access keys kept in protected GitHub environments (main only).
+  # Planned improvement: GitHub OIDC roles instead of long-lived keys.
+  - CKV_AWS_273   # IAM users instead of SSO
+  - CKV_AWS_40    # policies attached to users
+  # The Terraform apply user must manage IAM; it is limited to stocks-* roles and stocks-gha-* users,
+  # with read-only IAM elsewhere, and its key exists only in the main-only "production" environment.
+  - CKV_AWS_356
+  - CKV2_AWS_40
