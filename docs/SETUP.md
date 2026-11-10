@@ -3,20 +3,9 @@
 Builds on a working **stocks_lakehouse** (its state bucket, Telegram parameters and CI users). Windows
 Command Prompt commands; run them from `C:\D Drive\Claude Code`. About 45 minutes.
 
-## Part A: Clean up the first attempt
+## Part A: AWS stack
 
-The first design created things that don't fit the free plan.
-
-1. **Delete the `terraform` IAM user** (it has AdministratorAccess and long-lived keys):
-   AWS console → IAM → Users → `terraform` → **Delete** (confirm). Nothing else used it.
-2. Remove its keys from your laptop: open `%USERPROFILE%\.aws\credentials` and delete the `[default]`
-   block if it holds that user's keys.
-3. Delete your old `paper-trader\infrastructure\terraform.tfvars` (it holds your Telegram and Claude
-   tokens in plain text). That folder is gone from the repo.
-
-## Part B: AWS stack
-
-### B1. Sign in (same as the lakehouse)
+### A1. Sign in (same as the lakehouse)
 
 ```
 aws login --profile stocks --region ap-southeast-2
@@ -25,7 +14,7 @@ for /f "delims=" %i in ('aws configure export-credentials --profile stocks --for
 aws sts get-caller-identity
 ```
 
-### B2. Get the code
+### A2. Get the code
 
 ```
 cd "C:\D Drive\Claude Code\paper-trader"
@@ -34,7 +23,7 @@ git checkout dev
 git pull
 ```
 
-### B3. Create the stack
+### A3. Create the stack
 
 ```
 cd infra\aws
@@ -50,22 +39,23 @@ terraform init -backend-config=backend.hcl
 terraform apply
 ```
 
-Expect about **26 resources**: the state bucket, two Lambdas, four schedules (kicker ones disabled),
-IAM roles, the `stocks-gha-trader` user and one SSM placeholder. Note the outputs.
+Expect about 30 resources: the state bucket, three Lambdas (kicker, guardian, responder) and their
+schedules (kicker ones disabled until Part F), IAM roles, the `stocks-gha-trader` user and one SSM
+placeholder. Note the outputs.
 
 Commit the new `infra\aws\.terraform.lock.hcl` to `dev` so CI uses the same provider versions.
 
-## Part C: Secrets
+## Part B: Secrets
 
-### C1. Session access key
+### B1. Session access key
 
 ```
 aws iam create-access-key --user-name stocks-gha-trader
 ```
 
-Keep the `AccessKeyId` and `SecretAccessKey` for D3.
+Keep the `AccessKeyId` and `SecretAccessKey` for C3.
 
-### C2. Claude token (Pro/Max)
+### B2. Claude token (Pro/Max)
 
 ```
 claude setup-token
@@ -73,7 +63,7 @@ claude setup-token
 
 Sign in in the browser; copy the `sk-ant-oat01-...` token. It lasts a year: add a calendar reminder.
 
-### C3. GitHub token for the kicker
+### B3. GitHub token for the kicker
 
 GitHub → your picture → **Settings → Developer settings → Personal access tokens → Fine-grained tokens →
 Generate new token**:
@@ -85,7 +75,7 @@ Generate new token**:
 aws ssm put-parameter --name /stocks-trader/github-dispatch-token --type SecureString --overwrite --value YOUR_GITHUB_TOKEN --region ap-southeast-2
 ```
 
-### C4. CI keys for this repo
+### B4. CI keys for this repo
 
 GitHub won't show the lakehouse's secret values again, so give this repo its own keys for the same two
 users (an IAM user can have two keys):
@@ -95,9 +85,9 @@ aws iam create-access-key --user-name stocks-gha-plan
 aws iam create-access-key --user-name stocks-gha-apply
 ```
 
-## Part D: GitHub
+## Part C: GitHub
 
-### D1. Make the repo public
+### C1. Make the repo public
 
 **Settings → General → Danger Zone → Change visibility → Public.** The repo holds no secrets (they're in
 SSM and GitHub secrets). This enables branch rules on a free account and unlimited Actions minutes.
@@ -105,7 +95,7 @@ SSM and GitHub secrets). This enables branch rules on a free account and unlimit
 Then **Settings → Actions → General → Fork pull request workflows from outside collaborators** →
 **Require approval for all outside collaborators**.
 
-### D2. Branch rules (same as the lakehouse)
+### C2. Branch rules (same as the lakehouse)
 
 **Settings → Rules → Rulesets → New branch ruleset**, name `protect-main`:
 - Enforcement **Active**, Target **Include default branch**.
@@ -114,36 +104,36 @@ Then **Settings → Actions → General → Fork pull request workflows from out
 - Tick **Require status checks to pass** and add: `Python tests and MCP server`, `terraform fmt`,
   `terraform validate (aws)` (they appear after CI has run once on `dev`).
 
-### D3. Secrets and variables
+### C3. Secrets and variables
 
 **Settings → Secrets and variables → Actions:**
 
 | Tab | Name | Value |
 |---|---|---|
 | Variables | `TF_STATE_BUCKET` | `stocks-lakehouse-tfstate-<account-id>` |
-| Variables | `TRADER_STATE_BUCKET` | output `state_bucket` from B3 |
-| Secrets | `AWS_PLAN_ACCESS_KEY_ID`, `AWS_PLAN_SECRET_ACCESS_KEY` | `stocks-gha-plan` key from C4 |
+| Variables | `TRADER_STATE_BUCKET` | output `state_bucket` from A3 |
+| Secrets | `AWS_PLAN_ACCESS_KEY_ID`, `AWS_PLAN_SECRET_ACCESS_KEY` | `stocks-gha-plan` key from B4 |
 
 **Settings → Environments:**
 
 | Environment | Secrets |
 |---|---|
-| `production` | `AWS_APPLY_ACCESS_KEY_ID`, `AWS_APPLY_SECRET_ACCESS_KEY` (`stocks-gha-apply` key from C4) |
-| `trading` | `AWS_TRADER_ACCESS_KEY_ID`, `AWS_TRADER_SECRET_ACCESS_KEY` (C1), `CLAUDE_CODE_OAUTH_TOKEN` (C2) |
+| `production` | `AWS_APPLY_ACCESS_KEY_ID`, `AWS_APPLY_SECRET_ACCESS_KEY` (`stocks-gha-apply` key from B4) |
+| `trading` | `AWS_TRADER_ACCESS_KEY_ID`, `AWS_TRADER_SECRET_ACCESS_KEY` (B1), `CLAUDE_CODE_OAUTH_TOKEN` (B2) |
 
 For both environments, under **Deployment branches and tags** choose **Selected branches** → `main`.
 
-## Part E: First pull request
+## Part D: First pull request
 
-Open a PR from `dev` into `main`. CI runs, and a comment shows the `terraform plan`. If B3 was applied,
+Open a PR from `dev` into `main`. CI runs, and a comment shows the `terraform plan`. If A3 was applied,
 expect **No changes** (or only a Lambda code re-upload). Merge it.
 
-## Part F: Test a session
+## Part E: Test a session
 
 GitHub → **Actions → Trading session → Run workflow** → branch `main`, phase **test**.
 
 Within about 3 minutes Telegram shows:
-`[MOCK] GitHub session OK. Dummy balance Rs 100000. Lakehouse data: stocks_lakehouse gold tables. Prices: ok ...`
+`[MOCK] GitHub session OK. Dummy balance Rs 40000. Lakehouse data: stocks_lakehouse gold tables. Prices: ok ...`
 
 | If it says | Do |
 |---|---|
@@ -151,7 +141,7 @@ Within about 3 minutes Telegram shows:
 | `Prices:` with an error | Yahoo is blocking GitHub runners; tell Claude to switch the data source |
 | Nothing arrives | Open the run's log in the Actions tab |
 
-## Part G: Turn on exact-time starts
+## Part F: Turn on exact-time starts
 
 On `dev`, set `dispatch_enabled = true` in `infra/aws/project.auto.tfvars`, push, open a PR, merge.
 From then on sessions start at 09:08 and 12:27 IST; GitHub's cron stays as a backup.

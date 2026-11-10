@@ -68,8 +68,8 @@ def allowed_user_id() -> str:
 
 
 # --- dummy money and risk rules ---
-# Dummy pools: Rs 2,00,000 in total, split 20% / 30% / 50%. Only the intraday pool trades today;
-# swing and long-term are planned (see the system plan, phases 3 and 4).
+# Dummy pools: Rs 2,00,000 in total, split 20% / 30% / 50%. Intraday trades; swing is held in NIFTYBEES
+# (its rules failed their backtests); long-term runs in shadow mode (docs/SYSTEM_PLAN.md, phases 3 and 4).
 STARTING_CAPITAL = _f("STARTING_CAPITAL", 40_000)          # intraday pool
 SWING_CAPITAL = _f("SWING_CAPITAL", 60_000)
 LONG_TERM_CAPITAL = _f("LONG_TERM_CAPITAL", 100_000)
