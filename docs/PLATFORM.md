@@ -44,7 +44,7 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 
 | Time (IST) | Days | System | What happens |
 |---|---|---|---|
-| 04:30 | Tue–Sat | Lakehouse | Massive: previous US session, all US stocks |
+| 04:30 | Tue–Sat | Lakehouse | Massive: previous US session, all US stocks (07:30 retry catches up any missed day) |
 | 06:00 | Tue–Sat | Lakehouse | FRED: indices, FX, VIX, oil, rates (21-day window) |
 | every 30 min, 08:00–19:30 | Mon–Fri | Lakehouse | NSE company news to the news volume (`latest.jsonl`, read by the trader) |
 | 08:45 | Mon–Fri | Lakehouse | Pre-market brief to Telegram |
@@ -96,7 +96,7 @@ portfolio), and two per week on Saturdays (fundamentals and the Nifty 200 list).
 
 | Flow | From → to | Contract | When |
 |---|---|---|---|
-| Market data in | NSE, Massive, FRED → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 04:30, 06:00, 19:30 |
+| Market data in | NSE, Massive, FRED → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 04:30 (+07:30 retry), 06:00, 19:30 |
 | Pre-market context | gold tables → trader (`premarket_context`) | Read-only SQL on `nifty_after_us_moves_summary`, `global_snapshot`, `unusual_volume`, `silver.daily_bars` | ~09:10 |
 | Company news | news volume `date=YYYY-MM-DD/latest.jsonl` → trader | Read through the Files API (today and the last day), cached 10 min; failure = "news unavailable" | every proposal, `/news` |
 | Approvals | Trader ↔ Telegram | Proposal with YES/NO buttons; no reply in 3 min = skipped; `EXIT SYMBOL` closes | 09:20–14:30 |
