@@ -42,7 +42,9 @@ env:
 jobs:
   plan:
     name: plan (aws)
-    if: github.event_name == 'pull_request'
+    # Dependabot PRs get no repository secrets, so there is nothing to plan with; merging one still
+    # plans with real credentials in the apply job before anything changes.
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
