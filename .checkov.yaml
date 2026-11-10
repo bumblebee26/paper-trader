@@ -1,0 +1,6 @@
+# Checkov settings for the Security workflow. Skips are reviewed decisions, each with its reason.
+framework:
+  - terraform
+compact: true
+quiet: true
+skip-check: []

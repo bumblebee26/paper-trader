@@ -1,0 +1,19 @@
+# Weekly update PRs for GitHub Actions and Python packages, grouped to keep the noise low.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    groups:
+      python:
+        patterns: ["*"]
