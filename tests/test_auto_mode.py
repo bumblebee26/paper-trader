@@ -1,0 +1,136 @@
+"""Auto mode: the suggestion decides, the user rates with 👍/👎, every limit still applies."""
+import unittest
+from datetime import datetime
+from unittest import mock
+
+from helpers import Env, minute_bars
+
+import config
+import engine
+import storage
+import telegram_bot as tg
+import track
+
+DAY = datetime(2026, 11, 12, 10, 40)
+
+
+def journal_rows(event):
+    return [r for r in storage.read_rows("journal/2026-11-12.csv") if r["event"] == event]
+
+
+class AutoModeTest(unittest.TestCase):
+    def setUp(self):
+        p = mock.patch.object(config, "AUTO_MODE_DEFAULT", True)
+        self.addCleanup(p.stop)
+        self.start = p
+
+    def env(self, when=DAY):
+        env = Env(when)
+        env.__enter__()
+        self.addCleanup(env.__exit__, None, None, None)
+        self.start.start()                       # after Env, so auto mode is on for these tests
+        return env
+
+    def propose(self, env, st, symbol="HDFCBANK", yes=95, price=1600.0):
+        env.prices[symbol] = price
+        return engine.propose(st, symbol, "BUY", "ORB long", price, price * 0.99, price * 1.02,
+                              ["broke the opening range on 2x volume"], "back below 1590",
+                              summary="Banks are rising with the market.", ai_yes_pct=yes,
+                              ai_reason="Strong breakout in a rising sector.")
+
+    def test_high_suggestion_is_placed_without_asking(self):
+        env = self.env()
+        st = engine.load()
+        r = self.propose(env, st, yes=95)
+        self.assertEqual(r["status"], "approved")
+        msg = env.sent[-1]
+        for part in ("AUTO · BUY HDFCBANK", "placing it now", "Why proposed:", "- Banks are rising with the market.",
+                     "Why 78% YES", "- Trading agent 95%: Strong breakout in a rising sector.",
+                     "- Independent reviewer"):
+            self.assertIn(part, msg)
+        self.assertEqual(engine.execute(st, r["proposal_id"])["status"], "filled")
+        self.assertIn("mode auto", journal_rows("proposed")[0]["note"])
+
+    def test_low_suggestion_is_skipped_and_its_outcome_recorded(self):
+        env = self.env()
+        st = engine.load()
+        r = self.propose(env, st, yes=5)
+        self.assertEqual(r["status"], "skipped_auto")
+        self.assertIn("skipped", env.sent[-1])
+        self.assertEqual(journal_rows("rejected")[0]["user_reply"], "AUTO-NO")
+        self.assertEqual(engine.execute(st, r["proposal_id"])["status"], "refused")
+        env.bars[("HDFCBANK", "1m")] = minute_bars(datetime(2026, 11, 12, 10, 41), [(1600, 1633, 1599, 1632)])
+        env.clock = datetime(2026, 11, 12, 15, 20)
+        engine.report(st)
+        self.assertEqual(journal_rows("passed_outcome")[0]["user_reply"], "auto_skipped")
+
+    def test_feedback_and_exit_buttons(self):
+        env = self.env()
+        st = engine.load()
+        r = self.propose(env, st, yes=95)
+        engine.execute(st, r["proposal_id"])
+        env.tap("fb:like", r["proposal_id"])
+        env.tap("x", r["proposal_id"])
+        env.prices["HDFCBANK"] = 1605.0
+        engine.monitor(st)
+        fb = journal_rows("user_feedback")
+        self.assertEqual((fb[0]["proposal_id"], fb[0]["user_reply"]), (r["proposal_id"], "like"))
+        self.assertEqual(st["proposals"][r["proposal_id"]]["feedback"], "like")
+        self.assertNotIn("HDFCBANK", st["positions"])            # EXIT button closed it
+        self.assertEqual(st["decisions"], {})                    # a like is never an approval
+
+    def test_commands_toggle_auto_mode(self):
+        env = self.env()
+        st = engine.load()
+        env.text("/auto off")
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertFalse(engine.auto_on(st))
+        self.assertIn("Auto mode OFF", env.sent[-1])
+        self.assertEqual(self.propose(env, st)["status"], "pending")   # human mode again
+        env.text("/auto on")
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertTrue(engine.auto_on(st))
+        self.assertEqual(len(journal_rows("auto_mode_on")), 1)
+
+    def test_six_trade_cap_and_weekly_brake_turns_it_off(self):
+        env = self.env()
+        st = engine.load()
+        st["trades_today"] = 6
+        ok, why, *_ = engine.risk_gate(st, "TCS", "BUY", 3000.0, 2970.0, 3060.0)
+        self.assertFalse(ok)
+        self.assertIn("all 6 trades for today are used (auto mode)", why)
+        st["trades_today"] = 0
+        with mock.patch.object(config, "WEEKLY_LOSS_LIMIT_R", 8.0):
+            st["week"]["realized"] = -9000.0
+            engine.check_weekly_brake(st)
+        self.assertFalse(engine.auto_on(st))
+        self.assertIn("Auto mode is now OFF because of the weekly brake", env.sent[-1])
+
+    def test_midday_summary_once(self):
+        env = self.env(datetime(2026, 11, 12, 12, 31))
+        st = engine.load()
+        engine.monitor(st)
+        engine.monitor(st)
+        self.assertEqual(sum("Midday summary" in m for m in env.sent), 1)
+
+    def test_track_record_shown_with_counts(self):
+        env = self.env()
+        st = engine.load()
+        track._cache = [
+            {"dimension": "setup", "value": "ORB long", "trades": 11, "wins": 3, "win_rate_pct": 27.3,
+             "avg_outcome_rs": -85.0, "total_outcome_rs": -935.0},
+            {"dimension": "yes_band", "value": "70-79%", "trades": 4, "wins": 3, "win_rate_pct": 75.0,
+             "avg_outcome_rs": 120.0, "total_outcome_rs": 480.0},
+        ]
+        self.propose(env, st, yes=95)
+        msg = env.sent[-1]
+        self.assertIn("ORB long: won 3 of 11, average -Rs 85", msg)
+        self.assertIn("Suggestions of 70-79%: won 3 of 4, average +Rs 120 (too few to judge)", msg)
+        judged = {r["value"]: r["judged"] for r in track.for_claude()}
+        self.assertEqual(judged, {"ORB long": True, "70-79%": False})
+
+
+if __name__ == "__main__":
+    unittest.main()

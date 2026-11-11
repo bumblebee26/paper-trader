@@ -18,6 +18,7 @@ import advisor
 import brief
 import config
 import engine
+import track
 import market
 import news
 import scanner
@@ -37,10 +38,14 @@ _run = engine.run_tool
 def premarket_context() -> dict:
     """Today's pre-market context from the stocks_lakehouse gold tables (US move, India's usual
     opening gap after such US days, VIX and risk level, unusual-volume NSE names, ADR moves).
-    Call once at the start of the day, then call start_day."""
+    Also: track_record (how past proposals turned out by setup, hour, mood, suggestion band, reviewer
+    verdict, mode and the user's 👍/👎; rows with judged=false have too few outcomes to act on) and
+    auto_mode. Call once at the start of the day, then call start_day."""
     data, failed = brief.fetch()
     plan = brief.build_plan(data, failed)
     plan["default_watchlist"] = DEFAULT_WATCHLIST
+    plan["track_record"] = track.for_claude()
+    plan["auto_mode"] = engine.auto_on(engine.load())
     return plan
 
 
@@ -148,16 +153,19 @@ def company_news(symbol: str) -> dict:
 @mcp.tool()
 def propose_trade(symbol: str, side: str, setup: str, entry: float, stop: float, target: float,
                   reasons: list[str], invalid_if: str, news: str = "none", summary: str = "",
-                  ai_yes_pct: int | None = None) -> dict:
-    """Risk gate + position size + Telegram proposal with YES/NO buttons. Returns proposal_id.
+                  ai_yes_pct: int | None = None, ai_reason: str = "") -> dict:
+    """Risk gate + position size + Telegram proposal. Returns proposal_id and a status:
+    pending (human mode: call wait_for_decision), approved (auto mode, suggestion high enough: call
+    execute_approved_trade now), skipped_auto (auto mode, suggestion too low: move on), or blocked.
     side: BUY or SELL. reasons: up to 3 short, number-based. news: leave "none" (code adds the company's
     NSE filings from the lakehouse itself); only add a note if company_news showed something that matters.
     summary: one or two plain-English sentences for a non-trader (no jargon, no abbreviations) on why
     this looks good and the main thing that could go wrong. Money amounts are added by code.
-    ai_yes_pct: your honest 0-100 view of whether the user should say YES. Code adds live Nifty, Sensex and
-    sector checks and shows the user one combined suggestion; the user decides."""
+    ai_yes_pct: your honest 0-100 view of whether this trade should be taken. ai_reason: one short sentence
+    on why that number (shown to the user as the trading agent's reason). Code adds live Nifty, Sensex and
+    sector checks and the independent reviewer, and combines the three into one suggestion."""
     return _run(engine.propose, symbol, side, setup, entry, stop, target, reasons, invalid_if, news, summary,
-                ai_yes_pct)
+                ai_yes_pct, ai_reason)
 
 
 @mcp.tool()

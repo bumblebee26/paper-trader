@@ -153,7 +153,9 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
 
     checks_pct = int(round(max(5, min(95, 50 + sum(p for _, _, p in checks)))))
     market_lines = ["Market check:", *[f"{icon} {text}" for icon, text, _ in checks]]
-    out = {"checks_pct": checks_pct, "market_lines": market_lines, "mood": mood,
+    weighty = sorted((c for c in checks if c[2]), key=lambda c: -abs(c[2]))[:2]
+    top_checks = [f"{text} ({pts:+d})" for _, text, pts in weighty]
+    out = {"checks_pct": checks_pct, "market_lines": market_lines, "mood": mood, "top_checks": top_checks,
            "shadow": shadow_blocks(side, nifty_pct, mood, market.now_ist())}
     return combine(out, ai_yes_pct, None)
 

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import advisor
 import config
 import exits
+import track
 import market
 import news
 import pools
@@ -245,10 +246,11 @@ Commands (with or without the /):
 /stop  kill switch: no new proposals at all until /resume (open positions still managed)
 /pause  no new proposals for the day; open positions are still managed. After 14:30, at weekends or on holidays it applies to the next trading day
 /resume  allow new proposals again (undoes /pause and /stop)
+/auto on | /auto off  auto mode: trades with a suggestion of at least 55% YES are placed without asking you (you rate them with 👍/👎); off = every trade needs your YES
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
-On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30, each needs your YES within 3 min; stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
+On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30 (auto mode: placed if 55%+ YES; otherwise each needs your YES within 3 min); stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
 During sessions (09:08-15:25 IST) I reply within seconds; at other times within about 2 minutes. Dummy money only."""
 
 
@@ -333,8 +335,35 @@ def data_health(state, nifty) -> None:
             journal("data_alert", note=f"news feed age {age}")
 
 
+def auto_on(state) -> bool:
+    return bool(state.get("auto_mode", config.AUTO_MODE_DEFAULT))
+
+
+def trade_cap(state) -> int:
+    return config.AUTO_MAX_TRADES_PER_DAY if auto_on(state) else config.MAX_TRADES_PER_DAY
+
+
+def set_auto(state, on: bool, reason="by you") -> None:
+    state["auto_mode"] = on
+    journal("auto_mode_on" if on else "auto_mode_off", note=reason)
+
+
+def record_feedback(state) -> int:
+    """Journal the user's 👍/👎 taps (feedback on auto-mode decisions; never changes a trade)."""
+    taps = state.pop("feedback", {}) or {}
+    for pid, kind in taps.items():
+        p = state["proposals"].get(pid, {})
+        if p:
+            p["feedback"] = kind
+        journal("user_feedback", event_id=f"fb-{pid}", proposal_id=pid, symbol=p.get("symbol", ""),
+                setup=p.get("setup", ""), side=p.get("side", ""), user_reply=kind,
+                note=f"decision {p.get('user_reply', '?')} at suggestion {p.get('suggested_yes_pct', '?')}%")
+    return len(taps)
+
+
 def answer_requests(state) -> int:
-    """Reply to Telegram commands that came in (ledger, help, plan, pause, resume)."""
+    """Reply to Telegram commands that came in (ledger, help, plan, pause, resume, auto)."""
+    record_feedback(state)
     asks = list(dict.fromkeys(state.pop("requests", [])))
     for ask in asks:
         if ask == "ledger":
@@ -366,6 +395,16 @@ def answer_requests(state) -> int:
             journal("stopped_by_user")
             tg.send("[MOCK] Stopped: no new proposals in any pool until you send /resume, today or any later day. "
                     "Open positions are still watched and closed by 15:10.")
+        elif ask in ("auto_on", "auto_off"):
+            on = ask == "auto_on"
+            set_auto(state, on)
+            tg.send(f"[MOCK] Auto mode ON: proposals with a suggestion of {config.AUTO_MIN_YES_PCT:g}% YES or more are "
+                    f"placed straight away (max {config.AUTO_MAX_TRADES_PER_DAY} trades a day); the rest are skipped. "
+                    "Rate each with 👍/👎, or tap EXIT to close one. Every limit still applies. /auto off to approve "
+                    "each trade yourself." if on else
+                    "[MOCK] Auto mode OFF: every trade needs your YES again (3 minutes to answer).")
+        elif ask == "auto_status":
+            tg.send(f"[MOCK] Auto mode is {'ON' if auto_on(state) else 'OFF'}. Send /auto on or /auto off.")
         elif ask == "portfolio":
             tg.send(portfolio_text(state))
         elif ask.startswith("news:"):
@@ -456,6 +495,10 @@ def check_weekly_brake(state) -> None:
             "dig a deep hole.")
     journal("weekly_brake", pnl_rs=round(week_realized(state), 2),
             note=f"risk per trade x{config.WEEKLY_BRAKE_FACTOR} until Monday")
+    if auto_on(state):
+        set_auto(state, False, reason="weekly brake")
+        tg.send("[MOCK] Auto mode is now OFF because of the weekly brake: each trade needs your YES until you send "
+                "/auto on.")
 
 
 def trades_left_text(state) -> str:
@@ -539,8 +582,9 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
         return False, f"already holding {symbol}", 0, 0, rr
     if len(state["positions"]) >= config.MAX_OPEN_POSITIONS:
         return False, "max open positions reached", 0, 0, rr
-    if 0 < config.MAX_TRADES_PER_DAY <= state["trades_today"]:
-        return False, f"all {config.MAX_TRADES_PER_DAY} trades for today are used", 0, 0, rr
+    if 0 < trade_cap(state) <= state["trades_today"]:
+        return False, (f"all {trade_cap(state)} trades for today are used"
+                       + (" (auto mode)" if auto_on(state) else "")), 0, 0, rr
     if in_cooloff(state):
         return False, (f"cool-off after {state.get('loss_streak', 0)} losses in a row, until "
                        f"{state['cooloff_until'][11:16]}"), 0, 0, rr
@@ -637,7 +681,7 @@ def plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summa
 
 # -------------------------------------------------------------- proposals --
 def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news_note="none", summary="",
-            ai_yes_pct=None):
+            ai_yes_pct=None, ai_reason=""):
     symbol, side = symbol.upper(), side.upper()
     ok, why, qty, risk_rs, rr = risk_gate(state, symbol, side, entry, stop, target)
     if not ok:
@@ -650,48 +694,94 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     need = qty * entry / config.INTRADAY_LEVERAGE
     advice = advisor.assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct)
     review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"])
-    if review:
-        advice = advisor.combine(advice, ai_yes_pct, review)
+    advice = advisor.combine(advice, ai_yes_pct, review)
+    yes = advice["yes_pct"]
+    auto = auto_on(state)
+    place = auto and yes >= config.AUTO_MIN_YES_PCT
     valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)  # after the review
+    mood = advice.get("mood")
+    hour = market.now_ist().strftime("%H")
+
+    if not auto:
+        head = [f"[MOCK] {side} {symbol}  ({setup})", advice["lines"][0]]
+    elif place:
+        head = [f"[MOCK] AUTO · {side} {symbol}  ({setup}): placing it now",
+                f"Decision: TRADE at {advice['verdict']} {yes}% (auto mode trades from "
+                f"{config.AUTO_MIN_YES_PCT:g}%). Rate it with 👍/👎; EXIT closes it."]
+    else:
+        head = [f"[MOCK] AUTO · {side} {symbol}  ({setup}): skipped",
+                f"Decision: SKIP at {advice['verdict']} {yes}% (auto mode trades from "
+                f"{config.AUTO_MIN_YES_PCT:g}%). Rate the skip with 👍/👎; what it would have made is in the "
+                "day report."]
+    why_proposed = ["Why proposed:"]
+    if summary:
+        why_proposed.append(f"- {summary.strip()}")
+    why_proposed += [f"- {r}" for r in reasons[:3]]
+    if news_note and news_note.strip().lower() != "none":
+        why_proposed.append(f"- News: {news_note}")
+    why_pct = [f"Why {yes}% YES (the average of these scores; not the chance of profit):",
+               f"- Live checks {advice['checks_pct']}%: "
+               + ("; ".join(advice.get("top_checks") or []) or "no strong signal either way")]
+    if ai_yes_pct is not None:
+        why_pct.append(f"- Trading agent {int(round(float(ai_yes_pct)))}%: {ai_reason.strip() or 'no reason given'}")
+    why_pct.append(f"- Independent reviewer {review['verdict']} {review['yes_pct']}%: {review['why']}" if review
+                   else "- Independent reviewer: unavailable this time (not counted)")
+    record = track.lines_for(setup, yes, mood, hour)
+
     lines = [
-        f"[MOCK] {side} {symbol}  ({setup})",
-        *advice["lines"],
-        "",
-        *plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summary),
-        "",
-        *advice["market_lines"],
-        "",
-        *news.lines_for(symbol),
-        "",
+        *head, "",
+        *why_proposed, "",
+        *why_pct,
+        *([""] + record if record else []), "",
+        *plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, ""), "",
+        *advice["market_lines"], "",
+        *news.lines_for(symbol), "",
         "Details:",
         f"Entry ~{entry:,.2f} | SL {stop:,.2f} | Target {target:,.2f}",
         f"Qty {qty} | Risk Rs {risk_rs:,.0f} ({risk_pct}%) | R:R {rr}",
         f"Uses {inr(need)} margin of {inr(state['balance'] - margin_used(state))} free",
-        "Why:",
-        *[f"{i}. {r}" for i, r in enumerate(reasons[:3], 1)],
-        *([f"Agent's news note: {news_note}"] if news_note and news_note.strip().lower() != "none" else []),
         f"Invalid if: {invalid_if}",
-        f"Valid until {valid_until.strftime('%H:%M:%S')} IST. Dummy money only.",
+        (f"Valid until {valid_until.strftime('%H:%M:%S')} IST. Dummy money only." if not auto
+         else "Dummy money only."),
     ]
     text = "\n".join(lines)
-    msg_id = tg.send(text, buttons=[("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")])
+    if not auto:
+        buttons = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
+    else:
+        buttons = [("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}")]
+        if place:
+            buttons.append(("EXIT", f"x:{pid}"))
+    msg_id = tg.send(text, buttons=buttons)
     state["proposals"][pid] = {
         "day": _today(), "symbol": symbol, "side": side, "setup": setup, "entry": entry,
         "stop": stop, "target": target, "qty": qty, "risk_rs": risk_rs, "rr": rr,
         "reasons": reasons[:3], "invalid_if": invalid_if, "status": "pending",
         "sent_at": _now(), "valid_until": valid_until.strftime("%Y-%m-%d %H:%M:%S"),
-        "message_id": msg_id, "text": text, "suggested_yes_pct": advice["yes_pct"],
-        "review": review,
+        "message_id": msg_id, "text": text, "suggested_yes_pct": yes,
+        "review": review, "mode": "auto" if auto else "human",
     }
     journal("proposed", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
             target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]),
-            note=(f"suggested {advice['verdict']} {advice['yes_pct']}% | checks {advice['checks_pct']}%"
+            note=(f"suggested {advice['verdict']} {yes}% | checks {advice['checks_pct']}%"
                   f" | agent {ai_yes_pct if ai_yes_pct is not None else '-'}%"
                   f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '-'}"
-                  f" | mood {advice.get('mood') or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"))
-    return {"status": "pending", "proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
-            "suggestion": f"{advice['verdict']} {advice['yes_pct']}%",
-            "valid_until": state["proposals"][pid]["valid_until"]}
+                  f" | mood {mood or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"
+                  f" | mode {'auto' if auto else 'human'}"))
+    base = {"proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
+            "suggestion": f"{advice['verdict']} {yes}%"}
+    p = state["proposals"][pid]
+    if auto:
+        p["decided_at"] = _now()
+        if place:
+            p["status"], p["user_reply"] = "approved", "AUTO"
+            return {**base, "status": "approved", "auto": True,
+                    "next": "auto mode: call execute_approved_trade now (no wait_for_decision needed)"}
+        p["status"], p["user_reply"] = "rejected", "AUTO-NO"
+        journal("rejected", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
+                target=target, user_reply="AUTO-NO", note=f"suggestion {yes}% below {config.AUTO_MIN_YES_PCT:g}%")
+        return {**base, "status": "skipped_auto", "auto": True,
+                "next": "auto mode skipped it (suggestion below the threshold); move on"}
+    return {**base, "status": "pending", "valid_until": p["valid_until"]}
 
 
 def _expired(p) -> bool:
@@ -849,6 +939,8 @@ def monitor(state):
         if hit:
             events.append(close(state, sym, hit[0], hit[1]))
 
+    _midday_summary(state)
+
     if past_square_off() and state["positions"]:
         for sym in list(state["positions"]):
             price, _ = market.last_price(sym)
@@ -861,6 +953,26 @@ def monitor(state):
             tg.edit(p["message_id"], p["text"] + "\n\n-> Expired with no reply (3 minutes). Not placed, no money used.")
             journal("expired", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], user_reply="none")
     return {"events": events, "account": account(state)}
+
+
+def _midday_summary(state) -> None:
+    """Auto mode: one short summary at MIDDAY_SUMMARY_AT so the user doesn't have to follow every message."""
+    now = market.now_ist()
+    if not auto_on(state) or now.strftime("%H:%M") < config.MIDDAY_SUMMARY_AT or now.strftime("%H:%M") > "15:10":
+        return
+    if state.get("midday_sent") == _today():
+        return
+    state["midday_sent"] = _today()
+    today = [p for p in state["proposals"].values() if p.get("day") == _today()]
+    placed = [p for p in today if p.get("user_reply") == "AUTO"]
+    skipped = [p for p in today if p.get("user_reply") == "AUTO-NO"]
+    rated = sum(1 for p in today if p.get("feedback"))
+    lines = [f"[MOCK] Midday summary (auto mode): {len(placed)} placed, {len(skipped)} skipped, "
+             f"{state['trades_today']}/{trade_cap(state)} trades used.",
+             f"Realized today {inr(state['realized_today'], sign=True)}; "
+             f"{len(state['positions'])} open position(s): {', '.join(state['positions']) or 'none'}.",
+             f"You rated {rated} of {len(today)} decisions so far (👍/👎 on each message)."]
+    tg.send("\n".join(lines))
 
 
 # ----------------------------------------------------------------- report --
@@ -901,7 +1013,8 @@ def report(state, send=True):
         # Fixed event_id: re-running the report doesn't double-count in Databricks.
         journal("passed_outcome", event_id=f"passed-{pid}", proposal_id=pid, symbol=p["symbol"],
                 setup=p["setup"], side=p["side"], qty=p["qty"], risk_rs=p["risk_rs"], pnl_rs=pnl,
-                user_reply=p["status"], note="what this skipped proposal would have made")
+                user_reply="auto_skipped" if p.get("mode") == "auto" else p["status"],
+                note="what this skipped proposal would have made")
     summary = {
         "date": _today(),
         "signals_blocked_by_risk_gate": count("blocked_by_risk_gate"),
@@ -951,6 +1064,7 @@ def report(state, send=True):
         if hypo:
             lines.append(f"Passed trades would have made: Rs {sum(hypo.values()):,.0f}")
         lines += _shadow_exit_lines(summary)
+        lines += _auto_lines(state)
         if summary["open_positions"]:
             lines.append(f"WARNING still open: {', '.join(summary['open_positions'])}")
         tg.send("\n".join(lines))
@@ -990,6 +1104,17 @@ def _shadow_exits(state, rows) -> dict:
                 note=f"skipped {lock['skipped']} trades; actual {lock['day_actual']}")
         out["profit_lock"] = lock
     return out
+
+
+def _auto_lines(state) -> list:
+    today = [p for p in state["proposals"].values() if p.get("day") == _today() and p.get("mode") == "auto"]
+    if not today:
+        return []
+    placed = sum(1 for p in today if p.get("user_reply") == "AUTO")
+    likes = sum(1 for p in today if p.get("feedback") == "like")
+    dislikes = sum(1 for p in today if p.get("feedback") == "dislike")
+    return [f"Auto mode: {placed} placed, {len(today) - placed} skipped. Your ratings: {likes} 👍, {dislikes} 👎, "
+            f"{len(today) - likes - dislikes} not rated (you can still rate them on each message)."]
 
 
 def _shadow_exit_lines(summary) -> list:

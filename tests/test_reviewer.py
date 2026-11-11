@@ -46,10 +46,10 @@ class ReviewerTest(unittest.TestCase):
                                ["SECRET-REASON broke OR high"], "x", summary="SECRET-SUMMARY looks great",
                                ai_yes_pct=80)
             msg = env.sent[-1]
-            self.assertIn("Independent reviewer says NO: Third bank buy today while the market falls.", msg)
-            self.assertIn("From: checks", msg)
-            self.assertIn("trading agent 80%", msg)
-            self.assertIn("reviewer 20%", msg)
+            self.assertIn("Independent reviewer NO 20%: Third bank buy today while the market falls.", msg)
+            self.assertIn("- Live checks 60%", msg)
+            self.assertIn("- Trading agent 80%", msg)
+            self.assertIn("Why 53% YES", msg)
             prompt = run.prompts[0]
             self.assertIn("Trade: BUY", prompt)
             self.assertIn("HDFCBANK", prompt)
@@ -80,7 +80,7 @@ class ReviewerTest(unittest.TestCase):
                 st = engine.load()
                 r = engine.propose(st, "TCS", "SELL", "VWAP rejection", 3000.0, 3010.0, 2980.0, ["a"], "x")
                 self.assertEqual(r["status"], "pending")
-                self.assertNotIn("Independent reviewer", env.sent[-1])
+                self.assertIn("Independent reviewer: unavailable this time (not counted)", env.sent[-1])
 
 
 if __name__ == "__main__":
