@@ -32,12 +32,23 @@ when it finds no prices.
 | Limit | Default | Setting in `trader/config.py` |
 |---|---|---|
 | Trades per day | 10 (0 = no limit) | `MAX_TRADES_PER_DAY` |
-| Daily loss limit | Rs 4,000 of realized loss (10% of the Rs 40,000 pool); lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_RS` (0 = use `DAILY_LOSS_LIMIT_PCT`) |
+| 1R (one trade's risk) | Start-of-day balance × today's risk %: Rs 400, or Rs 300 at VIX ≥ 20, Rs 200 at VIX ≥ 30 | `RISK_PER_TRADE_PCT` (VIX scaling in `trader/brief.py`) |
+| Daily loss limit | 4R (Rs 1,600; Rs 1,200 at VIX ≥ 20), counting today's loss **plus the risk in open positions**: a new trade is sized to fit what's left, or blocked. Lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_R` (`DAILY_LOSS_LIMIT_RS` > 0 = a fixed rupee limit instead) |
+| Weekly brake | Week's loss reaches 8R: risk per trade halved until Monday | `WEEKLY_LOSS_LIMIT_R`, `WEEKLY_BRAKE_FACTOR` |
+| Cost filter | Blocks a trade whose round-trip fees and slippage exceed 30% of its risk (stops tighter than about 0.6% of the price) | `MAX_COST_SHARE_PCT` |
 | Cool-off | 30 min without new proposals after 3 losses in a row | `COOLOFF_AFTER_LOSSES`, `COOLOFF_MIN` |
 | Open positions | 3 in total, 1 per sector | `MAX_OPEN_POSITIONS`, `MAX_OPEN_PER_SECTOR` |
 | Trades per sector | 2 a day | `MAX_TRADES_PER_SECTOR` |
 | Position size | 1% risk (less when VIX is high), and at most 30% of the balance as margin | `RISK_PER_TRADE_PCT`, `MAX_POSITION_MARGIN_PCT` |
 | Focus list | up to 15 stocks, at least 6 sectors | `FOCUS_MAX`, morning prompt in `trader/session_ctl.py` |
+
+`/ledger` shows today's limit, the room left and the week so far.
+
+**Exit rules on trial** (`trader/exits.py`, from 11 Nov; nothing changes real trades): after the close each
+trade is replayed on its 1-minute candles under the current exits and four alternatives (stop to entry at
++1R, sell half at +1R, a trailing stop, a 60-minute time stop), plus a day profit lock (once the day is +3R, no
+new trades if it falls back to half). The day report and the weekly report show how each would have done;
+journal events `exit_variants` and `profit_lock_shadow`. Adopt one only at a review, after 15+ trades.
 
 ## Making a change
 

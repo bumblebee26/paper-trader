@@ -67,6 +67,11 @@ class Env:
             mock.patch.object(market, "last_price", lambda s: (self.prices.get(s), "2026-11-09 10:40")),
             mock.patch.object(market, "candles", lambda s, i="5m", d=1: self.bars.get((s, i), [])),
             mock.patch.object(config, "STARTING_CAPITAL", self.capital),
+            # Mechanics tests use toy prices (very tight stops) and a fixed Rs 4,000 day limit; the R-based limits,
+            # weekly brake and cost filter are tested with their real settings in test_risk_limits.py.
+            mock.patch.object(config, "DAILY_LOSS_LIMIT_RS", 4_000),
+            mock.patch.object(config, "WEEKLY_LOSS_LIMIT_R", 0),
+            mock.patch.object(config, "MAX_COST_SHARE_PCT", 0),
         ]
         news.reset_cache()
         nse_calendar.reset_cache()

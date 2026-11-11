@@ -78,8 +78,13 @@ SWING_PARK_SYMBOL = os.environ.get("SWING_PARK_SYMBOL", "NIFTYBEES")  # "" = kee
 RISK_PER_TRADE_PCT = _f("RISK_PER_TRADE_PCT", 1.0)
 MAX_OPEN_POSITIONS = _i("MAX_OPEN_POSITIONS", 3)
 MAX_TRADES_PER_DAY = _i("MAX_TRADES_PER_DAY", 10)        # 0 = no daily limit
-DAILY_LOSS_LIMIT_PCT = _f("DAILY_LOSS_LIMIT_PCT", 2.0)    # used only when DAILY_LOSS_LIMIT_RS is 0
-DAILY_LOSS_LIMIT_RS = _f("DAILY_LOSS_LIMIT_RS", 4_000)    # fixed rupee limit on the day's realized loss (10% of the Rs 40k pool)
+# Loss limits in "R": one trade's planned risk today (balance x today's risk %, so it follows VIX).
+DAILY_LOSS_LIMIT_R = _f("DAILY_LOSS_LIMIT_R", 4.0)        # day's loss incl. open risk; 4R = Rs 1,600 (Rs 1,200 at VIX >= 20)
+DAILY_LOSS_LIMIT_RS = _f("DAILY_LOSS_LIMIT_RS", 0)        # > 0: a fixed rupee limit instead of R
+DAILY_LOSS_LIMIT_PCT = _f("DAILY_LOSS_LIMIT_PCT", 2.0)    # used only when both of the above are 0
+WEEKLY_LOSS_LIMIT_R = _f("WEEKLY_LOSS_LIMIT_R", 8.0)      # week's loss that halves risk per trade until Monday (0 = off)
+WEEKLY_BRAKE_FACTOR = _f("WEEKLY_BRAKE_FACTOR", 0.5)      # risk per trade multiplier while the weekly brake is on
+MAX_COST_SHARE_PCT = _f("MAX_COST_SHARE_PCT", 30.0)       # block a trade whose round-trip costs exceed this % of its risk
 COOLOFF_AFTER_LOSSES = _i("COOLOFF_AFTER_LOSSES", 3)      # losses in a row that start a cool-off (0 = off)
 COOLOFF_MIN = _i("COOLOFF_MIN", 30)                       # minutes without new proposals
 MAX_POSITION_MARGIN_PCT = _f("MAX_POSITION_MARGIN_PCT", 30.0)  # one trade's margin, % of balance

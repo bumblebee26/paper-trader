@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 import advisor
 import config
+import exits
 import market
 import news
 import pools
@@ -69,7 +70,43 @@ def _apply_capital_change(state: dict) -> None:
             f"Your P&L so far ({inr(pnl, sign=True)}) is kept: balance now {inr(state['balance'])}.")
 
 
+def _roll_week(state: dict) -> None:
+    """Add the finished day's result to this week's; start a new week (brake off) on a new Monday."""
+    now = market.now_ist()
+    monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    week = state.get("week") or {}
+    previous_day = state.get("day") or ""
+    if week.get("start") == monday:
+        if previous_day >= monday:
+            week["realized"] = round(week.get("realized", 0.0) + state.get("realized_today", 0.0), 2)
+    else:
+        # A new week, or the first run after this was added mid-week: count the week's earlier days from the
+        # journals so the weekly brake sees them.
+        earlier = sum(_journal_realized(d) for d in _week_days_before_today(monday))
+        week = {"start": monday, "realized": round(earlier, 2), "brake": False}
+    state["week"] = week
+
+
+def _week_days_before_today(monday: str):
+    start = datetime.strptime(monday, "%Y-%m-%d")
+    today = _today()
+    return [d for d in ((start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)) if d < today]
+
+
+def _journal_realized(day: str) -> float:
+    """A day's realized P&L from its journal, the way realized_today moves: entry fees at the fill, net P&L
+    (after the exit fee) at the exit."""
+    total = 0.0
+    for r in storage.read_rows(f"journal/{day}.csv"):
+        if r.get("event") == "filled":
+            total -= float(r.get("fees_rs") or 0)
+        elif r.get("event") in ("exited", "squared_off"):
+            total += float(r.get("pnl_rs") or 0)
+    return total
+
+
 def _new_day(state: dict) -> None:
+    _roll_week(state)
     state["day"] = _today()
     _apply_capital_change(state)
     state["day_start_balance"] = state["balance"]
@@ -172,6 +209,11 @@ def ledger_statement(state) -> str:
         f"Exposure:         {inr(exposure)} ({config.INTRADAY_LEVERAGE:g}x intraday)",
         f"Today realized:   {inr(state['realized_today'], sign=True)} | trades {state['trades_today']}"
         f"/{config.MAX_TRADES_PER_DAY}",
+        f"Loss limit today: -{inr(loss_limit_rs(state))} ({config.DAILY_LOSS_LIMIT_R:g} trades' risk of "
+        f"{inr(one_r(state))}) | room left {inr(max(0.0, loss_room(state)))}",
+        f"This week:        {inr(week_realized(state), sign=True)}"
+        + (" | weekly brake ON: half-size trades until Monday" if weekly_brake_on(state) else
+           f" (brake at -{inr(weekly_limit_rs(state))})"),
     ]
     if state["positions"]:
         lines.append("Open positions:")
@@ -347,6 +389,12 @@ def account(state: dict) -> dict:
         "margin_free": round(state["balance"] - margin_used(state), 2),
         "entry_window_open": in_entry_window(),
         "risk_per_trade_pct_today": state.get("day_risk_pct", config.RISK_PER_TRADE_PCT),
+        "one_r_rs": round(one_r(state), 2),
+        "daily_loss_limit_rs": round(loss_limit_rs(state), 2),
+        "open_risk_rs": round(open_risk(state), 2),
+        "loss_room_rs": round(loss_room(state), 2),
+        "week_realized_rs": round(week_realized(state), 2),
+        "weekly_brake_on": weekly_brake_on(state),
         "focus": state.get("focus", []),
         "paused_by_user": is_paused(state),
         "carried_over_warning": state.get("carried_over_warning"),
@@ -354,10 +402,60 @@ def account(state: dict) -> dict:
 
 
 # -------------------------------------------------------------- risk gate --
+def one_r(state) -> float:
+    """1R: one trade's planned risk today (start-of-day balance x today's risk %, which follows VIX).
+    The weekly brake halves the risk actually taken, not this unit, so the limits don't shrink with it."""
+    return state["day_start_balance"] * state.get("day_risk_pct", config.RISK_PER_TRADE_PCT) / 100
+
+
 def loss_limit_rs(state) -> float:
     if config.DAILY_LOSS_LIMIT_RS > 0:
         return config.DAILY_LOSS_LIMIT_RS
+    if config.DAILY_LOSS_LIMIT_R > 0:
+        return config.DAILY_LOSS_LIMIT_R * one_r(state)
     return state["day_start_balance"] * config.DAILY_LOSS_LIMIT_PCT / 100
+
+
+def open_risk(state) -> float:
+    """What the open positions lose if every stop is hit (from the fill price; 0 once a stop is past entry)."""
+    total = 0.0
+    for p in state["positions"].values():
+        direction = 1 if p["side"] == "BUY" else -1
+        total += max(0.0, (p["fill_price"] - p["stop"]) * direction * p["qty"])
+    return total
+
+
+def loss_room(state) -> float:
+    """How much more can be put at risk today: the limit minus today's loss and the open positions' risk."""
+    return loss_limit_rs(state) - max(0.0, -state["realized_today"]) - open_risk(state)
+
+
+def week_realized(state) -> float:
+    return (state.get("week") or {}).get("realized", 0.0) + state["realized_today"]
+
+
+def weekly_limit_rs(state) -> float:
+    return config.WEEKLY_LOSS_LIMIT_R * one_r(state)
+
+
+def weekly_brake_on(state) -> bool:
+    return bool((state.get("week") or {}).get("brake"))
+
+
+def check_weekly_brake(state) -> None:
+    """Halve risk per trade for the rest of the week once the week's loss reaches WEEKLY_LOSS_LIMIT_R."""
+    if config.WEEKLY_LOSS_LIMIT_R <= 0 or weekly_brake_on(state):
+        return
+    if -week_realized(state) < weekly_limit_rs(state):
+        return
+    state.setdefault("week", {})["brake"] = True
+    pct = round(config.WEEKLY_BRAKE_FACTOR * 100)
+    tg.send(f"[MOCK] Weekly brake: this week is {inr(week_realized(state), sign=True)}, past the weekly limit of "
+            f"-{inr(weekly_limit_rs(state))}. Until Monday each trade risks {pct}% of the usual amount.\n"
+            "In plain words: after a bad week, smaller bets until the new week starts, so a losing run can't "
+            "dig a deep hole.")
+    journal("weekly_brake", pnl_rs=round(week_realized(state), 2),
+            note=f"risk per trade x{config.WEEKLY_BRAKE_FACTOR} until Monday")
 
 
 def trades_left_text(state) -> str:
@@ -460,6 +558,14 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     if rr < config.MIN_RR:
         return False, f"risk-reward {rr} is below minimum {config.MIN_RR}", 0, 0, rr
     risk_budget = state["balance"] * state.get("day_risk_pct", config.RISK_PER_TRADE_PCT) / 100
+    if weekly_brake_on(state):
+        risk_budget *= config.WEEKLY_BRAKE_FACTOR
+    room = loss_room(state)
+    if room < per_share:
+        return False, (f"no room left under the daily loss limit (-{inr(loss_limit_rs(state))}): today "
+                       f"{inr(state['realized_today'], sign=True)} plus {inr(open_risk(state))} at risk in open "
+                       "positions"), 0, 0, rr
+    risk_budget = min(risk_budget, room)
     qty = math.floor(risk_budget / per_share)
     free = state["balance"] - margin_used(state)
     max_qty_by_margin = math.floor(free * config.INTRADAY_LEVERAGE / entry)
@@ -468,7 +574,17 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     qty = min(qty, max_qty_by_margin, max_qty_by_cap)
     if qty < 1:
         return False, "not enough free margin for even 1 share", 0, 0, rr
+    share = cost_share_pct(entry, per_share, qty)
+    if config.MAX_COST_SHARE_PCT > 0 and share > config.MAX_COST_SHARE_PCT:
+        return False, (f"fees and slippage would be {share:.0f}% of the risk (max {config.MAX_COST_SHARE_PCT:g}%): "
+                       "the stop is too tight for the costs"), 0, 0, rr
     return True, "ok", qty, round(qty * per_share, 2), rr
+
+
+def cost_share_pct(entry, per_share, qty) -> float:
+    """Round-trip costs (2 orders' brokerage + slippage on both fills) as a % of the trade's planned risk."""
+    costs_rs = 2 * config.BROKERAGE_PER_ORDER + 2 * entry * qty * config.SLIPPAGE_PCT / 100
+    return costs_rs / (qty * per_share) * 100
 
 
 # ---------------------------------------------------------- plain words --
@@ -691,6 +807,7 @@ def close(state, symbol, exit_price, reason, notify=True):
                 f"{'You made' if net > 0 else 'You lost'} {inr(abs(net))} on this trade, after fees.\n"
                 f"{ledger_line(state)}")
     check_loss_limit(state)
+    check_weekly_brake(state)
     record_result(state, net)
     return {"status": "closed", "symbol": symbol, "exit_price": exit_fill, "pnl_rs": net}
 
@@ -799,6 +916,10 @@ def report(state, send=True):
         "open_positions": list(state["positions"].keys()),
     }
     try:
+        summary.update(_shadow_exits(state, rows))
+    except Exception as err:  # noqa: BLE001 - a trial must never stop the day report
+        summary["exit_rules_error"] = str(err)
+    try:
         snap = pools.snapshot(state)
         summary["portfolio_total_rs"] = snap["total"]
         summary["portfolio_drawdown_pct"] = snap["drawdown_pct"]
@@ -824,10 +945,61 @@ def report(state, send=True):
         ]
         if hypo:
             lines.append(f"Passed trades would have made: Rs {sum(hypo.values()):,.0f}")
+        lines += _shadow_exit_lines(summary)
         if summary["open_positions"]:
             lines.append(f"WARNING still open: {', '.join(summary['open_positions'])}")
         tg.send("\n".join(lines))
     return summary
+
+
+def _shadow_exits(state, rows) -> dict:
+    """Replay today's closed trades under the exit rules on trial (trader/exits.py) and journal the results."""
+    fills = {r["proposal_id"]: r for r in rows if r["event"] == "filled" and r.get("proposal_id")}
+    exits_ = {r["proposal_id"]: r for r in rows if r["event"] in ("exited", "squared_off") and r.get("proposal_id")}
+    totals = {rule: 0.0 for rule in exits.RULES}
+    actual_total, counted, day_events, bars_cache = 0.0, 0, [], {}
+    for pid, f in fills.items():
+        x = exits_.get(pid)
+        if not x:
+            continue
+        net = float(x.get("pnl_rs") or 0) - float(f.get("fees_rs") or 0)
+        day_events.append((f["timestamp_ist"], x["timestamp_ist"], net))
+        sym = f["symbol"]
+        if sym not in bars_cache:
+            bars_cache[sym] = market.candles(sym, "1m", 1)
+        results = exits.replay_all({"side": f["side"], "qty": f["qty"], "fill_price": f["fill_price"],
+                                    "stop": f["stop"], "target": f["target"], "opened_at": f["timestamp_ist"]},
+                                   bars_cache[sym])
+        journal("exit_variants", event_id=f"exitvar-{pid}", proposal_id=pid, symbol=sym, setup=f["setup"],
+                side=f["side"], qty=f["qty"], pnl_rs=round(net, 2), note=exits.note_text(results))
+        if all(v is not None for v in results.values()):
+            counted += 1
+            actual_total += net
+            for rule, v in results.items():
+                totals[rule] += v
+    out = {"exit_rules_trades": counted, "exit_rules_actual_rs": round(actual_total, 2),
+           "exit_rules_rs": {k: round(v, 2) for k, v in totals.items()}}
+    lock = exits.profit_lock(sorted(day_events), one_r(state)) if day_events else None
+    if lock:
+        journal("profit_lock_shadow", event_id=f"lock-{_today()}", pnl_rs=lock["day_with_lock"],
+                note=f"skipped {lock['skipped']} trades; actual {lock['day_actual']}")
+        out["profit_lock"] = lock
+    return out
+
+
+def _shadow_exit_lines(summary) -> list:
+    if not summary.get("exit_rules_trades"):
+        return []
+    t = summary["exit_rules_rs"]
+    base = t["current"]
+    parts = [f"{exits.RULE_WORDS[k]} {inr(v - base, sign=True)}" for k, v in t.items() if k != "current"]
+    lines = [f"Exit rules on trial ({summary['exit_rules_trades']} trades, vs current rules {inr(base, sign=True)}): "
+             + ", ".join(parts)]
+    lock = summary.get("profit_lock")
+    if lock:
+        lines.append(f"Profit lock on trial: would have skipped {lock['skipped']} trade(s); day "
+                     f"{inr(lock['day_with_lock'], sign=True)} instead of {inr(lock['day_actual'], sign=True)}")
+    return lines
 
 
 # ---------------------------------------------------------- day / session --

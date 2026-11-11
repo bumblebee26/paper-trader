@@ -18,20 +18,20 @@ def trade(env, st, symbol, entry, stop, target, exit_price, reason):
 
 
 class LossLimitTest(unittest.TestCase):
-    def setUp(self):  # the 2%-of-balance mode (Rs 2,000 on Rs 1 lakh)
-        p = mock.patch.object(config, "DAILY_LOSS_LIMIT_RS", 0)
-        p.start()
-        self.addCleanup(p.stop)
-        q = mock.patch.object(config, "MAX_POSITION_MARGIN_PCT", 100.0)  # full-size winner
+    def setUp(self):
+        q = mock.patch.object(config, "MAX_POSITION_MARGIN_PCT", 100.0)  # full-size trades
         q.start()
         self.addCleanup(q.stop)
 
     def test_limit_blocks_then_lifts_after_a_winner(self):
-        with Env() as env:
+        # 4R limit: 1R = 1% of Rs 1 lakh = Rs 1,000, so the limit is Rs 4,000 (open risk counts towards it)
+        with Env() as env, mock.patch.object(config, "DAILY_LOSS_LIMIT_RS", 0), \
+                mock.patch.object(config, "DAILY_LOSS_LIMIT_R", 4.0):
             st = engine.load()
             winner = trade(env, st, "TCS", 2470.0, 2463.0, 2484.0, 2484.0, "target")  # still open
-            st["realized_today"] = -1900.0                                            # earlier losses
-            trade(env, st, "RELIANCE", 1500.0, 1495.0, 1510.0, 1490.0, "stop_loss")()    # pushes it over
+            loser = trade(env, st, "RELIANCE", 1500.0, 1495.0, 1510.0, 1490.0, "stop_loss")
+            st["realized_today"] = -3000.0                                            # earlier losses
+            loser()                                                                   # gaps past its stop: over
             self.assertTrue(st["loss_limit_hit"])
             self.assertTrue(any("Daily loss limit reached" in m for m in env.sent))
             self.assertIn("trading resumes by itself", env.sent[-1])
@@ -52,7 +52,7 @@ class LossLimitTest(unittest.TestCase):
             st = engine.load()
             engine.check_loss_limit(st)
             self.assertEqual(env.sent, [])
-            st["realized_today"] = -2500.0
+            st["realized_today"] = -4500.0
             engine.check_loss_limit(st)
             engine.check_loss_limit(st)
             self.assertEqual(sum("Daily loss limit reached" in m for m in env.sent), 1)

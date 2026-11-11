@@ -46,14 +46,17 @@ strategy's losses never hide inside another's gains. A pool never spends another
 | Long-term | Months to years | Rs 1,00,000 | Shadow mode; real buying from 21 Dec if approved | `state/pools/long_term.json` (shadow: `long_term_shadow.json`) |
 
 Side effects of the smaller intraday pool: a trade risks about Rs 400, so fees of Rs 40 to 60 a trade weigh
-more; the daily loss limit was scaled to Rs 4,000 to stay at 10% of the pool.
+more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follows VIX), see Phase 1.
 
 ## Phase 1: intraday upgrades (built, live 10 Nov)
 
 | Setting | Before | Now |
 |---|---|---|
 | Trades per day | 5 | 10 |
-| Daily loss limit | 2% | Rs 4,000; lifts again if a winning exit brings the day back under it |
+| Daily loss limit | 2% | 4R (Rs 1,200–1,600 with VIX) including open positions' risk; lifts again if a winning exit brings the day back under it (Rs 4,000 from 9 to 11 Nov) |
+| Weekly brake | none | Week down 8R: half-size trades until Monday |
+| Cost filter | none | No trade whose fees and slippage exceed 30% of its risk |
+| Exit rules | fixed stop and 2R target | Same, with four alternatives and a day profit lock on trial in the background (reports; decided at a review) |
 | Cool-off | none | 30 minutes without new proposals after 3 losses in a row |
 | Watchlist | 16 stocks, mostly banks and IT | 36 stocks across 11 sectors (`trader/sectors.py`) |
 | Focus list each morning | up to 10 | up to 15, at least 6 sectors |
@@ -169,7 +172,7 @@ their rules run as plain code in GitHub Actions, which keeps Claude usage to the
 | Largest position | 30% of balance as margin | 25% of pool | 15% (trim above 18%) |
 | Positions | 3 open, 10 trades a day | 5 | 10 picks (ledger allows up to 12) |
 | Per sector | 1 open, 2 trades a day | 2 | 2 picks per industry |
-| Loss brake | Rs 4,000 a day; 30-min cool-off after 3 losses | — | Sells what stops qualifying |
+| Loss brake | 4R a day incl. open risk; 8R a week halves risk; 30-min cool-off after 3 losses | — | Sells what stops qualifying |
 | Whole portfolio | Circuit breaker at 12% below the peak of all pools combined; `/resume` to restart | | |
 
 Costs in the simulation: intraday about Rs 20 a side plus 0.05% slippage; delivery 0.12% a side plus Rs 16
@@ -246,7 +249,7 @@ Cost review: Sun 15 Nov.
 | Decision (9 Nov 2026) | Choice |
 |---|---|
 | Pool sizes | Rs 2 lakh: intraday Rs 40,000, swing Rs 60,000, long-term Rs 1,00,000 |
-| Intraday loss limit | Rs 4,000 |
+| Intraday loss limit | Rs 4,000 (9 Nov); 4R incl. open risk, 8R weekly brake, cost filter (11 Nov) |
 | Swing exits | Automatic on rules set at entry |
 | Swing after failed backtests | Hold the Rs 60,000 in NIFTYBEES |
 | Long-term universe | Nifty 200 |
