@@ -30,12 +30,7 @@ SCAN_PAUSE_SEC = 0.3
 DEFAULT_WATCHLIST = sectors.WATCHLIST  # 36 large caps across 11 sectors (trader/sectors.py)
 
 
-def _run(fn, *args, **kwargs):
-    state = engine.load()
-    try:
-        return fn(state, *args, **kwargs)
-    finally:
-        engine.save(state)
+_run = engine.run_tool
 
 
 @mcp.tool()
