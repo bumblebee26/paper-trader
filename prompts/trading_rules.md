@@ -42,9 +42,9 @@ only if all of these hold:
 - It agrees with Nifty: no BUY while Nifty is at its day low and falling from the open;
   no SELL while Nifty is at its day high and rising.
 - Volume is at least 1.2x average (already required for ORB and PDH/PDL).
-- The stop is sensible: not wider than 1.5% of price and not tighter than about 0.6% (tighter stops are
-  blocked by the code's cost filter: fees and slippage would be over 30% of the risk; with half-size trades
-  under the weekly brake, aim for 0.8% or more). Adjust the stop to the nearest logical level within that
+- The stop is sensible: not wider than 1.5% of price and not tighter than about 0.6%, or about 1% when VIX is
+  30 or more (tighter stops are blocked by the code's cost filter: fees and slippage would be over 30% of the
+  risk). Adjust the stop to the nearest logical level within that
   range if needed, and recompute target = entry +/- 2 x risk. If no logical level fits, skip the candidate.
 - It fits the bias rules above.
 - At most 2 proposals per cycle; pick the strongest evidence.

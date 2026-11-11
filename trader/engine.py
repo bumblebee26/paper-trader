@@ -558,6 +558,7 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     if rr < config.MIN_RR:
         return False, f"risk-reward {rr} is below minimum {config.MIN_RR}", 0, 0, rr
     risk_budget = state["balance"] * state.get("day_risk_pct", config.RISK_PER_TRADE_PCT) / 100
+    full_budget = risk_budget
     if weekly_brake_on(state):
         risk_budget *= config.WEEKLY_BRAKE_FACTOR
     room = loss_room(state)
@@ -574,7 +575,10 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     qty = min(qty, max_qty_by_margin, max_qty_by_cap)
     if qty < 1:
         return False, "not enough free margin for even 1 share", 0, 0, rr
-    share = cost_share_pct(entry, per_share, qty)
+    # Judge the stop as if the trade were full size: a trade made smaller by the weekly brake or the room left
+    # under the limit pays the same Rs 20 per order, but that's the price of the brake, not a too-tight stop.
+    full_qty = max(1, min(math.floor(full_budget / per_share), max_qty_by_cap))
+    share = cost_share_pct(entry, per_share, full_qty)
     if config.MAX_COST_SHARE_PCT > 0 and share > config.MAX_COST_SHARE_PCT:
         return False, (f"fees and slippage would be {share:.0f}% of the risk (max {config.MAX_COST_SHARE_PCT:g}%): "
                        "the stop is too tight for the costs"), 0, 0, rr

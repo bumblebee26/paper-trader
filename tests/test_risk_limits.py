@@ -85,6 +85,9 @@ class RiskLimitsTest(unittest.TestCase):
         ok, _, qty, risk, _ = engine.risk_gate(st, "TCS", "BUY", 3000.0, 2970.0, 3060.0)
         self.assertTrue(ok)
         self.assertLessEqual(risk, 500.0)                             # half of the usual Rs 1,000
+        st["day_risk_pct"] = 0.75                                     # VIX 25 and the brake: Rs 375 a trade
+        ok, why, _, _, _ = engine.risk_gate(st, "TCS", "BUY", 3000.0, 2976.0, 3048.0)  # 0.8% stop
+        self.assertTrue(ok, why)                                      # the brake halves size, not the setups
         self.assertIn("weekly brake ON", engine.ledger_statement(st))
 
         engine.save(st)                                               # next Monday: a new week, brake off

@@ -35,7 +35,7 @@ when it finds no prices.
 | 1R (one trade's risk) | Start-of-day balance × today's risk %: Rs 400, or Rs 300 at VIX ≥ 20, Rs 200 at VIX ≥ 30 | `RISK_PER_TRADE_PCT` (VIX scaling in `trader/brief.py`) |
 | Daily loss limit | 4R (Rs 1,600; Rs 1,200 at VIX ≥ 20), counting today's loss **plus the risk in open positions**: a new trade is sized to fit what's left, or blocked. Lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_R` (`DAILY_LOSS_LIMIT_RS` > 0 = a fixed rupee limit instead) |
 | Weekly brake | Week's loss reaches 8R: risk per trade halved until Monday | `WEEKLY_LOSS_LIMIT_R`, `WEEKLY_BRAKE_FACTOR` |
-| Cost filter | Blocks a trade whose round-trip fees and slippage exceed 30% of its risk (stops tighter than about 0.6% of the price) | `MAX_COST_SHARE_PCT` |
+| Cost filter | Blocks a trade whose round-trip fees and slippage exceed 30% of its risk at full size (stops tighter than about 0.6% of the price, about 1% at VIX ≥ 30); trades made smaller by the weekly brake or the room left aren't penalised for it | `MAX_COST_SHARE_PCT` |
 | Cool-off | 30 min without new proposals after 3 losses in a row | `COOLOFF_AFTER_LOSSES`, `COOLOFF_MIN` |
 | Open positions | 3 in total, 1 per sector | `MAX_OPEN_POSITIONS`, `MAX_OPEN_PER_SECTOR` |
 | Trades per sector | 2 a day | `MAX_TRADES_PER_SECTOR` |
