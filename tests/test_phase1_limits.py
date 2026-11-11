@@ -24,12 +24,14 @@ class Phase1Test(unittest.TestCase):
         self.assertEqual((config.STARTING_CAPITAL, config.SWING_CAPITAL, config.LONG_TERM_CAPITAL),
                          (40_000, 60_000, 100_000))
         self.assertEqual(config.MAX_TRADES_PER_DAY, 10)
-        self.assertEqual(config.DAILY_LOSS_LIMIT_RS, 4_000)
+        self.assertEqual((config.DAILY_LOSS_LIMIT_R, config.DAILY_LOSS_LIMIT_RS), (4.0, 0))
+        self.assertEqual((config.WEEKLY_LOSS_LIMIT_R, config.WEEKLY_BRAKE_FACTOR), (8.0, 0.5))
+        self.assertEqual(config.MAX_COST_SHARE_PCT, 30.0)
         self.assertEqual(len(sectors.WATCHLIST), 36)
         self.assertGreaterEqual(len({sectors.sector(s) for s in sectors.WATCHLIST}), 10)
 
-    def test_four_thousand_loss_limit(self):
-        with Env():
+    def test_fixed_rupee_loss_limit_still_works(self):
+        with Env():  # the test setup pins DAILY_LOSS_LIMIT_RS = 4,000
             st = engine.load()
             st["realized_today"] = -3_999.0
             self.assertFalse(engine.loss_limit_reached(st))

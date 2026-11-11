@@ -9,6 +9,7 @@ import re
 from collections import defaultdict
 from datetime import date, timedelta
 
+import exits
 import market
 import pools
 import sectors
@@ -89,7 +90,27 @@ def build(today: date):
                 if rule and rule != "-":
                     shadow[rule].append(taken[pid])
 
+    # Exit rules on trial: one row per trade (fixed event_id; a re-run report repeats it, so keep the last)
+    variants = {r["event_id"]: r for r in rows if r["event"] == "exit_variants"}
+    exit_totals, exit_trades, exit_actual = {k: 0.0 for k in exits.RULES}, 0, 0.0
+    for r in variants.values():
+        res = exits.parse_note(r.get("note"))
+        if all(res.get(k) is not None for k in exits.RULES):
+            exit_trades += 1
+            exit_actual += float(r.get("pnl_rs") or 0)
+            for k in exits.RULES:
+                exit_totals[k] += res[k]
+    locks = {r["event_id"]: r for r in rows if r["event"] == "profit_lock_shadow"}
+    lock_change = 0.0
+    for r in locks.values():
+        actual = float((r.get("note") or "").rsplit("actual ", 1)[-1] or 0)
+        lock_change += float(r.get("pnl_rs") or 0) - actual
+
     return {
+        "exit_rules": {"trades": exit_trades, "actual": round(exit_actual, 2),
+                       "totals": {k: round(v, 2) for k, v in exit_totals.items()}},
+        "profit_lock": {"days": len(locks), "change": round(lock_change, 2)},
+        "weekly_brake": any(r["event"] == "weekly_brake" for r in rows),
         "week_start": week_days(today)[0].isoformat(), "week_end": today.isoformat(),
         "trades": len(closed), "net_pnl": round(sum(pnl_of(r) for r in closed), 2), "fees": round(fees, 2),
         "wins": len(wins), "win_rate": round(len(wins) / len(closed) * 100) if closed else None,
@@ -154,8 +175,22 @@ def message(w, intraday_state):
             effect = (f"would have avoided {s['trades']} trades worth {_inr(s['pnl'], sign=True)}"
                       + (": it would have helped." if s["pnl"] < 0 else ": it would have cost money."))
             lines.append(f"- {SHADOW_WORDS.get(rule, rule)}: {effect}")
-    if w["cooloffs"] or w["loss_limit_days"]:
-        lines.append(f"Brakes used: {w['cooloffs']} cool-off(s), loss limit on {w['loss_limit_days']} day(s).")
+    ex = w.get("exit_rules") or {}
+    if ex.get("trades"):
+        base = ex["totals"]["current"]
+        lines += ["", f"Exit rules on trial ({ex['trades']} trades; current rules {_inr(base, sign=True)}):"]
+        for k in exits.RULES[1:]:
+            diff = ex["totals"][k] - base
+            lines.append(f"- {exits.RULE_WORDS[k]}: {_inr(diff, sign=True)}"
+                         + (" better" if diff > 0 else " worse" if diff < 0 else ""))
+        lines.append("  Decided at the review after 15+ trades; one week is mostly noise.")
+    lock = w.get("profit_lock") or {}
+    if lock.get("days"):
+        lines.append(f"Profit lock on trial: armed on {lock['days']} day(s); it would have changed the result by "
+                     f"{_inr(lock['change'], sign=True)}.")
+    if w["cooloffs"] or w["loss_limit_days"] or w.get("weekly_brake"):
+        lines.append(f"Brakes used: {w['cooloffs']} cool-off(s), loss limit on {w['loss_limit_days']} day(s)"
+                     + (", weekly brake (half-size trades)." if w.get("weekly_brake") else "."))
 
     lines += ["", "All pools:"]
     intraday = intraday_state["balance"]

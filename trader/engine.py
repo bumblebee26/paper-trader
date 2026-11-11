@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 
 import advisor
 import config
+import exits
+import track
 import market
 import news
 import pools
@@ -69,7 +71,43 @@ def _apply_capital_change(state: dict) -> None:
             f"Your P&L so far ({inr(pnl, sign=True)}) is kept: balance now {inr(state['balance'])}.")
 
 
+def _roll_week(state: dict) -> None:
+    """Add the finished day's result to this week's; start a new week (brake off) on a new Monday."""
+    now = market.now_ist()
+    monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    week = state.get("week") or {}
+    previous_day = state.get("day") or ""
+    if week.get("start") == monday:
+        if previous_day >= monday:
+            week["realized"] = round(week.get("realized", 0.0) + state.get("realized_today", 0.0), 2)
+    else:
+        # A new week, or the first run after this was added mid-week: count the week's earlier days from the
+        # journals so the weekly brake sees them.
+        earlier = sum(_journal_realized(d) for d in _week_days_before_today(monday))
+        week = {"start": monday, "realized": round(earlier, 2), "brake": False}
+    state["week"] = week
+
+
+def _week_days_before_today(monday: str):
+    start = datetime.strptime(monday, "%Y-%m-%d")
+    today = _today()
+    return [d for d in ((start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)) if d < today]
+
+
+def _journal_realized(day: str) -> float:
+    """A day's realized P&L from its journal, the way realized_today moves: entry fees at the fill, net P&L
+    (after the exit fee) at the exit."""
+    total = 0.0
+    for r in storage.read_rows(f"journal/{day}.csv"):
+        if r.get("event") == "filled":
+            total -= float(r.get("fees_rs") or 0)
+        elif r.get("event") in ("exited", "squared_off"):
+            total += float(r.get("pnl_rs") or 0)
+    return total
+
+
 def _new_day(state: dict) -> None:
+    _roll_week(state)
     state["day"] = _today()
     _apply_capital_change(state)
     state["day_start_balance"] = state["balance"]
@@ -172,6 +210,11 @@ def ledger_statement(state) -> str:
         f"Exposure:         {inr(exposure)} ({config.INTRADAY_LEVERAGE:g}x intraday)",
         f"Today realized:   {inr(state['realized_today'], sign=True)} | trades {state['trades_today']}"
         f"/{config.MAX_TRADES_PER_DAY}",
+        f"Loss limit today: -{inr(loss_limit_rs(state))} ({config.DAILY_LOSS_LIMIT_R:g} trades' risk of "
+        f"{inr(one_r(state))}) | room left {inr(max(0.0, loss_room(state)))}",
+        f"This week:        {inr(week_realized(state), sign=True)}"
+        + (" | weekly brake ON: half-size trades until Monday" if weekly_brake_on(state) else
+           f" (brake at -{inr(weekly_limit_rs(state))})"),
     ]
     if state["positions"]:
         lines.append("Open positions:")
@@ -203,10 +246,11 @@ Commands (with or without the /):
 /stop  kill switch: no new proposals at all until /resume (open positions still managed)
 /pause  no new proposals for the day; open positions are still managed. After 14:30, at weekends or on holidays it applies to the next trading day
 /resume  allow new proposals again (undoes /pause and /stop)
+/auto on | /auto off  auto mode: trades with a suggestion of at least 55% YES are placed without asking you (you rate them with 👍/👎); off = every trade needs your YES
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
-On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30, each needs your YES within 3 min; stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
+On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30 (auto mode: placed if 55%+ YES; otherwise each needs your YES within 3 min); stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
 During sessions (09:08-15:25 IST) I reply within seconds; at other times within about 2 minutes. Dummy money only."""
 
 
@@ -291,8 +335,35 @@ def data_health(state, nifty) -> None:
             journal("data_alert", note=f"news feed age {age}")
 
 
+def auto_on(state) -> bool:
+    return bool(state.get("auto_mode", config.AUTO_MODE_DEFAULT))
+
+
+def trade_cap(state) -> int:
+    return config.AUTO_MAX_TRADES_PER_DAY if auto_on(state) else config.MAX_TRADES_PER_DAY
+
+
+def set_auto(state, on: bool, reason="by you") -> None:
+    state["auto_mode"] = on
+    journal("auto_mode_on" if on else "auto_mode_off", note=reason)
+
+
+def record_feedback(state) -> int:
+    """Journal the user's 👍/👎 taps (feedback on auto-mode decisions; never changes a trade)."""
+    taps = state.pop("feedback", {}) or {}
+    for pid, kind in taps.items():
+        p = state["proposals"].get(pid, {})
+        if p:
+            p["feedback"] = kind
+        journal("user_feedback", event_id=f"fb-{pid}", proposal_id=pid, symbol=p.get("symbol", ""),
+                setup=p.get("setup", ""), side=p.get("side", ""), user_reply=kind,
+                note=f"decision {p.get('user_reply', '?')} at suggestion {p.get('suggested_yes_pct', '?')}%")
+    return len(taps)
+
+
 def answer_requests(state) -> int:
-    """Reply to Telegram commands that came in (ledger, help, plan, pause, resume)."""
+    """Reply to Telegram commands that came in (ledger, help, plan, pause, resume, auto)."""
+    record_feedback(state)
     asks = list(dict.fromkeys(state.pop("requests", [])))
     for ask in asks:
         if ask == "ledger":
@@ -324,6 +395,16 @@ def answer_requests(state) -> int:
             journal("stopped_by_user")
             tg.send("[MOCK] Stopped: no new proposals in any pool until you send /resume, today or any later day. "
                     "Open positions are still watched and closed by 15:10.")
+        elif ask in ("auto_on", "auto_off"):
+            on = ask == "auto_on"
+            set_auto(state, on)
+            tg.send(f"[MOCK] Auto mode ON: proposals with a suggestion of {config.AUTO_MIN_YES_PCT:g}% YES or more are "
+                    f"placed straight away (max {config.AUTO_MAX_TRADES_PER_DAY} trades a day); the rest are skipped. "
+                    "Rate each with 👍/👎, or tap EXIT to close one. Every limit still applies. /auto off to approve "
+                    "each trade yourself." if on else
+                    "[MOCK] Auto mode OFF: every trade needs your YES again (3 minutes to answer).")
+        elif ask == "auto_status":
+            tg.send(f"[MOCK] Auto mode is {'ON' if auto_on(state) else 'OFF'}. Send /auto on or /auto off.")
         elif ask == "portfolio":
             tg.send(portfolio_text(state))
         elif ask.startswith("news:"):
@@ -347,6 +428,12 @@ def account(state: dict) -> dict:
         "margin_free": round(state["balance"] - margin_used(state), 2),
         "entry_window_open": in_entry_window(),
         "risk_per_trade_pct_today": state.get("day_risk_pct", config.RISK_PER_TRADE_PCT),
+        "one_r_rs": round(one_r(state), 2),
+        "daily_loss_limit_rs": round(loss_limit_rs(state), 2),
+        "open_risk_rs": round(open_risk(state), 2),
+        "loss_room_rs": round(loss_room(state), 2),
+        "week_realized_rs": round(week_realized(state), 2),
+        "weekly_brake_on": weekly_brake_on(state),
         "focus": state.get("focus", []),
         "paused_by_user": is_paused(state),
         "carried_over_warning": state.get("carried_over_warning"),
@@ -354,10 +441,64 @@ def account(state: dict) -> dict:
 
 
 # -------------------------------------------------------------- risk gate --
+def one_r(state) -> float:
+    """1R: one trade's planned risk today (start-of-day balance x today's risk %, which follows VIX).
+    The weekly brake halves the risk actually taken, not this unit, so the limits don't shrink with it."""
+    return state["day_start_balance"] * state.get("day_risk_pct", config.RISK_PER_TRADE_PCT) / 100
+
+
 def loss_limit_rs(state) -> float:
     if config.DAILY_LOSS_LIMIT_RS > 0:
         return config.DAILY_LOSS_LIMIT_RS
+    if config.DAILY_LOSS_LIMIT_R > 0:
+        return config.DAILY_LOSS_LIMIT_R * one_r(state)
     return state["day_start_balance"] * config.DAILY_LOSS_LIMIT_PCT / 100
+
+
+def open_risk(state) -> float:
+    """What the open positions lose if every stop is hit (from the fill price; 0 once a stop is past entry)."""
+    total = 0.0
+    for p in state["positions"].values():
+        direction = 1 if p["side"] == "BUY" else -1
+        total += max(0.0, (p["fill_price"] - p["stop"]) * direction * p["qty"])
+    return total
+
+
+def loss_room(state) -> float:
+    """How much more can be put at risk today: the limit minus today's loss and the open positions' risk."""
+    return loss_limit_rs(state) - max(0.0, -state["realized_today"]) - open_risk(state)
+
+
+def week_realized(state) -> float:
+    return (state.get("week") or {}).get("realized", 0.0) + state["realized_today"]
+
+
+def weekly_limit_rs(state) -> float:
+    return config.WEEKLY_LOSS_LIMIT_R * one_r(state)
+
+
+def weekly_brake_on(state) -> bool:
+    return bool((state.get("week") or {}).get("brake"))
+
+
+def check_weekly_brake(state) -> None:
+    """Halve risk per trade for the rest of the week once the week's loss reaches WEEKLY_LOSS_LIMIT_R."""
+    if config.WEEKLY_LOSS_LIMIT_R <= 0 or weekly_brake_on(state):
+        return
+    if -week_realized(state) < weekly_limit_rs(state):
+        return
+    state.setdefault("week", {})["brake"] = True
+    pct = round(config.WEEKLY_BRAKE_FACTOR * 100)
+    tg.send(f"[MOCK] Weekly brake: this week is {inr(week_realized(state), sign=True)}, past the weekly limit of "
+            f"-{inr(weekly_limit_rs(state))}. Until Monday each trade risks {pct}% of the usual amount.\n"
+            "In plain words: after a bad week, smaller bets until the new week starts, so a losing run can't "
+            "dig a deep hole.")
+    journal("weekly_brake", pnl_rs=round(week_realized(state), 2),
+            note=f"risk per trade x{config.WEEKLY_BRAKE_FACTOR} until Monday")
+    if auto_on(state):
+        set_auto(state, False, reason="weekly brake")
+        tg.send("[MOCK] Auto mode is now OFF because of the weekly brake: each trade needs your YES until you send "
+                "/auto on.")
 
 
 def trades_left_text(state) -> str:
@@ -441,8 +582,9 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
         return False, f"already holding {symbol}", 0, 0, rr
     if len(state["positions"]) >= config.MAX_OPEN_POSITIONS:
         return False, "max open positions reached", 0, 0, rr
-    if 0 < config.MAX_TRADES_PER_DAY <= state["trades_today"]:
-        return False, f"all {config.MAX_TRADES_PER_DAY} trades for today are used", 0, 0, rr
+    if 0 < trade_cap(state) <= state["trades_today"]:
+        return False, (f"all {trade_cap(state)} trades for today are used"
+                       + (" (auto mode)" if auto_on(state) else "")), 0, 0, rr
     if in_cooloff(state):
         return False, (f"cool-off after {state.get('loss_streak', 0)} losses in a row, until "
                        f"{state['cooloff_until'][11:16]}"), 0, 0, rr
@@ -460,6 +602,15 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     if rr < config.MIN_RR:
         return False, f"risk-reward {rr} is below minimum {config.MIN_RR}", 0, 0, rr
     risk_budget = state["balance"] * state.get("day_risk_pct", config.RISK_PER_TRADE_PCT) / 100
+    full_budget = risk_budget
+    if weekly_brake_on(state):
+        risk_budget *= config.WEEKLY_BRAKE_FACTOR
+    room = loss_room(state)
+    if room < per_share:
+        return False, (f"no room left under the daily loss limit (-{inr(loss_limit_rs(state))}): today "
+                       f"{inr(state['realized_today'], sign=True)} plus {inr(open_risk(state))} at risk in open "
+                       "positions"), 0, 0, rr
+    risk_budget = min(risk_budget, room)
     qty = math.floor(risk_budget / per_share)
     free = state["balance"] - margin_used(state)
     max_qty_by_margin = math.floor(free * config.INTRADAY_LEVERAGE / entry)
@@ -468,7 +619,20 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     qty = min(qty, max_qty_by_margin, max_qty_by_cap)
     if qty < 1:
         return False, "not enough free margin for even 1 share", 0, 0, rr
+    # Judge the stop as if the trade were full size: a trade made smaller by the weekly brake or the room left
+    # under the limit pays the same Rs 20 per order, but that's the price of the brake, not a too-tight stop.
+    full_qty = max(1, min(math.floor(full_budget / per_share), max_qty_by_cap))
+    share = cost_share_pct(entry, per_share, full_qty)
+    if config.MAX_COST_SHARE_PCT > 0 and share > config.MAX_COST_SHARE_PCT:
+        return False, (f"fees and slippage would be {share:.0f}% of the risk (max {config.MAX_COST_SHARE_PCT:g}%): "
+                       "the stop is too tight for the costs"), 0, 0, rr
     return True, "ok", qty, round(qty * per_share, 2), rr
+
+
+def cost_share_pct(entry, per_share, qty) -> float:
+    """Round-trip costs (2 orders' brokerage + slippage on both fills) as a % of the trade's planned risk."""
+    costs_rs = 2 * config.BROKERAGE_PER_ORDER + 2 * entry * qty * config.SLIPPAGE_PCT / 100
+    return costs_rs / (qty * per_share) * 100
 
 
 # ---------------------------------------------------------- plain words --
@@ -517,7 +681,7 @@ def plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summa
 
 # -------------------------------------------------------------- proposals --
 def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news_note="none", summary="",
-            ai_yes_pct=None):
+            ai_yes_pct=None, ai_reason=""):
     symbol, side = symbol.upper(), side.upper()
     ok, why, qty, risk_rs, rr = risk_gate(state, symbol, side, entry, stop, target)
     if not ok:
@@ -530,48 +694,94 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     need = qty * entry / config.INTRADAY_LEVERAGE
     advice = advisor.assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct)
     review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"])
-    if review:
-        advice = advisor.combine(advice, ai_yes_pct, review)
+    advice = advisor.combine(advice, ai_yes_pct, review)
+    yes = advice["yes_pct"]
+    auto = auto_on(state)
+    place = auto and yes >= config.AUTO_MIN_YES_PCT
     valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)  # after the review
+    mood = advice.get("mood")
+    hour = market.now_ist().strftime("%H")
+
+    if not auto:
+        head = [f"[MOCK] {side} {symbol}  ({setup})", advice["lines"][0]]
+    elif place:
+        head = [f"[MOCK] AUTO · {side} {symbol}  ({setup}): placing it now",
+                f"Decision: TRADE at {advice['verdict']} {yes}% (auto mode trades from "
+                f"{config.AUTO_MIN_YES_PCT:g}%). Rate it with 👍/👎; EXIT closes it."]
+    else:
+        head = [f"[MOCK] AUTO · {side} {symbol}  ({setup}): skipped",
+                f"Decision: SKIP at {advice['verdict']} {yes}% (auto mode trades from "
+                f"{config.AUTO_MIN_YES_PCT:g}%). Rate the skip with 👍/👎; what it would have made is in the "
+                "day report."]
+    why_proposed = ["Why proposed:"]
+    if summary:
+        why_proposed.append(f"- {summary.strip()}")
+    why_proposed += [f"- {r}" for r in reasons[:3]]
+    if news_note and news_note.strip().lower() != "none":
+        why_proposed.append(f"- News: {news_note}")
+    why_pct = [f"Why {yes}% YES (the average of these scores; not the chance of profit):",
+               f"- Live checks {advice['checks_pct']}%: "
+               + ("; ".join(advice.get("top_checks") or []) or "no strong signal either way")]
+    if ai_yes_pct is not None:
+        why_pct.append(f"- Trading agent {int(round(float(ai_yes_pct)))}%: {ai_reason.strip() or 'no reason given'}")
+    why_pct.append(f"- Independent reviewer {review['verdict']} {review['yes_pct']}%: {review['why']}" if review
+                   else "- Independent reviewer: unavailable this time (not counted)")
+    record = track.lines_for(setup, yes, mood, hour)
+
     lines = [
-        f"[MOCK] {side} {symbol}  ({setup})",
-        *advice["lines"],
-        "",
-        *plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summary),
-        "",
-        *advice["market_lines"],
-        "",
-        *news.lines_for(symbol),
-        "",
+        *head, "",
+        *why_proposed, "",
+        *why_pct,
+        *([""] + record if record else []), "",
+        *plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, ""), "",
+        *advice["market_lines"], "",
+        *news.lines_for(symbol), "",
         "Details:",
         f"Entry ~{entry:,.2f} | SL {stop:,.2f} | Target {target:,.2f}",
         f"Qty {qty} | Risk Rs {risk_rs:,.0f} ({risk_pct}%) | R:R {rr}",
         f"Uses {inr(need)} margin of {inr(state['balance'] - margin_used(state))} free",
-        "Why:",
-        *[f"{i}. {r}" for i, r in enumerate(reasons[:3], 1)],
-        *([f"Agent's news note: {news_note}"] if news_note and news_note.strip().lower() != "none" else []),
         f"Invalid if: {invalid_if}",
-        f"Valid until {valid_until.strftime('%H:%M:%S')} IST. Dummy money only.",
+        (f"Valid until {valid_until.strftime('%H:%M:%S')} IST. Dummy money only." if not auto
+         else "Dummy money only."),
     ]
     text = "\n".join(lines)
-    msg_id = tg.send(text, buttons=[("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")])
+    if not auto:
+        buttons = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
+    else:
+        buttons = [("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}")]
+        if place:
+            buttons.append(("EXIT", f"x:{pid}"))
+    msg_id = tg.send(text, buttons=buttons)
     state["proposals"][pid] = {
         "day": _today(), "symbol": symbol, "side": side, "setup": setup, "entry": entry,
         "stop": stop, "target": target, "qty": qty, "risk_rs": risk_rs, "rr": rr,
         "reasons": reasons[:3], "invalid_if": invalid_if, "status": "pending",
         "sent_at": _now(), "valid_until": valid_until.strftime("%Y-%m-%d %H:%M:%S"),
-        "message_id": msg_id, "text": text, "suggested_yes_pct": advice["yes_pct"],
-        "review": review,
+        "message_id": msg_id, "text": text, "suggested_yes_pct": yes,
+        "review": review, "mode": "auto" if auto else "human",
     }
     journal("proposed", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
             target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]),
-            note=(f"suggested {advice['verdict']} {advice['yes_pct']}% | checks {advice['checks_pct']}%"
+            note=(f"suggested {advice['verdict']} {yes}% | checks {advice['checks_pct']}%"
                   f" | agent {ai_yes_pct if ai_yes_pct is not None else '-'}%"
                   f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '-'}"
-                  f" | mood {advice.get('mood') or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"))
-    return {"status": "pending", "proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
-            "suggestion": f"{advice['verdict']} {advice['yes_pct']}%",
-            "valid_until": state["proposals"][pid]["valid_until"]}
+                  f" | mood {mood or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"
+                  f" | mode {'auto' if auto else 'human'}"))
+    base = {"proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
+            "suggestion": f"{advice['verdict']} {yes}%"}
+    p = state["proposals"][pid]
+    if auto:
+        p["decided_at"] = _now()
+        if place:
+            p["status"], p["user_reply"] = "approved", "AUTO"
+            return {**base, "status": "approved", "auto": True,
+                    "next": "auto mode: call execute_approved_trade now (no wait_for_decision needed)"}
+        p["status"], p["user_reply"] = "rejected", "AUTO-NO"
+        journal("rejected", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
+                target=target, user_reply="AUTO-NO", note=f"suggestion {yes}% below {config.AUTO_MIN_YES_PCT:g}%")
+        return {**base, "status": "skipped_auto", "auto": True,
+                "next": "auto mode skipped it (suggestion below the threshold); move on"}
+    return {**base, "status": "pending", "valid_until": p["valid_until"]}
 
 
 def _expired(p) -> bool:
@@ -692,6 +902,7 @@ def close(state, symbol, exit_price, reason, notify=True):
                 f"{'You made' if net > 0 else 'You lost'} {inr(abs(net))} on this trade, after fees.\n"
                 f"{ledger_line(state)}")
     check_loss_limit(state)
+    check_weekly_brake(state)
     record_result(state, net)
     return {"status": "closed", "symbol": symbol, "exit_price": exit_fill, "pnl_rs": net}
 
@@ -728,6 +939,8 @@ def monitor(state):
         if hit:
             events.append(close(state, sym, hit[0], hit[1]))
 
+    _midday_summary(state)
+
     if past_square_off() and state["positions"]:
         for sym in list(state["positions"]):
             price, _ = market.last_price(sym)
@@ -740,6 +953,26 @@ def monitor(state):
             tg.edit(p["message_id"], p["text"] + "\n\n-> Expired with no reply (3 minutes). Not placed, no money used.")
             journal("expired", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], user_reply="none")
     return {"events": events, "account": account(state)}
+
+
+def _midday_summary(state) -> None:
+    """Auto mode: one short summary at MIDDAY_SUMMARY_AT so the user doesn't have to follow every message."""
+    now = market.now_ist()
+    if not auto_on(state) or now.strftime("%H:%M") < config.MIDDAY_SUMMARY_AT or now.strftime("%H:%M") > "15:10":
+        return
+    if state.get("midday_sent") == _today():
+        return
+    state["midday_sent"] = _today()
+    today = [p for p in state["proposals"].values() if p.get("day") == _today()]
+    placed = [p for p in today if p.get("user_reply") == "AUTO"]
+    skipped = [p for p in today if p.get("user_reply") == "AUTO-NO"]
+    rated = sum(1 for p in today if p.get("feedback"))
+    lines = [f"[MOCK] Midday summary (auto mode): {len(placed)} placed, {len(skipped)} skipped, "
+             f"{state['trades_today']}/{trade_cap(state)} trades used.",
+             f"Realized today {inr(state['realized_today'], sign=True)}; "
+             f"{len(state['positions'])} open position(s): {', '.join(state['positions']) or 'none'}.",
+             f"You rated {rated} of {len(today)} decisions so far (👍/👎 on each message)."]
+    tg.send("\n".join(lines))
 
 
 # ----------------------------------------------------------------- report --
@@ -780,7 +1013,8 @@ def report(state, send=True):
         # Fixed event_id: re-running the report doesn't double-count in Databricks.
         journal("passed_outcome", event_id=f"passed-{pid}", proposal_id=pid, symbol=p["symbol"],
                 setup=p["setup"], side=p["side"], qty=p["qty"], risk_rs=p["risk_rs"], pnl_rs=pnl,
-                user_reply=p["status"], note="what this skipped proposal would have made")
+                user_reply="auto_skipped" if p.get("mode") == "auto" else p["status"],
+                note="what this skipped proposal would have made")
     summary = {
         "date": _today(),
         "signals_blocked_by_risk_gate": count("blocked_by_risk_gate"),
@@ -799,6 +1033,10 @@ def report(state, send=True):
         "passed_trades_hypothetical_pnl": hypo,
         "open_positions": list(state["positions"].keys()),
     }
+    try:
+        summary.update(_shadow_exits(state, rows))
+    except Exception as err:  # noqa: BLE001 - a trial must never stop the day report
+        summary["exit_rules_error"] = str(err)
     try:
         snap = pools.snapshot(state)
         summary["portfolio_total_rs"] = snap["total"]
@@ -825,10 +1063,73 @@ def report(state, send=True):
         ]
         if hypo:
             lines.append(f"Passed trades would have made: Rs {sum(hypo.values()):,.0f}")
+        lines += _shadow_exit_lines(summary)
+        lines += _auto_lines(state)
         if summary["open_positions"]:
             lines.append(f"WARNING still open: {', '.join(summary['open_positions'])}")
         tg.send("\n".join(lines))
     return summary
+
+
+def _shadow_exits(state, rows) -> dict:
+    """Replay today's closed trades under the exit rules on trial (trader/exits.py) and journal the results."""
+    fills = {r["proposal_id"]: r for r in rows if r["event"] == "filled" and r.get("proposal_id")}
+    exits_ = {r["proposal_id"]: r for r in rows if r["event"] in ("exited", "squared_off") and r.get("proposal_id")}
+    totals = {rule: 0.0 for rule in exits.RULES}
+    actual_total, counted, day_events, bars_cache = 0.0, 0, [], {}
+    for pid, f in fills.items():
+        x = exits_.get(pid)
+        if not x:
+            continue
+        net = float(x.get("pnl_rs") or 0) - float(f.get("fees_rs") or 0)
+        day_events.append((f["timestamp_ist"], x["timestamp_ist"], net))
+        sym = f["symbol"]
+        if sym not in bars_cache:
+            bars_cache[sym] = market.candles(sym, "1m", 1)
+        results = exits.replay_all({"side": f["side"], "qty": f["qty"], "fill_price": f["fill_price"],
+                                    "stop": f["stop"], "target": f["target"], "opened_at": f["timestamp_ist"]},
+                                   bars_cache[sym])
+        journal("exit_variants", event_id=f"exitvar-{pid}", proposal_id=pid, symbol=sym, setup=f["setup"],
+                side=f["side"], qty=f["qty"], pnl_rs=round(net, 2), note=exits.note_text(results))
+        if all(v is not None for v in results.values()):
+            counted += 1
+            actual_total += net
+            for rule, v in results.items():
+                totals[rule] += v
+    out = {"exit_rules_trades": counted, "exit_rules_actual_rs": round(actual_total, 2),
+           "exit_rules_rs": {k: round(v, 2) for k, v in totals.items()}}
+    lock = exits.profit_lock(sorted(day_events), one_r(state)) if day_events else None
+    if lock:
+        journal("profit_lock_shadow", event_id=f"lock-{_today()}", pnl_rs=lock["day_with_lock"],
+                note=f"skipped {lock['skipped']} trades; actual {lock['day_actual']}")
+        out["profit_lock"] = lock
+    return out
+
+
+def _auto_lines(state) -> list:
+    today = [p for p in state["proposals"].values() if p.get("day") == _today() and p.get("mode") == "auto"]
+    if not today:
+        return []
+    placed = sum(1 for p in today if p.get("user_reply") == "AUTO")
+    likes = sum(1 for p in today if p.get("feedback") == "like")
+    dislikes = sum(1 for p in today if p.get("feedback") == "dislike")
+    return [f"Auto mode: {placed} placed, {len(today) - placed} skipped. Your ratings: {likes} 👍, {dislikes} 👎, "
+            f"{len(today) - likes - dislikes} not rated (you can still rate them on each message)."]
+
+
+def _shadow_exit_lines(summary) -> list:
+    if not summary.get("exit_rules_trades"):
+        return []
+    t = summary["exit_rules_rs"]
+    base = t["current"]
+    parts = [f"{exits.RULE_WORDS[k]} {inr(v - base, sign=True)}" for k, v in t.items() if k != "current"]
+    lines = [f"Exit rules on trial ({summary['exit_rules_trades']} trades, vs current rules {inr(base, sign=True)}): "
+             + ", ".join(parts)]
+    lock = summary.get("profit_lock")
+    if lock:
+        lines.append(f"Profit lock on trial: would have skipped {lock['skipped']} trade(s); day "
+                     f"{inr(lock['day_with_lock'], sign=True)} instead of {inr(lock['day_actual'], sign=True)}")
+    return lines
 
 
 # ---------------------------------------------------------- day / session --

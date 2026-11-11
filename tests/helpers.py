@@ -11,6 +11,7 @@ import config  # noqa: E402
 import market  # noqa: E402
 import news  # noqa: E402
 import nse_calendar  # noqa: E402
+import track  # noqa: E402
 import storage  # noqa: E402
 import telegram_bot as tg  # noqa: E402
 
@@ -67,9 +68,16 @@ class Env:
             mock.patch.object(market, "last_price", lambda s: (self.prices.get(s), "2026-11-09 10:40")),
             mock.patch.object(market, "candles", lambda s, i="5m", d=1: self.bars.get((s, i), [])),
             mock.patch.object(config, "STARTING_CAPITAL", self.capital),
+            # Mechanics tests use toy prices (very tight stops) and a fixed Rs 4,000 day limit; the R-based limits,
+            # weekly brake and cost filter are tested with their real settings in test_risk_limits.py.
+            mock.patch.object(config, "DAILY_LOSS_LIMIT_RS", 4_000),
+            mock.patch.object(config, "WEEKLY_LOSS_LIMIT_R", 0),
+            mock.patch.object(config, "MAX_COST_SHARE_PCT", 0),
+            mock.patch.object(config, "AUTO_MODE_DEFAULT", False),  # human-in-the-loop unless a test turns it on
         ]
         news.reset_cache()
         nse_calendar.reset_cache()
+        track.reset_cache()
         self.nse_holidays = dict(NSE_2026)  # what the fake NSE holiday list returns; None = NSE unreachable
         self._patches.append(mock.patch.object(nse_calendar, "fetch", self._fake_nse))
         self.news_files = {}  # date -> list of items; empty = feed unavailable

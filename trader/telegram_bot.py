@@ -100,7 +100,14 @@ def poll(state, wait=0) -> None:
             if str(cq["from"]["id"]) != allowed:
                 continue
             data = cq.get("data", "")
-            if ":" in data:
+            if data.startswith("fb:"):                      # fb:like:<id> / fb:dislike:<id>: feedback only
+                _, kind, pid = data.split(":", 2)
+                state.setdefault("feedback", {})[pid] = kind
+            elif data.startswith("x:"):                     # x:<id>: EXIT button on an auto-placed trade
+                sym = state.get("proposals", {}).get(data[2:], {}).get("symbol")
+                if sym:
+                    state.setdefault("exit_requests", []).append(sym)
+            elif ":" in data:
                 verdict, pid = data.split(":", 1)
                 state.setdefault("decisions", {}).setdefault(pid, verdict)
             try:
@@ -129,6 +136,9 @@ def poll(state, wait=0) -> None:
                 asks.append("stop")
             elif cmd == "PLAN":
                 asks.append("plan")
+            elif cmd == "AUTO":
+                arg = parts[1] if len(parts) > 1 else ""
+                asks.append("auto_on" if arg == "ON" else "auto_off" if arg == "OFF" else "auto_status")
             elif cmd == "PAUSE":
                 asks.append("pause")
             elif cmd == "RESUME":

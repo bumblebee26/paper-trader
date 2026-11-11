@@ -63,7 +63,7 @@ money in use, money free, and open positions with live P&L. Every fill and exit 
 ## Repository layout
 
 ```
-trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, weekly report, export,
+trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, exit rules on trial, weekly report, export,
                    storage (S3/local), Telegram, MCP server, Lambda handlers. Standard library + boto3 only.
 jobs/              fundamentals.py (weekly company financials for the lakehouse), longterm_shadow.py (weekly shadow pool)
 backtest/          Swing and long-term backtests on the lakehouse's NSE daily prices

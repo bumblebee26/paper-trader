@@ -129,7 +129,7 @@ Where each phase of the system plan stands. The full plan (pools, rules, backtes
 
 | Phase | Status | Live parts | Next |
 |---|---|---|---|
-| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, Rs 4,000 loss limit, cool-off after 3 losses, 36 stocks in 11 sectors, sector and position caps | Track-record review 23 Nov |
+| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, auto mode with 👍/👎 feedback and a lakehouse track record read every session, 36 stocks in 11 sectors, sector and position caps | Track-record review 23 Nov |
 | 2 Foundations | Live | Company news on proposals, market mood, shadow rule variants, `/news` `/portfolio` `/stop`, data alerts, pool ledgers, circuit breaker, weekly report | One-tap reasons, idle-cash interest (later) |
 | 3 Swing pool | On hold | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14) | Retry with results-based setups once news history exists |
 | 4 Long-term pool | Shadow mode | Weekly figures for the Nifty 200, quality tests, 10 picks a week, backtest, Saturday shadow report | Go/no-go 18 Dec, live buying from 21 Dec |

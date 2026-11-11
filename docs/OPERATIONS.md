@@ -32,12 +32,34 @@ when it finds no prices.
 | Limit | Default | Setting in `trader/config.py` |
 |---|---|---|
 | Trades per day | 10 (0 = no limit) | `MAX_TRADES_PER_DAY` |
-| Daily loss limit | Rs 4,000 of realized loss (10% of the Rs 40,000 pool); lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_RS` (0 = use `DAILY_LOSS_LIMIT_PCT`) |
+| 1R (one trade's risk) | Start-of-day balance × today's risk %: Rs 400, or Rs 300 at VIX ≥ 20, Rs 200 at VIX ≥ 30 | `RISK_PER_TRADE_PCT` (VIX scaling in `trader/brief.py`) |
+| Daily loss limit | 4R (Rs 1,600; Rs 1,200 at VIX ≥ 20), counting today's loss **plus the risk in open positions**: a new trade is sized to fit what's left, or blocked. Lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_R` (`DAILY_LOSS_LIMIT_RS` > 0 = a fixed rupee limit instead) |
+| Weekly brake | Week's loss reaches 8R: risk per trade halved until Monday | `WEEKLY_LOSS_LIMIT_R`, `WEEKLY_BRAKE_FACTOR` |
+| Cost filter | Blocks a trade whose round-trip fees and slippage exceed 30% of its risk at full size (stops tighter than about 0.6% of the price, about 1% at VIX ≥ 30); trades made smaller by the weekly brake or the room left aren't penalised for it | `MAX_COST_SHARE_PCT` |
 | Cool-off | 30 min without new proposals after 3 losses in a row | `COOLOFF_AFTER_LOSSES`, `COOLOFF_MIN` |
 | Open positions | 3 in total, 1 per sector | `MAX_OPEN_POSITIONS`, `MAX_OPEN_PER_SECTOR` |
 | Trades per sector | 2 a day | `MAX_TRADES_PER_SECTOR` |
 | Position size | 1% risk (less when VIX is high), and at most 30% of the balance as margin | `RISK_PER_TRADE_PCT`, `MAX_POSITION_MARGIN_PCT` |
 | Focus list | up to 15 stocks, at least 6 sectors | `FOCUS_MAX`, morning prompt in `trader/session_ctl.py` |
+
+`/ledger` shows today's limit, the room left and the week so far.
+
+**Auto mode** (`/auto on`, `/auto off`; on by default via `AUTO_MODE_DEFAULT`): proposals with a combined
+suggestion of at least `AUTO_MIN_YES_PCT` (55%) are placed without a YES; the rest are skipped (journal
+`rejected` with `AUTO-NO`, and `passed_outcome` with `auto_skipped`). `AUTO_MAX_TRADES_PER_DAY` (6) replaces the
+10-trade cap; the weekly brake switches auto mode off. Each message has 👍/👎 buttons (journal `user_feedback`;
+feedback never changes a trade) and, for placed trades, EXIT. A midday summary arrives at `MIDDAY_SUMMARY_AT`
+(12:30) and the day report counts placed, skipped and rated decisions.
+
+**Track record** (`trader/track.py`): read once per session from `stocks.gold.track_record` and shown in every
+proposal with its counts (rows under 8 outcomes are marked "too few to judge"); `premarket_context` gives it to
+Claude, whose rules allow adjusting its own score only on judged rows.
+
+**Exit rules on trial** (`trader/exits.py`, from 11 Nov; nothing changes real trades): after the close each
+trade is replayed on its 1-minute candles under the current exits and four alternatives (stop to entry at
++1R, sell half at +1R, a trailing stop, a 60-minute time stop), plus a day profit lock (once the day is +3R, no
+new trades if it falls back to half). The day report and the weekly report show how each would have done;
+journal events `exit_variants` and `profit_lock_shadow`. Adopt one only at a review, after 15+ trades.
 
 ## Making a change
 

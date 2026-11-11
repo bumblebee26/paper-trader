@@ -20,7 +20,7 @@ driven by live market data, company news and company financials, with you approv
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
 | 3 Swing pool | On hold: rules failed two backtests; Rs 60,000 held in NIFTYBEES | Retry later with new ideas |
 | 4 Long-term pool | Selection, backtest and shadow mode built | Go/no-go 18 Dec, buying from 21 Dec |
-| 5 Track record in suggestions | Collecting data | Review 23 Nov |
+| 5 Track record and auto mode | Live from 12 Nov: auto mode, 👍/👎 feedback, track record fed back every session | Review 23 Nov |
 
 ## Principles
 
@@ -46,14 +46,17 @@ strategy's losses never hide inside another's gains. A pool never spends another
 | Long-term | Months to years | Rs 1,00,000 | Shadow mode; real buying from 21 Dec if approved | `state/pools/long_term.json` (shadow: `long_term_shadow.json`) |
 
 Side effects of the smaller intraday pool: a trade risks about Rs 400, so fees of Rs 40 to 60 a trade weigh
-more; the daily loss limit was scaled to Rs 4,000 to stay at 10% of the pool.
+more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follows VIX), see Phase 1.
 
 ## Phase 1: intraday upgrades (built, live 10 Nov)
 
 | Setting | Before | Now |
 |---|---|---|
 | Trades per day | 5 | 10 |
-| Daily loss limit | 2% | Rs 4,000; lifts again if a winning exit brings the day back under it |
+| Daily loss limit | 2% | 4R (Rs 1,200–1,600 with VIX) including open positions' risk; lifts again if a winning exit brings the day back under it (Rs 4,000 from 9 to 11 Nov) |
+| Weekly brake | none | Week down 8R: half-size trades until Monday |
+| Cost filter | none | No trade whose fees and slippage exceed 30% of its risk |
+| Exit rules | fixed stop and 2R target | Same, with four alternatives and a day profit lock on trial in the background (reports; decided at a review) |
 | Cool-off | none | 30 minutes without new proposals after 3 losses in a row |
 | Watchlist | 16 stocks, mostly banks and IT | 36 stocks across 11 sectors (`trader/sectors.py`) |
 | Focus list each morning | up to 10 | up to 15, at least 6 sectors |
@@ -140,12 +143,21 @@ Budget 2026 per [Precize](https://www.precize.in/blogs/capital-gains-tax-on-shar
 Reports will show after-tax results. Intraday profits count as speculative business income at your slab rate.
 Approximations; check with a chartered accountant before real money.
 
-## Phase 5: track record (collecting data)
+## Phase 5: track record and auto mode (live from 12 Nov)
 
-Every proposal now records the suggestion %, the checks, trading agent and reviewer scores, and the shadow
-rule blocks. At the 23 Nov review: how the suggestion and the reviewer lined up with your YES/NO calls and
-the results, which background rules would have helped, then whether to feed your own track record (by setup,
-hour and market mood) into the suggestion %.
+- **Auto mode** (`/auto on|off`, on by default): a proposal with a combined suggestion of 55% YES or more is
+  placed without waiting for you; below that it's skipped and what it would have made is recorded. 6 trades a
+  day; switches itself off at the weekly brake. Every code limit still applies.
+- **Reasons in every message:** why it was proposed; why that YES % (live checks, trading agent and
+  reviewer, each with its reason); the reviewer's verdict; and the relevant track-record lines.
+- **Your 👍/👎** on every auto decision is recorded (`user_feedback`), and EXIT closes a position.
+- **The feedback loop:** the lakehouse builds `gold.proposal_outcomes` (every proposal: scores, decision,
+  outcome, your rating) and `gold.track_record` (by setup, hour, mood, suggestion band, reviewer, mode,
+  decision and your rating, last 90 days). Each session reads it. Claude adjusts its own score only where a
+  row has 8+ outcomes, and every proposal shows the record with its counts. Your ratings are measured
+  against outcomes too, so their weight is earned.
+- At the 23 Nov review: calibration (do 60-69% suggestions win 60-69% of the time?), auto vs human,
+  your 👍/👎 accuracy, and the exit rules on trial.
 
 ## Agents and the decision flow
 
@@ -169,7 +181,7 @@ their rules run as plain code in GitHub Actions, which keeps Claude usage to the
 | Largest position | 30% of balance as margin | 25% of pool | 15% (trim above 18%) |
 | Positions | 3 open, 10 trades a day | 5 | 10 picks (ledger allows up to 12) |
 | Per sector | 1 open, 2 trades a day | 2 | 2 picks per industry |
-| Loss brake | Rs 4,000 a day; 30-min cool-off after 3 losses | — | Sells what stops qualifying |
+| Loss brake | 4R a day incl. open risk; 8R a week halves risk; 30-min cool-off after 3 losses | — | Sells what stops qualifying |
 | Whole portfolio | Circuit breaker at 12% below the peak of all pools combined; `/resume` to restart | | |
 
 Costs in the simulation: intraday about Rs 20 a side plus 0.05% slippage; delivery 0.12% a side plus Rs 16
@@ -246,7 +258,7 @@ Cost review: Sun 15 Nov.
 | Decision (9 Nov 2026) | Choice |
 |---|---|
 | Pool sizes | Rs 2 lakh: intraday Rs 40,000, swing Rs 60,000, long-term Rs 1,00,000 |
-| Intraday loss limit | Rs 4,000 |
+| Intraday loss limit | Rs 4,000 (9 Nov); 4R incl. open risk, 8R weekly brake, cost filter (11 Nov) |
 | Swing exits | Automatic on rules set at entry |
 | Swing after failed backtests | Hold the Rs 60,000 in NIFTYBEES |
 | Long-term universe | Nifty 200 |
