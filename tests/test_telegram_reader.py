@@ -7,7 +7,6 @@ from helpers import Env
 
 import engine
 import handlers
-import server
 import telegram_bot as tg
 
 
@@ -17,7 +16,7 @@ class TelegramReaderTest(unittest.TestCase):
             engine.heartbeat()
             env.clock += timedelta(minutes=15)                 # a long think plus a reviewer call
             self.assertFalse(engine.session_alive())
-            server._run(lambda state: None)                    # any tool, e.g. wait_for_decision
+            engine.run_tool(lambda state: None)               # any tool, e.g. wait_for_decision
             self.assertTrue(engine.session_alive())
 
     def test_responder_waits_twenty_minutes(self):

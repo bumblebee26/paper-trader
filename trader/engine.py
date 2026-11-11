@@ -847,6 +847,18 @@ def heartbeat(phase="session"):
     storage.put_json("heartbeat.json", {"time": _now(), "phase": phase})
 
 
+def run_tool(fn, *args, **kwargs):
+    """How every MCP tool runs: load the ledger, call fn(state, ...), save. Each call also refreshes the
+    heartbeat, so the responder Lambda never starts reading Telegram while a session waits on the reviewer or
+    on the user's reply (Telegram allows one reader)."""
+    heartbeat()
+    state = load()
+    try:
+        return fn(state, *args, **kwargs)
+    finally:
+        save(state)
+
+
 def session_alive(max_age_min=10) -> bool:
     hb = storage.get_json("heartbeat.json")
     if not hb:

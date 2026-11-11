@@ -30,15 +30,7 @@ SCAN_PAUSE_SEC = 0.3
 DEFAULT_WATCHLIST = sectors.WATCHLIST  # 36 large caps across 11 sectors (trader/sectors.py)
 
 
-def _run(fn, *args, **kwargs):
-    # Every tool call proves the session is alive, so the responder Lambda never starts reading Telegram
-    # while a session waits on the reviewer or on the user's reply (Telegram allows one reader).
-    engine.heartbeat()
-    state = engine.load()
-    try:
-        return fn(state, *args, **kwargs)
-    finally:
-        engine.save(state)
+_run = engine.run_tool
 
 
 @mcp.tool()
