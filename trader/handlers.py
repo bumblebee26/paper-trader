@@ -108,7 +108,7 @@ def responder(event, context):
     one reader, and the session's own polling answers commands while it's live."""
     import telegram_bot as tg
 
-    if engine.session_active():
+    if engine.session_active(max_age_min=20):  # generous: a session may think for minutes between tool calls
         return {"skipped": "session live"}
     state = engine.load()
     try:
