@@ -44,6 +44,17 @@ when it finds no prices.
 
 `/ledger` shows today's limit, the room left and the week so far.
 
+**Auto mode** (`/auto on`, `/auto off`; on by default via `AUTO_MODE_DEFAULT`): proposals with a combined
+suggestion of at least `AUTO_MIN_YES_PCT` (55%) are placed without a YES; the rest are skipped (journal
+`rejected` with `AUTO-NO`, and `passed_outcome` with `auto_skipped`). `AUTO_MAX_TRADES_PER_DAY` (6) replaces the
+10-trade cap; the weekly brake switches auto mode off. Each message has 👍/👎 buttons (journal `user_feedback`;
+feedback never changes a trade) and, for placed trades, EXIT. A midday summary arrives at `MIDDAY_SUMMARY_AT`
+(12:30) and the day report counts placed, skipped and rated decisions.
+
+**Track record** (`trader/track.py`): read once per session from `stocks.gold.track_record` and shown in every
+proposal with its counts (rows under 8 outcomes are marked "too few to judge"); `premarket_context` gives it to
+Claude, whose rules allow adjusting its own score only on judged rows.
+
 **Exit rules on trial** (`trader/exits.py`, from 11 Nov; nothing changes real trades): after the close each
 trade is replayed on its 1-minute candles under the current exits and four alternatives (stop to entry at
 +1R, sell half at +1R, a trailing stop, a 60-minute time stop), plus a day profit lock (once the day is +3R, no

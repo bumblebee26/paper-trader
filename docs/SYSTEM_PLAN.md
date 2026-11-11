@@ -20,7 +20,7 @@ driven by live market data, company news and company financials, with you approv
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
 | 3 Swing pool | On hold: rules failed two backtests; Rs 60,000 held in NIFTYBEES | Retry later with new ideas |
 | 4 Long-term pool | Selection, backtest and shadow mode built | Go/no-go 18 Dec, buying from 21 Dec |
-| 5 Track record in suggestions | Collecting data | Review 23 Nov |
+| 5 Track record and auto mode | Live from 12 Nov: auto mode, 👍/👎 feedback, track record fed back every session | Review 23 Nov |
 
 ## Principles
 
@@ -143,12 +143,21 @@ Budget 2026 per [Precize](https://www.precize.in/blogs/capital-gains-tax-on-shar
 Reports will show after-tax results. Intraday profits count as speculative business income at your slab rate.
 Approximations; check with a chartered accountant before real money.
 
-## Phase 5: track record (collecting data)
+## Phase 5: track record and auto mode (live from 12 Nov)
 
-Every proposal now records the suggestion %, the checks, trading agent and reviewer scores, and the shadow
-rule blocks. At the 23 Nov review: how the suggestion and the reviewer lined up with your YES/NO calls and
-the results, which background rules would have helped, then whether to feed your own track record (by setup,
-hour and market mood) into the suggestion %.
+- **Auto mode** (`/auto on|off`, on by default): a proposal with a combined suggestion of 55% YES or more is
+  placed without waiting for you; below that it's skipped and what it would have made is recorded. 6 trades a
+  day; switches itself off at the weekly brake. Every code limit still applies.
+- **Reasons in every message:** why it was proposed; why that YES % (live checks, trading agent and
+  reviewer, each with its reason); the reviewer's verdict; and the relevant track-record lines.
+- **Your 👍/👎** on every auto decision is recorded (`user_feedback`), and EXIT closes a position.
+- **The feedback loop:** the lakehouse builds `gold.proposal_outcomes` (every proposal: scores, decision,
+  outcome, your rating) and `gold.track_record` (by setup, hour, mood, suggestion band, reviewer, mode,
+  decision and your rating, last 90 days). Each session reads it. Claude adjusts its own score only where a
+  row has 8+ outcomes, and every proposal shows the record with its counts. Your ratings are measured
+  against outcomes too, so their weight is earned.
+- At the 23 Nov review: calibration (do 60-69% suggestions win 60-69% of the time?), auto vs human,
+  your 👍/👎 accuracy, and the exit rules on trial.
 
 ## Agents and the decision flow
 
