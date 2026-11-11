@@ -587,6 +587,7 @@ def wait_decision(state, pid, max_wait=45):
         return {"status": p["status"]}
     deadline = time.time() + max(1, min(max_wait, 170))
     while time.time() < deadline:
+        heartbeat()
         tg.poll(state, wait=min(20, max(1, int(deadline - time.time()))))
         verdict = state["decisions"].get(pid)
         if verdict:

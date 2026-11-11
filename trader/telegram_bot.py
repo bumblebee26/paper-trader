@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 
 import config
+from http_client import log
 
 
 class TelegramError(RuntimeError):
@@ -82,8 +83,16 @@ def poll(state, wait=0) -> None:
     state["requests"] (answered by engine.answer_requests). Other senders are ignored.
     """
     allowed = str(config.allowed_user_id())
-    updates = _api("getUpdates", http_timeout=wait + 15, offset=state.get("tg_offset", 0),
-                   timeout=wait, allowed_updates=["message", "callback_query"])
+    try:
+        updates = _api("getUpdates", http_timeout=wait + 15, offset=state.get("tg_offset", 0),
+                       timeout=wait, allowed_updates=["message", "callback_query"])
+    except TelegramError as err:
+        if "conflict" not in str(err).lower():
+            raise
+        # Another reader (e.g. the responder Lambda) polled at the same moment: Telegram keeps the update
+        # for whoever reads next, so skip this round instead of failing the caller.
+        log.warning("Telegram read skipped: %s", err)
+        return
     for u in updates:
         state["tg_offset"] = u["update_id"] + 1
         if "callback_query" in u:
