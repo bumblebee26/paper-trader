@@ -59,18 +59,24 @@ def set_commands() -> None:
     _api("setMyCommands", commands=[{"command": c, "description": d} for c, d in COMMANDS])
 
 
+def _keyboard(buttons):
+    return {"inline_keyboard": [[{"text": label, "callback_data": data} for label, data in buttons]]}
+
+
 def send(text, buttons=None) -> int:
     params = {"chat_id": config.telegram_chat_id(), "text": text}
     if buttons:
-        params["reply_markup"] = {
-            "inline_keyboard": [[{"text": label, "callback_data": data} for label, data in buttons]]
-        }
+        params["reply_markup"] = _keyboard(buttons)
     return _api("sendMessage", **params)["message_id"]
 
 
-def edit(message_id, text) -> None:
+def edit(message_id, text, buttons=None) -> None:
+    """Replace a message's text. Telegram drops the buttons on an edit unless they're sent again."""
+    params = {"chat_id": config.telegram_chat_id(), "message_id": message_id, "text": text}
+    if buttons:
+        params["reply_markup"] = _keyboard(buttons)
     try:
-        _api("editMessageText", chat_id=config.telegram_chat_id(), message_id=message_id, text=text)
+        _api("editMessageText", **params)
     except TelegramError:
         pass  # unchanged or too old; harmless
 
@@ -85,7 +91,7 @@ def poll(state, wait=0) -> None:
     allowed = str(config.allowed_user_id())
     try:
         updates = _api("getUpdates", http_timeout=wait + 15, offset=state.get("tg_offset", 0),
-                       timeout=wait, allowed_updates=["message", "callback_query"])
+                       timeout=wait, allowed_updates=["message", "callback_query", "message_reaction"])
     except TelegramError as err:
         if "conflict" not in str(err).lower():
             raise
@@ -114,6 +120,17 @@ def poll(state, wait=0) -> None:
                 _api("answerCallbackQuery", callback_query_id=cq["id"], text="Got it")
             except TelegramError:
                 pass
+        elif "message_reaction" in u:
+            # A 👍 or 👎 *reaction* on a proposal message counts as a rating, same as the buttons
+            mr = u["message_reaction"]
+            if str((mr.get("user") or {}).get("id")) != allowed:
+                continue
+            emojis = {r.get("emoji") for r in mr.get("new_reaction", []) if r.get("type") == "emoji"}
+            kind = "like" if "👍" in emojis else "dislike" if "👎" in emojis else None
+            pid = next((k for k, p in state.get("proposals", {}).items() if p.get("message_id") == mr.get("message_id")),
+                       None)
+            if kind and pid:
+                state.setdefault("feedback", {})[pid] = kind
         elif "message" in u:
             msg = u["message"]
             if str(msg.get("from", {}).get("id")) != allowed:

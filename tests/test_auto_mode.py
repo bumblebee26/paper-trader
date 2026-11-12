@@ -84,6 +84,23 @@ class AutoModeTest(unittest.TestCase):
         r = self.propose(env, st, symbol="RELIANCE", yes=80, price=1500.0)
         self.assertEqual(r["status"], "approved")
 
+    def test_buttons_survive_the_placed_update_and_reactions_count(self):
+        env = self.env()
+        st = engine.load()
+        r = self.propose(env, st, yes=95)
+        engine.execute(st, r["proposal_id"])
+        self.assertIn("-> Placed @", env.edits[-1])
+        labels = [b[0] for b in env.edit_buttons[-1]]
+        self.assertEqual(labels, ["👍 good call", "👎 bad call", "EXIT"])
+        msg_id = st["proposals"][r["proposal_id"]]["message_id"]
+        env.react(msg_id, "👎")
+        env.react(msg_id, "🔥")                                  # other emoji: ignored
+        env.react(msg_id + 999, "👍")                            # not a proposal message: ignored
+        tg.poll(st)
+        engine.answer_requests(st)
+        fb = journal_rows("user_feedback")
+        self.assertEqual([(x["proposal_id"], x["user_reply"]) for x in fb], [(r["proposal_id"], "dislike")])
+
     def test_feedback_and_exit_buttons(self):
         env = self.env()
         st = engine.load()
