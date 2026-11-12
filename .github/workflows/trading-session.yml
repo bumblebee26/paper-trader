@@ -91,6 +91,9 @@ jobs:
         if: steps.phase.outputs.run == 'true'
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Claude Code doesn't pass its own login to the tools it starts; the reviewer (a second claude run
+          # by the trader's tools) gets the same token under this name. trader/reviewer.py
+          REVIEWER_CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PHASE: ${{ steps.phase.outputs.phase }}
         run: |
           unset ANTHROPIC_API_KEY  # bill the subscription, never an API key

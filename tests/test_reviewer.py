@@ -1,4 +1,5 @@
 """The independent reviewer: only code-gathered facts in, one plain verdict out, never blocks."""
+import os
 import subprocess
 import unittest
 from datetime import datetime
@@ -104,6 +105,23 @@ class ReasonTest(unittest.TestCase):
             self.assertEqual(reviewer.unavailable_reason(), "claude exited 1: Error: invalid API key")
         with mock.patch.dict("os.environ", {"REVIEWER": "off"}):
             self.assertIn("switched off", reviewer.unavailable_reason())
+
+    def test_reviewer_gets_the_login(self):
+        seen = {}
+
+        def fake_run(cmd, **kw):
+            seen.update(kw["env"])
+            return mock.Mock(returncode=0, stdout='{"yes_pct": 40, "verdict": "NO", "why": "Late."}', stderr="")
+        with Env(datetime(2026, 11, 12, 12, 10)), \
+                mock.patch.dict("os.environ", {"REVIEWER": "on", "REVIEWER_CLAUDE_TOKEN": "sk-ant-oat01-x",
+                                               "CLAUDECODE": "1"}), \
+                mock.patch("shutil.which", return_value="/usr/bin/claude"), mock.patch("subprocess.run", fake_run):
+            os.environ.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+            out = reviewer.review({}, "SBIN", "BUY", "ORB long", 1073.75, 1059.6, 1102.05, 2.0, 25, [])
+        self.assertEqual(out["verdict"], "NO")
+        self.assertEqual(seen["CLAUDE_CODE_OAUTH_TOKEN"], "sk-ant-oat01-x")
+        self.assertNotIn("REVIEWER_CLAUDE_TOKEN", seen)
+        self.assertNotIn("CLAUDECODE", seen)
 
 
 if __name__ == "__main__":
