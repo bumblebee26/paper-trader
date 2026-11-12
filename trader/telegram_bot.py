@@ -126,9 +126,17 @@ def poll(state, wait=0) -> None:
             if str((mr.get("user") or {}).get("id")) != allowed:
                 continue
             emojis = {r.get("emoji") for r in mr.get("new_reaction", []) if r.get("type") == "emoji"}
-            kind = "like" if "👍" in emojis else "dislike" if "👎" in emojis else None
+            old = {r.get("emoji") for r in mr.get("old_reaction", []) if r.get("type") == "emoji"}
+            if "👍" in emojis:
+                kind = "like"
+            elif "👎" in emojis:
+                kind = "dislike"
+            elif old & {"👍", "👎"}:
+                kind = "none"                                  # the rating reaction was taken away
+            else:
+                kind = None
             pid = next((k for k, p in state.get("proposals", {}).items() if p.get("message_id") == mr.get("message_id")),
-                       None)
+                       None) or (state.get("msg_index") or {}).get(str(mr.get("message_id")), {}).get("pid")
             if kind and pid:
                 state.setdefault("feedback", {})[pid] = kind
         elif "message" in u:

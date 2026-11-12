@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
-from helpers import Env, minute_bars
+from helpers import USER_ID, Env, minute_bars
 
 import config
 import engine
@@ -100,6 +100,32 @@ class AutoModeTest(unittest.TestCase):
         engine.answer_requests(st)
         fb = journal_rows("user_feedback")
         self.assertEqual([(x["proposal_id"], x["user_reply"]) for x in fb], [(r["proposal_id"], "dislike")])
+
+    def test_ratings_on_older_messages_and_removing_a_rating(self):
+        env = self.env()
+        st = engine.load()
+        r = self.propose(env, st, yes=95)
+        msg_id = st["proposals"][r["proposal_id"]]["message_id"]
+        engine.save(st)
+        env.clock = datetime(2026, 11, 16, 20, 0)               # the following Monday evening
+        st = engine.load()
+        self.assertNotIn(r["proposal_id"], st["proposals"])     # yesterday's proposals are gone...
+        env.react(msg_id, "👍")                                  # ...but the message still maps to its trade
+        tg.poll(st)
+        engine.answer_requests(st)
+        mon = [x for x in storage.read_rows("journal/2026-11-16.csv") if x["event"] == "user_feedback"]
+        self.assertEqual((mon[-1]["proposal_id"], mon[-1]["user_reply"], mon[-1]["symbol"]),
+                         (r["proposal_id"], "like", "HDFCBANK"))
+        env.updates.append({"update_id": len(env.updates) + 1, "message_reaction": {
+            "user": {"id": int(USER_ID)}, "message_id": msg_id,
+            "old_reaction": [{"type": "emoji", "emoji": "👍"}], "new_reaction": []}})
+        tg.poll(st)
+        engine.answer_requests(st)
+        mon = [x for x in storage.read_rows("journal/2026-11-16.csv") if x["event"] == "user_feedback"]
+        self.assertEqual(mon[-1]["user_reply"], "none")         # removed: no longer rated
+        env.clock = datetime(2026, 11, 24, 10, 0)               # 12 days later: too old to rate by reaction
+        st = engine.load()
+        self.assertNotIn(str(msg_id), st["msg_index"])
 
     def test_feedback_and_exit_buttons(self):
         env = self.env()
