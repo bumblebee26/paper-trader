@@ -124,6 +124,11 @@ def review(state, symbol, side, setup, entry, stop, target, rr, qty, market_line
         return _fail(unavailable_reason())
     prompt = PROMPT.format(facts=facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines))
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDECODE") and k != "ANTHROPIC_API_KEY"}
+    if not env.get("CLAUDE_CODE_OAUTH_TOKEN") and env.get("REVIEWER_CLAUDE_TOKEN"):
+        # The session's login isn't passed down to its tools ("Not logged in"); the workflow hands it over
+        # under another name for this one purpose.
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = env["REVIEWER_CLAUDE_TOKEN"]
+    env.pop("REVIEWER_CLAUDE_TOKEN", None)
     try:
         res = subprocess.run(
             ["claude", "-p", prompt, "--model", config.REVIEWER_MODEL, "--tools", "",
