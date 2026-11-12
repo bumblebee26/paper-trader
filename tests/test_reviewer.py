@@ -1,6 +1,7 @@
 """The independent reviewer: only code-gathered facts in, one plain verdict out, never blocks."""
 import subprocess
 import unittest
+from datetime import datetime
 from unittest import mock
 
 from helpers import Env
@@ -80,7 +81,29 @@ class ReviewerTest(unittest.TestCase):
                 st = engine.load()
                 r = engine.propose(st, "TCS", "SELL", "VWAP rejection", 3000.0, 3010.0, 2980.0, ["a"], "x")
                 self.assertEqual(r["status"], "pending")
-                self.assertIn("Independent reviewer: unavailable this time (not counted)", env.sent[-1])
+                self.assertIn("Independent reviewer: unavailable this time, not counted (", env.sent[-1])
+
+
+class ReasonTest(unittest.TestCase):
+    def test_reason_is_kept_and_shown(self):
+        import subprocess
+        from unittest import mock
+        with Env(datetime(2026, 11, 12, 12, 10)):
+            self._check(subprocess, mock)
+
+    def _check(self, subprocess, mock):
+        with mock.patch.dict("os.environ", {"REVIEWER": "on"}), \
+                mock.patch("shutil.which", return_value="/usr/bin/claude"), \
+                mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired("claude", 90)):
+            self.assertIsNone(reviewer.review({}, "SBIN", "BUY", "ORB long", 1073.75, 1059.6, 1102.05, 2.0, 25, []))
+            self.assertEqual(reviewer.unavailable_reason(), "no answer within 90 s")
+        fake = mock.Mock(returncode=1, stderr="Error: invalid API key", stdout="")
+        with mock.patch.dict("os.environ", {"REVIEWER": "on"}), \
+                mock.patch("shutil.which", return_value="/usr/bin/claude"), mock.patch("subprocess.run", return_value=fake):
+            reviewer.review({}, "SBIN", "BUY", "ORB long", 1073.75, 1059.6, 1102.05, 2.0, 25, [])
+            self.assertEqual(reviewer.unavailable_reason(), "claude exited 1: Error: invalid API key")
+        with mock.patch.dict("os.environ", {"REVIEWER": "off"}):
+            self.assertIn("switched off", reviewer.unavailable_reason())
 
 
 if __name__ == "__main__":

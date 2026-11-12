@@ -145,8 +145,8 @@ Approximations; check with a chartered accountant before real money.
 
 ## Phase 5: track record and auto mode (live from 12 Nov)
 
-- **Auto mode** (`/auto on|off`, on by default): a proposal with a combined suggestion of 55% YES or more is
-  placed without waiting for you; below that it's skipped and what it would have made is recorded. 6 trades a
+- **Auto mode** (`/auto on|off`, on by default): a proposal with a combined suggestion of 55% YES or more, the
+  trading agent itself for it (50%+) and the reviewer's check is placed without waiting for you; below that it's skipped and what it would have made is recorded. 6 trades a
   day; switches itself off at the weekly brake. Every code limit still applies.
 - **Reasons in every message:** why it was proposed; why that YES % (live checks, trading agent and
   reviewer, each with its reason); the reviewer's verdict; and the relevant track-record lines.

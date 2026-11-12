@@ -112,6 +112,10 @@ jobs:
             --model "$CLAUDE_MODEL" \
             --output-format text
 
+      - name: Show reviewer problems, if any
+        if: always() && steps.phase.outputs.run == 'true'
+        run: grep -rhi "reviewer" ~/.cache/claude-cli-nodejs 2>/dev/null | tail -20 || true
+
       - name: Tell Telegram if the session failed
         if: failure() && steps.phase.outputs.run == 'true'
         env:

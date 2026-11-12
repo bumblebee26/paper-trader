@@ -9,9 +9,11 @@ import config
 import engine
 import storage
 import telegram_bot as tg
+import reviewer
 import track
 
 DAY = datetime(2026, 11, 12, 10, 40)
+REVIEW = {"yes_pct": 60, "verdict": "YES", "why": "Banks and Nifty are both up."}
 
 
 def journal_rows(event):
@@ -31,8 +33,12 @@ class AutoModeTest(unittest.TestCase):
         self.start.start()                       # after Env, so auto mode is on for these tests
         return env
 
-    def propose(self, env, st, symbol="HDFCBANK", yes=95, price=1600.0):
+    def propose(self, env, st, symbol="HDFCBANK", yes=95, price=1600.0, review=REVIEW):
         env.prices[symbol] = price
+        with mock.patch.object(reviewer, "review", return_value=review):
+            return self._propose(st, symbol, yes, price)
+
+    def _propose(self, st, symbol, yes, price):
         return engine.propose(st, symbol, "BUY", "ORB long", price, price * 0.99, price * 1.02,
                               ["broke the opening range on 2x volume"], "back below 1590",
                               summary="Banks are rising with the market.", ai_yes_pct=yes,
@@ -45,8 +51,8 @@ class AutoModeTest(unittest.TestCase):
         self.assertEqual(r["status"], "approved")
         msg = env.sent[-1]
         for part in ("AUTO · BUY HDFCBANK", "placing it now", "Why proposed:", "- Banks are rising with the market.",
-                     "Why 78% YES", "- Trading agent 95%: Strong breakout in a rising sector.",
-                     "- Independent reviewer"):
+                     "Why 72% YES", "- Trading agent 95%: Strong breakout in a rising sector.",
+                     "- Independent reviewer YES 60%: Banks and Nifty are both up."):
             self.assertIn(part, msg)
         self.assertEqual(engine.execute(st, r["proposal_id"])["status"], "filled")
         self.assertIn("mode auto", journal_rows("proposed")[0]["note"])
@@ -63,6 +69,20 @@ class AutoModeTest(unittest.TestCase):
         env.clock = datetime(2026, 11, 12, 15, 20)
         engine.report(st)
         self.assertEqual(journal_rows("passed_outcome")[0]["user_reply"], "auto_skipped")
+
+    def test_agent_against_or_no_reviewer_means_no_auto_trade(self):
+        env = self.env()
+        st = engine.load()
+        # today's SBIN case: checks 95%, agent 38%, no reviewer: the average was 66% but Claude was against it
+        with mock.patch.object(config, "AUTO_MIN_YES_PCT", 40.0):   # the average alone would have traded it
+            r = self.propose(env, st, yes=38, review=None)
+        self.assertEqual(r["status"], "skipped_auto")
+        self.assertIn("the trading agent itself is against it (38% < 50%)", env.sent[-1])
+        r = self.propose(env, st, symbol="TCS", yes=80, price=3000.0, review=None)
+        self.assertEqual(r["status"], "skipped_auto")
+        self.assertIn("the independent reviewer didn't answer", r["reason"])
+        r = self.propose(env, st, symbol="RELIANCE", yes=80, price=1500.0)
+        self.assertEqual(r["status"], "approved")
 
     def test_feedback_and_exit_buttons(self):
         env = self.env()

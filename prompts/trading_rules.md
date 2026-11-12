@@ -95,7 +95,9 @@ mode and the user's 👍/👎. Use it to calibrate, not to gamble:
 - `approved` (auto mode, suggestion at or above the threshold): call `execute_approved_trade` now.
 - `skipped_auto` (auto mode, suggestion below it): no trade; move on. Its would-have result is recorded.
 - `pending` (human mode): follow steps 1-3.
-Auto mode holds you to the same bar: propose only what you'd propose to the user. It allows 6 trades a day.
+Auto mode holds you to the same bar: propose only what you'd propose to the user. It allows 6 trades a day, and
+places a trade only when the combined suggestion is 55%+, your own ai_yes_pct is 50+ and the reviewer answered;
+so if you're against a candidate, give it an honest low number (or don't propose it).
 1. `propose_trade` -> proposal_id
 2. `wait_for_decision(proposal_id)` until not pending
 3. Only if approved: `execute_approved_trade(proposal_id)`
