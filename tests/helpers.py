@@ -41,7 +41,7 @@ class Env:
         self.capital = capital  # tests of the mechanics use Rs 1 lakh; the live intraday pool is config's
         self.clock = when.replace(tzinfo=market.IST)
         self.store = MemoryStore()
-        self.sent, self.edits, self.updates = [], [], []
+        self.sent, self.edits, self.updates, self.edit_buttons = [], [], [], []
         self.prices, self.bars = {}, {}
         self._patches = []
 
@@ -64,7 +64,8 @@ class Env:
             mock.patch.object(market, "now_ist", lambda: self.clock),
             mock.patch.object(tg, "_api", fake_api),
             mock.patch.object(tg, "send", fake_send),
-            mock.patch.object(tg, "edit", lambda m, t: self.edits.append(t)),
+            mock.patch.object(tg, "edit", lambda m, t, buttons=None: (self.edits.append(t),
+                                                                       self.edit_buttons.append(buttons))),
             mock.patch.object(market, "last_price", lambda s: (self.prices.get(s), "2026-11-09 10:40")),
             mock.patch.object(market, "candles", lambda s, i="5m", d=1: self.bars.get((s, i), [])),
             mock.patch.object(config, "STARTING_CAPITAL", self.capital),
@@ -120,6 +121,12 @@ class Env:
     def text(self, body, user=USER_ID):
         n = len(self.updates) + 1
         self.updates.append({"update_id": n, "message": {"from": {"id": int(user)}, "text": body}})
+
+    def react(self, message_id, emoji, user=USER_ID):
+        n = len(self.updates) + 1
+        self.updates.append({"update_id": n, "message_reaction": {
+            "user": {"id": int(user)}, "message_id": message_id,
+            "new_reaction": [{"type": "emoji", "emoji": emoji}] if emoji else []}})
 
 
 def minute_bars(start, rows):

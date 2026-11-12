@@ -880,7 +880,9 @@ def execute(state, pid):
         "target": p["target"], "opened_at": _now(), "setup": p["setup"], "proposal_id": pid,
     }
     p["status"] = "filled"
-    tg.edit(p["message_id"], p["text"] + f"\n\n-> Placed @ {fill:,.2f}")
+    keep = ([("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}"), ("EXIT", f"x:{pid}")]
+            if p.get("mode") == "auto" else None)  # auto mode: keep the rating and EXIT buttons on the message
+    tg.edit(p["message_id"], p["text"] + f"\n\n-> Placed @ {fill:,.2f}", buttons=keep)
     tg.send(f"Placed [MOCK] {p['side']} {p['symbol']} {p['qty']} @ {fill:,.2f}. "
             f"SL {p['stop']:,.2f}, TGT {p['target']:,.2f}.\n"
             f"In plain words: you now {'own' if p['side'] == 'BUY' else 'are short'} {p['qty']} {p['symbol']} "

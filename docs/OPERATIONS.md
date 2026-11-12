@@ -49,7 +49,8 @@ only when the combined suggestion is at least `AUTO_MIN_YES_PCT` (55%), the trad
 `AUTO_MIN_AGENT_PCT` (50%) and the independent reviewer answered (`AUTO_NEEDS_REVIEWER`); the rest are skipped (journal
 `rejected` with `AUTO-NO`, and `passed_outcome` with `auto_skipped`). `AUTO_MAX_TRADES_PER_DAY` (6) replaces the
 10-trade cap; the weekly brake switches auto mode off. Each message has 👍/👎 buttons (journal `user_feedback`;
-feedback never changes a trade) and, for placed trades, EXIT. A midday summary arrives at `MIDDAY_SUMMARY_AT`
+feedback never changes a trade) and, for placed trades, EXIT; the buttons stay after the "Placed" update, and a
+👍 or 👎 *reaction* on the message counts as a rating too. A midday summary arrives at `MIDDAY_SUMMARY_AT`
 (12:30) and the day report counts placed, skipped and rated decisions.
 
 **Track record** (`trader/track.py`): read once per session from `stocks.gold.track_record` and shown in every
