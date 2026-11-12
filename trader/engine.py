@@ -725,7 +725,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     if ai_yes_pct is not None:
         why_pct.append(f"- Trading agent {int(round(float(ai_yes_pct)))}%: {ai_reason.strip() or 'no reason given'}")
     why_pct.append(f"- Independent reviewer {review['verdict']} {review['yes_pct']}%: {review['why']}" if review
-                   else "- Independent reviewer: unavailable this time (not counted)")
+                   else f"- Independent reviewer: unavailable this time, not counted ({reviewer.unavailable_reason()})")
     record = track.lines_for(setup, yes, mood, hour)
 
     lines = [
@@ -764,7 +764,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
             target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]),
             note=(f"suggested {advice['verdict']} {yes}% | checks {advice['checks_pct']}%"
                   f" | agent {ai_yes_pct if ai_yes_pct is not None else '-'}%"
-                  f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '-'}"
+                  f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '- (' + reviewer.unavailable_reason()[:80].replace('|', '/') + ')'}"
                   f" | mood {mood or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"
                   f" | mode {'auto' if auto else 'human'}"))
     base = {"proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,

@@ -33,8 +33,19 @@ Reply with JSON only, no other text:
   "why": "<one or two plain sentences for someone who isn't a trader: no jargon or abbreviations>"}}"""
 
 
+LAST_ERROR = ""  # why the last review didn't come back (shown in the proposal and journaled)
+
+
 def enabled() -> bool:
     return os.environ.get("REVIEWER", "off").lower() == "on" and shutil.which("claude") is not None
+
+
+def unavailable_reason() -> str:
+    if os.environ.get("REVIEWER", "off").lower() != "on":
+        return "switched off (REVIEWER is not 'on')"
+    if shutil.which("claude") is None:
+        return "the claude command isn't installed where the trader runs"
+    return LAST_ERROR or "no answer"
 
 
 def facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines) -> str:
@@ -101,9 +112,16 @@ def parse(text: str):
     return {"yes_pct": pct, "verdict": verdict, "why": why}
 
 
+def _fail(reason):
+    global LAST_ERROR
+    LAST_ERROR = " ".join(str(reason).split())[:200]
+    log.warning("reviewer unavailable: %s", LAST_ERROR)
+    return None
+
+
 def review(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines):
     if not enabled():
-        return None
+        return _fail(unavailable_reason())
     prompt = PROMPT.format(facts=facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines))
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDECODE") and k != "ANTHROPIC_API_KEY"}
     try:
@@ -113,10 +131,11 @@ def review(state, symbol, side, setup, entry, stop, target, rr, qty, market_line
             capture_output=True, text=True, timeout=config.REVIEWER_TIMEOUT_SEC, env=env,
             stdin=subprocess.DEVNULL,
         )
-    except (subprocess.TimeoutExpired, OSError) as err:
-        log.info("reviewer unavailable: %s", err)
-        return None
+    except subprocess.TimeoutExpired:
+        return _fail(f"no answer within {config.REVIEWER_TIMEOUT_SEC} s")
+    except OSError as err:
+        return _fail(f"couldn't start claude: {err}")
     if res.returncode != 0:
-        log.info("reviewer failed (%s): %s", res.returncode, (res.stderr or res.stdout)[-300:])
-        return None
-    return parse(res.stdout)
+        return _fail(f"claude exited {res.returncode}: {(res.stderr or res.stdout).strip()[-160:]}")
+    out = parse(res.stdout)
+    return out if out else _fail(f"answer wasn't the expected JSON: {res.stdout.strip()[:120]}")
