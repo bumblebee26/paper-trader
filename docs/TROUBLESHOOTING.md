@@ -35,8 +35,20 @@
 A phase runs once per day. To re-run: delete `sessions/<date>/<phase>` from the state bucket.
 
 ### `Telegram ... Conflict: terminated by other getUpdates request`
-Two programs are reading the bot: laptop mode (Claude Desktop) and a GitHub session. Remove paper-trader
-from Claude Desktop while sessions are on.
+Two programs are reading the bot. During sessions the responder Lambda stands aside (it waits 20 minutes after
+the session's last tool call) and a conflict is skipped, not fatal. If it keeps repeating, laptop mode (Claude
+Desktop) is probably also running: remove paper-trader from Claude Desktop while sessions are on.
+
+### Proposals say `independent reviewer unavailable` (auto mode skips them)
+The reviewer is a second `claude -p` started by the MCP server, and Claude Code doesn't pass
+`CLAUDE_CODE_OAUTH_TOKEN` to it. The workflow hands it over as `REVIEWER_CLAUDE_TOKEN` (same secret).
+The reason is shown after the word unavailable; `Not logged in` means that variable is missing. The session
+log step "Show reviewer problems, if any" prints the full error.
+
+### A 👍/👎 rating doesn't show in the lakehouse
+Ratings are exported at 15:45 and 23:30 on weekdays (the last 4 days' journals), weekend ones on Monday.
+Only ratings within 7 days of the proposal count, and only 👍/👎 (other emoji are ignored). Removing a
+reaction records `none`, which clears the rating.
 
 ### Claude Code: `Invalid API key` / `401`
 The `CLAUDE_CODE_OAUTH_TOKEN` secret is missing, expired or has spaces. Run `claude setup-token` again.

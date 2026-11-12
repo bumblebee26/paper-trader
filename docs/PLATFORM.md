@@ -58,6 +58,7 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` and portfolio snapshot to `landing/portfolio/`; pipeline builds the trading and portfolio tables |
 | 17:55 | Fri | Trader | Weekly report to Telegram |
 | 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy for the day; pipeline refresh, then the dashboard's plain-words summaries |
+| 23:30 | Mon–Fri | Trader → Lakehouse | Late export: the last 4 days' journals again, so evening 👍/👎 ratings reach the track record overnight |
 | 07:15 | Sat | Trader → Lakehouse | Company fundamentals job: Nifty 200 financials to `landing/fundamentals/`, the list to `landing/index_members/` |
 | 10:15 | Sat | Lakehouse → Trader | Long-term shadow job: reads this week's picks, "buys"/sells in the shadow ledger, report to Telegram |
 | every 2 min | all week | Trader | Responder answers Telegram commands when no session is live |
@@ -129,7 +130,7 @@ Where each phase of the system plan stands. The full plan (pools, rules, backtes
 
 | Phase | Status | Live parts | Next |
 |---|---|---|---|
-| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, auto mode with 👍/👎 feedback and a lakehouse track record read every session, 36 stocks in 11 sectors, sector and position caps | Track-record review 23 Nov |
+| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, auto mode (places a trade only if the suggestion is 55%+, the trading agent 50%+ and the reviewer answered; 6 trades a day; off at the weekly brake) with 👍/👎 ratings by button or reaction for 7 days and a lakehouse track record read every session, 36 stocks in 11 sectors, sector and position caps | Track-record review 23 Nov |
 | 2 Foundations | Live | Company news on proposals, market mood, shadow rule variants, `/news` `/portfolio` `/stop`, data alerts, pool ledgers, circuit breaker, weekly report | One-tap reasons, idle-cash interest (later) |
 | 3 Swing pool | On hold | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14) | Retry with results-based setups once news history exists |
 | 4 Long-term pool | Shadow mode | Weekly figures for the Nifty 200, quality tests, 10 picks a week, backtest, Saturday shadow report | Go/no-go 18 Dec, live buying from 21 Dec |
