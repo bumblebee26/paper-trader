@@ -697,7 +697,8 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     advice = advisor.combine(advice, ai_yes_pct, review)
     yes = advice["yes_pct"]
     auto = auto_on(state)
-    place = auto and yes >= config.AUTO_MIN_YES_PCT
+    skip_why = _auto_skip_reason(yes, ai_yes_pct, review) if auto else ""
+    place = auto and not skip_why
     valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)  # after the review
     mood = advice.get("mood")
     hour = market.now_ist().strftime("%H")
@@ -707,12 +708,12 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     elif place:
         head = [f"[MOCK] AUTO · {side} {symbol}  ({setup}): placing it now",
                 f"Decision: TRADE at {advice['verdict']} {yes}% (auto mode trades from "
-                f"{config.AUTO_MIN_YES_PCT:g}%). Rate it with 👍/👎; EXIT closes it."]
+                f"{config.AUTO_MIN_YES_PCT:g}%, with the trading agent for it and the reviewer's check). "
+                "Rate it with 👍/👎; EXIT closes it."]
     else:
         head = [f"[MOCK] AUTO · {side} {symbol}  ({setup}): skipped",
-                f"Decision: SKIP at {advice['verdict']} {yes}% (auto mode trades from "
-                f"{config.AUTO_MIN_YES_PCT:g}%). Rate the skip with 👍/👎; what it would have made is in the "
-                "day report."]
+                f"Decision: SKIP at {advice['verdict']} {yes}%: {skip_why}. Rate the skip with 👍/👎; what it "
+                "would have made is in the day report."]
     why_proposed = ["Why proposed:"]
     if summary:
         why_proposed.append(f"- {summary.strip()}")
@@ -778,10 +779,23 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
                     "next": "auto mode: call execute_approved_trade now (no wait_for_decision needed)"}
         p["status"], p["user_reply"] = "rejected", "AUTO-NO"
         journal("rejected", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
-                target=target, user_reply="AUTO-NO", note=f"suggestion {yes}% below {config.AUTO_MIN_YES_PCT:g}%")
-        return {**base, "status": "skipped_auto", "auto": True,
-                "next": "auto mode skipped it (suggestion below the threshold); move on"}
+                target=target, user_reply="AUTO-NO", note=skip_why)
+        return {**base, "status": "skipped_auto", "auto": True, "reason": skip_why,
+                "next": "auto mode skipped it; move on"}
     return {**base, "status": "pending", "valid_until": p["valid_until"]}
+
+
+def _auto_skip_reason(yes, ai_yes_pct, review) -> str:
+    """Why auto mode won't place this trade ('' = place it). All three must hold: the combined suggestion is high
+    enough, Claude itself is for it, and the independent reviewer answered."""
+    if yes < config.AUTO_MIN_YES_PCT:
+        return f"the suggestion is below the {config.AUTO_MIN_YES_PCT:g}% auto mode needs"
+    if ai_yes_pct is None or float(ai_yes_pct) < config.AUTO_MIN_AGENT_PCT:
+        return (f"the trading agent itself is against it ({ai_yes_pct if ai_yes_pct is not None else 'no'}% "
+                f"< {config.AUTO_MIN_AGENT_PCT:g}%)")
+    if config.AUTO_NEEDS_REVIEWER and review is None:
+        return "the independent reviewer didn't answer, and auto mode needs its check"
+    return ""
 
 
 def _expired(p) -> bool:

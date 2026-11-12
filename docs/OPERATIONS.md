@@ -44,8 +44,9 @@ when it finds no prices.
 
 `/ledger` shows today's limit, the room left and the week so far.
 
-**Auto mode** (`/auto on`, `/auto off`; on by default via `AUTO_MODE_DEFAULT`): proposals with a combined
-suggestion of at least `AUTO_MIN_YES_PCT` (55%) are placed without a YES; the rest are skipped (journal
+**Auto mode** (`/auto on`, `/auto off`; on by default via `AUTO_MODE_DEFAULT`): a proposal is placed without a YES
+only when the combined suggestion is at least `AUTO_MIN_YES_PCT` (55%), the trading agent's own score is at least
+`AUTO_MIN_AGENT_PCT` (50%) and the independent reviewer answered (`AUTO_NEEDS_REVIEWER`); the rest are skipped (journal
 `rejected` with `AUTO-NO`, and `passed_outcome` with `auto_skipped`). `AUTO_MAX_TRADES_PER_DAY` (6) replaces the
 10-trade cap; the weekly brake switches auto mode off. Each message has 👍/👎 buttons (journal `user_feedback`;
 feedback never changes a trade) and, for placed trades, EXIT. A midday summary arrives at `MIDDAY_SUMMARY_AT`

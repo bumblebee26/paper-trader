@@ -106,6 +106,8 @@ REVIEWER_MODEL = os.environ.get("REVIEWER_MODEL", "sonnet")
 # are placed without waiting for a YES; the rest are skipped. The user's 👍/👎 is recorded as feedback.
 AUTO_MODE_DEFAULT = os.environ.get("AUTO_MODE_DEFAULT", "on").lower() in ("1", "on", "true", "yes")
 AUTO_MIN_YES_PCT = _f("AUTO_MIN_YES_PCT", 55.0)
+AUTO_MIN_AGENT_PCT = _f("AUTO_MIN_AGENT_PCT", 50.0)     # Claude's own score must also be for the trade
+AUTO_NEEDS_REVIEWER = os.environ.get("AUTO_NEEDS_REVIEWER", "on").lower() in ("1", "on", "true", "yes")
 AUTO_MAX_TRADES_PER_DAY = _i("AUTO_MAX_TRADES_PER_DAY", 6)
 MIDDAY_SUMMARY_AT = os.environ.get("MIDDAY_SUMMARY_AT", "12:30")   # auto mode: a short summary at this time
 REVIEWER_TIMEOUT_SEC = _i("REVIEWER_TIMEOUT_SEC", 90)
