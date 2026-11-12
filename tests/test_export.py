@@ -70,9 +70,21 @@ class ExportTest(unittest.TestCase):
                                               "DATABRICKS_TOKEN": "dapi-test"}), \
                     mock.patch.object(export, "request", lambda *a, **k: calls.append((a, k)) or b""):
                 out = handlers.guardian({"action": "export"}, None)
-            self.assertEqual(out["volume_path"], "/Volumes/stocks/bronze/landing/trades/date=2026-11-09/events.jsonl")
+            today = out["exports"][-1]                     # the last 4 days (weekdays); only today has a journal here
+            self.assertEqual(today["volume_path"], "/Volumes/stocks/bronze/landing/trades/date=2026-11-09/events.jsonl")
+            self.assertEqual(out["exports"][0], {"date": "2026-11-06", "skipped": "no journal"})  # Fri; no weekend
             self.assertTrue(calls[1][0][1].endswith("/trades/date=2026-11-09/events.jsonl?overwrite=true"))
             self.assertTrue(storage.exists("exports/date=2026-11-09/events.jsonl"))
+
+    def test_monday_export_resends_fridays_late_ratings(self):
+        with Env(datetime(2026, 11, 16, 15, 45)):
+            storage.append_row("journal/2026-11-13.csv", engine.JOURNAL_COLUMNS,       # Fri 23:50 rating
+                               {"event": "user_feedback", "event_id": "fb-x", "user_reply": "like"})
+            storage.append_row("journal/2026-11-16.csv", engine.JOURNAL_COLUMNS, {"event": "day_plan", "event_id": "p"})
+            with mock.patch.object(export, "_push", lambda path, body: f"/Volumes/x/{path}"):
+                out = handlers.guardian({"action": "late"}, None)
+            self.assertEqual([e["date"] for e in out["exports"] if "volume_path" in e], ["2026-11-13", "2026-11-16"])
+            self.assertTrue(storage.exists("exports/date=2026-11-13/events.jsonl"))
 
     def test_no_journal_no_push(self):
         with Env():

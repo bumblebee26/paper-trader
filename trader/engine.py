@@ -121,6 +121,9 @@ def _new_day(state: dict) -> None:
         if p["status"] in ("pending", "approved"):
             p["status"] = "expired"
     state["proposals"] = {k: v for k, v in state["proposals"].items() if v.get("day") == _today()}
+    # Proposal messages of the last 7 days, so a 👍/👎 reaction on an older message still finds its trade
+    week_ago = (market.now_ist() - timedelta(days=RATING_DAYS)).strftime("%Y-%m-%d")
+    state["msg_index"] = {k: v for k, v in (state.get("msg_index") or {}).items() if v.get("day", "") >= week_ago}
     state["decisions"] = {}
     state["exit_requests"] = []
     state["requests"] = []
@@ -348,13 +351,18 @@ def set_auto(state, on: bool, reason="by you") -> None:
     journal("auto_mode_on" if on else "auto_mode_off", note=reason)
 
 
+RATING_DAYS = 7  # how long a proposal message can still be rated by a reaction
+
+
 def record_feedback(state) -> int:
-    """Journal the user's 👍/👎 taps (feedback on auto-mode decisions; never changes a trade)."""
+    """Journal the user's 👍/👎 (buttons or reactions; 'none' when a reaction is removed). Feedback never changes
+    a trade. Works for proposals of earlier days too (the journal row carries the proposal_id)."""
     taps = state.pop("feedback", {}) or {}
     for pid, kind in taps.items():
-        p = state["proposals"].get(pid, {})
-        if p:
-            p["feedback"] = kind
+        p = state["proposals"].get(pid) or next(
+            (v for v in (state.get("msg_index") or {}).values() if v.get("pid") == pid), {})
+        if pid in state["proposals"]:
+            state["proposals"][pid]["feedback"] = None if kind == "none" else kind
         journal("user_feedback", event_id=f"fb-{pid}", proposal_id=pid, symbol=p.get("symbol", ""),
                 setup=p.get("setup", ""), side=p.get("side", ""), user_reply=kind,
                 note=f"decision {p.get('user_reply', '?')} at suggestion {p.get('suggested_yes_pct', '?')}%")
@@ -761,6 +769,8 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         "message_id": msg_id, "text": text, "suggested_yes_pct": yes,
         "review": review, "mode": "auto" if auto else "human",
     }
+    state.setdefault("msg_index", {})[str(msg_id)] = {"pid": pid, "day": _today(), "symbol": symbol, "setup": setup,
+                                                      "side": side, "user_reply": "", "suggested_yes_pct": yes}
     journal("proposed", proposal_id=pid, symbol=symbol, setup=setup, side=side, entry=entry, stop=stop,
             target=target, qty=qty, risk_rs=risk_rs, rr=rr, reasons=" | ".join(reasons[:3]),
             note=(f"suggested {advice['verdict']} {yes}% | checks {advice['checks_pct']}%"

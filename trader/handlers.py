@@ -13,6 +13,7 @@ guardian Backstop that needs no Claude. Event {"action": "squareoff"} at 15:12 I
 """
 import json
 import os
+from datetime import date, timedelta
 
 import config
 import engine
@@ -86,14 +87,18 @@ def guardian(event, context):
             return {"weekly": weekly.run(state)["week"]}
         finally:
             engine.save(state)
-    if action == "export":
+    if action in ("export", "late"):
         import export
 
         ev = event or {}
         if ev.get("start"):
             return {"exports": export.export_range(ev["start"], ev.get("end", ev["start"]))}
         day = ev.get("date") or engine._today()
-        out = export.export_day(day)
+        # The last 4 days, not just today: a 👍/👎 given in the evening or at the weekend lands in that day's
+        # journal after its export ran (Monday's run reaches back to Friday). Re-sending a day is harmless:
+        # the lakehouse keeps the newest copy of each event.
+        start = (date.fromisoformat(day) - timedelta(days=3)).isoformat()
+        out = {"date": day, "exports": export.export_range(start, day)}
         try:
             out.update(export.export_portfolio(day))
         except Exception as err:  # noqa: BLE001 - the journal export must not fail because of this

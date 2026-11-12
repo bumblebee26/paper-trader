@@ -1,6 +1,7 @@
 # All times IST, Monday-Friday. GitHub's own cron (in the workflow) is the
 # backup if the kicker is off or fails; a session claims its phase once per day.
-# export: the day's journal goes to the lakehouse volume (backup feed + analysis).
+# export: the last 4 days' journals go to the lakehouse volume (backup feed + analysis); late: the same at
+# 23:30, so ratings given in the evening (or at the weekend, picked up Monday) reach the lakehouse.
 locals {
   kicks = {
     morning   = "cron(8 9 ? * MON-FRI *)"
@@ -12,6 +13,7 @@ locals {
     park      = "cron(14 15 ? * MON-FRI *)"
     report    = "cron(40 15 ? * MON-FRI *)"
     export    = "cron(45 15 ? * MON-FRI *)"
+    late      = "cron(30 23 ? * MON-FRI *)" # second export, so evening ratings reach the lakehouse overnight
     weekly    = "cron(55 17 ? * FRI *)"
   }
 }
