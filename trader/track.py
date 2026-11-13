@@ -64,13 +64,20 @@ def lines_for(setup, yes_pct, mood=None, hour=None) -> list:
     return ["Track record (past proposals, incl. skipped ones):", *[f"- {t}" for t in found]]
 
 
-def compact(setup, yes_pct, mood=None, hour=None) -> str:
-    """One line for the compact message: 'Track: PDL break 1/4 · 50-59% 2/4 · choppy 4/14 (avg -Rs 99)'."""
+SIDE_WORDS = {"BUY": "buys", "SELL": "shorts"}
+
+
+def compact(setup, yes_pct, mood=None, hour=None, sector=None, side=None) -> str:
+    """One line for the compact message: 'Track: PDL break 1/4 · 50-59% 2/4 · choppy 4/14 (avg -Rs 99) · Banks 3/10'."""
     items = [("setup", setup, setup), ("yes_band", band(yes_pct), band(yes_pct))]
     if mood:
         items.append(("mood", mood, mood))
     if hour:
         items.append(("hour", hour, f"{hour}:00s"))
+    if sector:
+        items.append(("sector", sector, sector))
+    if side:
+        items.append(("side", side, SIDE_WORDS.get(side, side)))
     parts = []
     for dim, val, label in items:
         r = lookup(dim, val)
@@ -81,12 +88,13 @@ def compact(setup, yes_pct, mood=None, hour=None) -> str:
     return ("Track: " + " · ".join(parts)) if parts else ""
 
 
-def losing(setup, mood=None, hour=None) -> list:
+def losing(setup, mood=None, hour=None, sector=None, side=None) -> list:
     """Groups this proposal belongs to whose record is judged (MIN_TRADES+) and losing on average,
     e.g. ['choppy mood']. Auto mode raises its bar for these."""
     out = []
     for dim, val, label in (("setup", setup, f"{setup} setup"), ("mood", mood, f"{mood} mood"),
-                            ("hour", hour, f"{hour}:00 hour")):
+                            ("hour", hour, f"{hour}:00 hour"), ("sector", sector, f"{sector} sector"),
+                            ("side", side, SIDE_WORDS.get(side or "", "") or None)):
         r = lookup(dim, val) if val else None
         if r and int(r["trades"] or 0) >= MIN_TRADES and float(r["avg_outcome_rs"] or 0) < 0:
             out.append(label)
