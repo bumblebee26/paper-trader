@@ -19,6 +19,7 @@ Within a candle the stop is checked first, then the target, then any stop move, 
 next candle (conservative). Results are journaled for the daily and weekly reports and the 23 Nov review.
 """
 import config
+import fees
 
 RULES = ("current", "breakeven", "half_and_run", "trailing", "time_stop")
 RULE_WORDS = {
@@ -46,27 +47,28 @@ def _exit_fill(price, side):
 
 
 def replay(rule, side, qty, fill, stop, target, opened_at, bars):
-    """Net P&L of one trade under `rule` (entry and exit brokerage, exit slippage; the fill already has
-    entry slippage). bars: 1-minute candles {time 'YYYY-MM-DD HH:MM', open, high, low, close}."""
+    """Net P&L of one trade under `rule` (every order's charges from fees.py, exit slippage; the fill already
+    has entry slippage). rule 'eod': fixed stop, no target, held to the square-off. bars: 1-minute candles {time 'YYYY-MM-DD HH:MM', open, high, low, close}."""
     d = 1 if side == "BUY" else -1
     r = (fill - stop) * d
     if r <= 0 or qty <= 0:
         return None
     open_hhmm = opened_at[11:16]
     cur_stop = stop
-    tgt = None if rule == "trailing" else target
-    remaining, pnl, orders = qty, 0.0, 1   # entry order
+    tgt = None if rule in ("trailing", "eod") else target
+    remaining, pnl = qty, 0.0
+    charges = fees.order(fill * qty, side)   # entry order
     best = fill
     one_r_price = fill + d * r
     reached_1r = False
     time_checked = False
 
     def leave(n, price):
-        nonlocal remaining, pnl, orders
+        nonlocal remaining, pnl, charges
         px = _exit_fill(price, side)
         pnl += (px - fill) * n * d
         remaining -= n
-        orders += 1
+        charges += fees.order(px * n, "SELL" if side == "BUY" else "BUY")
 
     last_close = None
     for b in bars:
@@ -107,7 +109,7 @@ def replay(rule, side, qty, fill, stop, target, opened_at, bars):
         leave(remaining, last_close)
     if remaining > 0:
         return None
-    return round(pnl - orders * config.BROKERAGE_PER_ORDER, 2)
+    return round(pnl - charges, 2)
 
 
 def replay_all(trade, bars):

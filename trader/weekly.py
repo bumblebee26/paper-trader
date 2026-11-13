@@ -23,6 +23,8 @@ SHADOW_WORDS = {
     "nifty_against_0.3": "no BUY when Nifty is down 0.3% (no SELL when up 0.3%)",
     "against_mood": "no trades against the market mood",
     "after_14h": "no new trades after 14:00",
+    "vwap_wrong_side": "no BUY below today's average price, VWAP (no SELL above it)",
+    "lagging_sector": "no BUY on a stock weaker than its sector today (no SELL on a stronger one)",
 }
 
 
@@ -107,6 +109,15 @@ def build(today: date):
             exit_actual += float(r.get("pnl_rs") or 0)
             for k in exits.RULES:
                 exit_totals[k] += res[k]
+    orb_rows = {r["event_id"]: r for r in rows if r["event"] == "orb_shadow"}
+    orb = {"stocks": 0, "rs": defaultdict(float), "trades": defaultdict(int)}
+    for r in orb_rows.values():
+        orb["stocks"] += 1
+        for k, v in exits.parse_note(r.get("note")).items():
+            if v is not None:
+                orb["rs"][k] += v
+                if k.endswith("_2r"):
+                    orb["trades"][k[:-3]] += 1
     locks = {r["event_id"]: r for r in rows if r["event"] == "profit_lock_shadow"}
     lock_change = 0.0
     for r in locks.values():
@@ -117,6 +128,8 @@ def build(today: date):
         "exit_rules": {"trades": exit_trades, "actual": round(exit_actual, 2),
                        "totals": {k: round(v, 2) for k, v in exit_totals.items()}},
         "profit_lock": {"days": len(locks), "change": round(lock_change, 2)},
+        "orb_trial": {"stocks": orb["stocks"], "trades": dict(orb["trades"]),
+                      "rs": {k: round(v, 2) for k, v in orb["rs"].items()}},
         "weekly_brake": any(r["event"] == "weekly_brake" for r in rows),
         "week_start": week_days(today)[0].isoformat(), "week_end": today.isoformat(),
         "trades": len(closed), "net_pnl": round(sum(pnl_of(r) for r in closed), 2), "fees": round(fees, 2),
@@ -217,6 +230,13 @@ def paper_lines(w) -> list:
     if lock.get("days"):
         lines.append(f"- Profit lock: armed on {lock['days']} day(s); it would have changed the result by "
                      f"{_inr(lock['change'], sign=True)}.")
+    o = w.get("orb_trial") or {}
+    if o.get("trades"):
+        rs, n = o["rs"], o["trades"]
+        lines.append(f"- Opening-range test on stocks in play: 5-min range {n.get('orb5', 0)} trades, "
+                     f"{_inr(rs.get('orb5_2r', 0), sign=True)} with a 2R target / "
+                     f"{_inr(rs.get('orb5_eod', 0), sign=True)} held to 15:10; 15-min range {n.get('orb15', 0)} "
+                     f"trades, {_inr(rs.get('orb15_2r', 0), sign=True)} / {_inr(rs.get('orb15_eod', 0), sign=True)}.")
     if w.get("passed"):
         lines.append(f"- Skipped proposals ({w['passed']}) would have made {_inr(w['passed_pnl'], sign=True)}"
                      + (": skipping saved money." if w["passed_pnl"] < 0 else "."))

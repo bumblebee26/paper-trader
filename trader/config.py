@@ -95,6 +95,10 @@ FOCUS_MAX = _i("FOCUS_MAX", 15)
 # (stocks.gold.intraday_universe: EQ series, close >= Rs 50, Rs 50 crore+ a day). A fresh NSE filing on one of
 # them during the session adds it to the scan (up to NEWS_FOCUS_MAX extra names at a time).
 NEWS_FOCUS_MAX = _i("NEWS_FOCUS_MAX", 5)
+# Stocks in play: at IN_PLAY_AT the focus list is re-ranked by opening relative volume (the first 10 minutes'
+# volume vs the same 10 minutes on the last ~14 days), so the day's most active names are the ones scanned.
+IN_PLAY_AT = os.environ.get("IN_PLAY_AT", "09:25")
+IN_PLAY_BARS = _i("IN_PLAY_BARS", 2)                      # 5-minute bars from 09:15 = the first 10 minutes
 MIN_STOCK_PRICE = _f("MIN_STOCK_PRICE", 50.0)          # no penny stocks
 NEWS_RADAR_CATEGORIES = ("results", "order", "mna", "management", "rating", "regulatory", "pledge", "insider",
                          "dividend_split_bonus", "board_meeting")
@@ -105,6 +109,12 @@ SLIPPAGE_PCT = _f("SLIPPAGE_PCT", 0.05)
 DELIVERY_COST_PCT = _f("DELIVERY_COST_PCT", 0.12)
 DP_CHARGE_RS = _f("DP_CHARGE_RS", 16.0)
 BROKERAGE_PER_ORDER = _f("BROKERAGE_PER_ORDER", 20.0)
+# Statutory charges on intraday orders (trader/fees.py): STT on sells, exchange and SEBI fees, GST, stamp duty on buys
+STT_SELL_PCT = _f("STT_SELL_PCT", 0.025)
+EXCHANGE_FEE_PCT = _f("EXCHANGE_FEE_PCT", 0.00297)
+SEBI_FEE_PCT = _f("SEBI_FEE_PCT", 0.0001)
+GST_PCT = _f("GST_PCT", 18.0)
+STAMP_BUY_PCT = _f("STAMP_BUY_PCT", 0.003)
 APPROVAL_TIMEOUT_SEC = _i("APPROVAL_TIMEOUT_SEC", 180)
 # Independent risk reviewer (trader/reviewer.py); switched on by REVIEWER=on in the session workflow.
 REVIEWER_MODEL = os.environ.get("REVIEWER_MODEL", "sonnet")

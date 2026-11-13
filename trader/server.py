@@ -127,10 +127,11 @@ def run_cycle() -> dict:
     square-off), then scan today's focus list if entries are allowed. Returns events, a short
     account line and any candidates. Use this instead of separate monitor/scan calls.
     news_alerts: fresh NSE filings on tradable stocks since the last cycle; those stocks are added to the
-    scan (up to 5 extra). Read the filing before proposing: news says which stock may move, not which way."""
+    scan (up to 5 extra). stocks_in_play (once, at 09:25): the focus list re-ranked by opening relative volume. Read the filing before proposing: news says which stock may move, not which way."""
     state = engine.load()
     try:
         mon = engine.monitor(state)
+        in_play = engine.rank_in_play(state, pause=SCAN_PAUSE_SEC) if engine.in_session_hours() else []
         alerts = engine.news_alerts(state) if mon["account"]["entry_window_open"] else []
         focus = list(dict.fromkeys((state.get("focus") or DEFAULT_WATCHLIST) + (state.get("focus_news") or [])))
         nifty = scanner.nifty_context() if mon["account"]["entry_window_open"] else None
@@ -148,6 +149,8 @@ def run_cycle() -> dict:
         "open_positions": list(acct["open_positions"].keys()),
         "entry_window_open": acct["entry_window_open"],
     }
+    if in_play:
+        out["stocks_in_play"] = in_play   # today's focus list from here on: the most unusually active names
     if alerts:
         out["news_alerts"] = alerts   # their stocks are in this cycle's scan; trades on them count as 'news'
     if acct["entry_window_open"]:

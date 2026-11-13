@@ -38,7 +38,7 @@ would have made.
 |---|---|
 | **Trading session** (GitHub Actions) | Morning (09:08–12:25) and afternoon (12:27–15:25) runs. Claude Code uses the MCP tools in `trader/server.py`; rules in `prompts/trading_rules.md`. |
 | **MCP tools** | `premarket_context`, `start_day`, `run_cycle`, `propose_trade`, `wait_for_decision`, `execute_approved_trade`, `wait_for_next_candle`, `end_of_day_report` and a few helpers. |
-| **Engine** (`trader/engine.py`) | Dummy ledger, risk gate, sizing, approvals with expiry, simulated fills with slippage and brokerage, stop/target exits, square-off, report. Every rule that matters is enforced in code, not left to Claude. |
+| **Engine** (`trader/engine.py`) | Dummy ledger, risk gate, sizing, approvals with expiry, simulated fills with slippage and a contract note's charges (`trader/fees.py`), stop/target exits, square-off, report. Every rule that matters is enforced in code, not left to Claude. |
 | **Brief** (`trader/brief.py`) | Reads the lakehouse gold tables and turns them into the day plan: risk per trade from VIX, bias from India's historical gap after similar US days, unusual-volume and ADR candidates. |
 | **S3 state bucket** | The only memory between runs: ledger, journal CSVs, plans, reports, session claims, heartbeat. |
 | **Kicker Lambda** | Starts each session on time through the GitHub API. GitHub's own cron is kept as a backup. |

@@ -62,7 +62,7 @@ def market_mood(nifty_pct, vix=None):
     return "choppy"
 
 
-def shadow_blocks(side, nifty_pct, mood, now):
+def shadow_blocks(side, nifty_pct, mood, now, vwap_wrong=False, lagging=False):
     """Alternative rules we are testing without trading them: which would have blocked this trade.
     Recorded in the journal so the 2-week review can compare them with the real results."""
     out = []
@@ -72,7 +72,30 @@ def shadow_blocks(side, nifty_pct, mood, now):
         out.append("against_mood")
     if now.hour * 60 + now.minute >= 14 * 60:
         out.append("after_14h")
+    if vwap_wrong:
+        out.append("vwap_wrong_side")
+    if lagging:
+        out.append("lagging_sector")
     return out
+
+
+RS_GAP_PCT = 0.3   # stock vs its sector (or Nifty) since the open: more than this is "stronger" / "weaker"
+
+
+def vwap_and_strength(symbol):
+    """(vwap, stock % since today's open) from today's 5-minute candles; (None, None) if unavailable."""
+    try:
+        bars = market.candles(symbol, "5m", 1)
+    except Exception:  # noqa: BLE001 - a missing check never blocks a proposal
+        return None, None
+    today = market.now_ist().strftime("%Y-%m-%d")
+    bars = [b for b in bars if b["time"].startswith(today) and b.get("volume")]
+    if not bars:
+        return None, None
+    pv = sum((b["high"] + b["low"] + b["close"]) / 3 * b["volume"] for b in bars)
+    vol = sum(b["volume"] for b in bars)
+    move = (bars[-1]["close"] - bars[0]["open"]) / bars[0]["open"] * 100 if bars[0]["open"] else None
+    return (round(pv / vol, 2) if vol else None), (round(move, 2) if move is not None else None)
 
 
 def news_check(symbol):
@@ -103,6 +126,7 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
         checks.append((INFO, f"Market mood: {mood} (Nifty {nifty_pct:+.2f}% since the open"
                              + (f", VIX {vix:g})." if vix is not None else ")."), 0))
     sensex_pct = index_move("^BSESN")
+    sector_pct = None
     checks.append(_index_check("Nifty 50", nifty_pct, side, 15))
     short.append(_short_index("Nifty", nifty_pct, checks[-1][0]))
     checks.append(_index_check("Sensex", sensex_pct, side, 5))
@@ -137,6 +161,33 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
             short.append(f"price near entry {OK}")
     else:
         checks.append((INFO, "Live price: couldn't check right now.", 0))
+
+    # Which side of today's average price (VWAP), and strength against its own sector (or Nifty).
+    vwap, stock_pct = vwap_and_strength(symbol)
+    vwap_wrong = lagging = False
+    price_now = live or entry
+    if vwap:
+        right = price_now > vwap if side == "BUY" else price_now < vwap
+        vwap_wrong = not right
+        if right:
+            checks.append((OK, f"The price is on the right side of today's average price (VWAP {vwap:,.2f}).", 5))
+            short.append(f"{'above' if side == 'BUY' else 'below'} VWAP {OK}")
+        else:
+            checks.append((WARN, f"The price is on the wrong side of today's average price (VWAP {vwap:,.2f}) for a "
+                                 f"{side}.", -10))
+            short.append(f"{'below' if side == 'BUY' else 'above'} VWAP {WARN}")
+    ref_pct, ref_name = (sector_pct, "its sector") if sector_pct is not None else (nifty_pct, "Nifty")
+    if stock_pct is not None and ref_pct is not None:
+        gap = (stock_pct - ref_pct) * (1 if side == "BUY" else -1)
+        if gap >= RS_GAP_PCT:
+            checks.append((OK, f"The stock is {'stronger' if side == 'BUY' else 'weaker'} than {ref_name} today "
+                               f"({stock_pct:+.2f}% vs {ref_pct:+.2f}%), the way this {side} needs.", 5))
+            short.append(f"{'stronger' if side == 'BUY' else 'weaker'} than {ref_name} {OK}")
+        elif gap <= -RS_GAP_PCT:
+            lagging = True
+            checks.append((WARN, f"The stock is {'weaker' if side == 'BUY' else 'stronger'} than {ref_name} today "
+                                 f"({stock_pct:+.2f}% vs {ref_pct:+.2f}%), against this {side}.", -5))
+            short.append(f"{'weaker' if side == 'BUY' else 'stronger'} than {ref_name} {WARN}")
 
     # Time left before the 15:10 square-off.
     now = market.now_ist()
@@ -174,7 +225,7 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
                     + (" · ".join(s for s in short if s) or "no live market data right now"))
     out = {"checks_pct": checks_pct, "market_lines": market_lines, "mood": mood, "top_checks": top_checks,
            "market_short": market_short,
-           "shadow": shadow_blocks(side, nifty_pct, mood, market.now_ist())}
+           "shadow": shadow_blocks(side, nifty_pct, mood, market.now_ist(), vwap_wrong, lagging)}
     return combine(out, ai_yes_pct, None)
 
 

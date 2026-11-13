@@ -53,15 +53,22 @@ VIX, USD/INR, ADR moves and NSE unusual-volume names.
 - Proposals on these stocks are labelled "news" in the journal and the track record (`source`), so news picks
   are judged separately from the watchlist. Use their judged record like any other.
 
+## Stocks in play, VWAP and strength (from 16 Nov)
+- At 09:25 `run_cycle` returns `stocks_in_play`: the focus list re-ranked by opening relative volume (the first 10
+  minutes vs the usual). The most unusually active stocks are where intraday setups work best; prefer them.
+- The live checks now score the VWAP side (a BUY below today's average price, or a SELL above it, counts
+  against) and strength against the stock's sector (a BUY on a stock weaker than its sector counts against).
+  For PDH/PDL breaks in particular, prefer the side of VWAP the trade needs.
+
 ## Choosing which candidates to propose
 `run_cycle` returns candidates (ORB, VWAP reclaim/rejection, PDH/PDL break). Propose one
 only if all of these hold:
 - It agrees with Nifty: no BUY while Nifty is at its day low and falling from the open;
   no SELL while Nifty is at its day high and rising.
 - Volume is at least 1.2x average (already required for ORB and PDH/PDL).
-- The stop is sensible: not wider than 1.5% of price and not tighter than about 0.6%, or about 1% when VIX is
-  30 or more (tighter stops are blocked by the code's cost filter: fees and slippage would be over 30% of the
-  risk). Adjust the stop to the nearest logical level within that
+- The stop is sensible: not wider than 1.5% of price and not tighter than about 0.9%, or about 1.2% when VIX is
+  30 or more (tighter stops are blocked by the code's cost filter: brokerage, STT, exchange fees, GST, stamp duty
+  and slippage would be over 30% of the risk; together they are about 0.26% of the position, round trip). Adjust the stop to the nearest logical level within that
   range if needed, and recompute target = entry +/- 2 x risk. If no logical level fits, skip the candidate.
 - It fits the bias rules above.
 - At most 2 proposals per cycle; pick the strongest evidence.
