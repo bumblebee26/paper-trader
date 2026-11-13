@@ -67,7 +67,6 @@ def account_status() -> dict:
     return _run(engine.account)
 
 
-@mcp.tool()
 def _with_market(info, moves):
     """Add today's Nifty and sector-index moves (% since the open), so reasons can be checked against them."""
     def move(idx):
@@ -81,6 +80,7 @@ def _with_market(info, moves):
     return info
 
 
+@mcp.tool()
 def market_snapshot(symbols: list[str]) -> list[dict]:
     """Per NSE symbol: last price, gap %, previous-day high/low, VWAP, opening range, and today's Nifty and
     sector-index moves (check reasons like "IT is weak" against sector_move_pct)."""
