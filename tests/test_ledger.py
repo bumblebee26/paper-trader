@@ -37,8 +37,8 @@ class LedgerTest(unittest.TestCase):
         with Env(datetime(2026, 11, 9, 9, 50)) as env:
             st, _ = hdfc_trade(env)
             proposal, fill_msg = env.sent[-2], env.sent[-1]
-            self.assertIn("Qty 234", proposal)
-            self.assertIn("Uses Rs 37,098 margin of Rs 1,00,000 free", proposal)
+            self.assertIn("Buy 234 @ ~792.70 now", proposal)
+            self.assertIn("Margin Rs 37,098 of Rs 1,00,000 free", proposal)
             self.assertIn("Ledger: balance Rs 99,980 | in use Rs 37,117 (1 position) | free Rs 62,863 | today -Rs 20",
                           fill_msg)
 
@@ -49,7 +49,7 @@ class LedgerTest(unittest.TestCase):
             env.at(9, 55)
             engine.monitor(st)
             msg = env.sent[-1]
-            self.assertIn("Closed HDFCBANK (target)", msg)
+            self.assertIn("Sold 234 HDFCBANK @ 798.70 (target)", msg)
             self.assertIn("in use Rs 0 (0 positions)", msg)
             self.assertIn("free Rs 1,01,", msg)
 

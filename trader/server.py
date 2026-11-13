@@ -68,28 +68,42 @@ def account_status() -> dict:
 
 
 @mcp.tool()
+def _with_market(info, moves):
+    """Add today's Nifty and sector-index moves (% since the open), so reasons can be checked against them."""
+    def move(idx):
+        if idx not in moves:
+            moves[idx] = advisor.index_move(idx)
+        return moves[idx]
+    info["nifty_move_pct"] = move("^NSEI")
+    sec = sectors.SECTOR_INDEX.get(info.get("symbol", ""))
+    if sec:
+        info["sector_index"], info["sector_move_pct"] = sec[1], move(sec[0])
+    return info
+
+
 def market_snapshot(symbols: list[str]) -> list[dict]:
-    """Per NSE symbol: last price, gap %, previous-day high/low, VWAP, opening range."""
-    out = []
+    """Per NSE symbol: last price, gap %, previous-day high/low, VWAP, opening range, and today's Nifty and
+    sector-index moves (check reasons like "IT is weak" against sector_move_pct)."""
+    out, moves = [], {}
     for s in symbols:
         try:
             info = scanner.analyse(s)
             info.pop("signals", None)
-            out.append(info)
+            out.append(_with_market(info, moves))
         except Exception as e:  # noqa: BLE001
             out.append({"symbol": s, "error": str(e)})
     return out
 
 
 def _scan(symbols):
-    found = []
+    found, moves = [], {}
     for i, s in enumerate(symbols):
         if i and i % 5 == 0:
             time.sleep(SCAN_PAUSE_SEC)  # small batches, gentle on Yahoo's rate limits
         try:
             info = scanner.analyse(s)
             if info.get("signals"):
-                found.append(info)
+                found.append(_with_market(info, moves))
         except Exception as e:  # noqa: BLE001
             found.append({"symbol": s, "error": str(e)})
     return found

@@ -56,7 +56,7 @@ class Env:
                 return [u for u in self.updates if u["update_id"] >= p.get("offset", 0)]
             return True
 
-        def fake_send(text, buttons=None):
+        def fake_send(text, buttons=None, reply_to=None):
             self.sent.append(text)
             return len(self.sent)
 
@@ -110,6 +110,11 @@ class Env:
             "category": category, "title": symbol, "description": description, "link": link,
             "published_ist": when, "fetched_at_ist": when})
         news.reset_cache()
+
+    def full(self):
+        """The full reasons of the latest proposal (behind its ℹ️ Full reasons button)."""
+        keys = [k for k in self.store.files if k.startswith("reasons/")]
+        return self.store.files[keys[-1]] if keys else ""
 
     def at(self, h, m):
         self.clock = self.clock.replace(hour=h, minute=m)

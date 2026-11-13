@@ -33,6 +33,10 @@ def _direction(pct):
     return ("up" if pct > 0 else "down"), f"is {'up' if pct > 0 else 'down'} {abs(pct):.2f}% since the open"
 
 
+def _short_index(label, pct, icon):
+    return "" if pct is None else f"{label} {pct:+.2f}% {icon}"
+
+
 def _index_check(name, pct, side, weight):
     if pct is None:
         return INFO, f"{name}: couldn't check right now.", 0
@@ -91,18 +95,24 @@ def news_check(symbol):
 def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
     """Return {"yes_pct", "verdict", "lines"} for the Telegram message."""
     checks = []  # (icon, text, points)
+    short = []   # the one-line market check of the compact message: "Nifty -0.14% ➖"
     nifty_pct = index_move("^NSEI")
     vix = (state.get("plan") or {}).get("vix")
     mood = market_mood(nifty_pct, vix)
     if mood:
         checks.append((INFO, f"Market mood: {mood} (Nifty {nifty_pct:+.2f}% since the open"
                              + (f", VIX {vix:g})." if vix is not None else ")."), 0))
+    sensex_pct = index_move("^BSESN")
     checks.append(_index_check("Nifty 50", nifty_pct, side, 15))
-    checks.append(_index_check("Sensex", index_move("^BSESN"), side, 5))
+    short.append(_short_index("Nifty", nifty_pct, checks[-1][0]))
+    checks.append(_index_check("Sensex", sensex_pct, side, 5))
+    short.append(_short_index("Sensex", sensex_pct, checks[-1][0]))
     if symbol in SECTOR_INDEX:
         idx, name, group = SECTOR_INDEX[symbol]
-        icon, text, pts = _index_check(name, index_move(idx), side, 10)
+        sector_pct = index_move(idx)
+        icon, text, pts = _index_check(name, sector_pct, side, 10)
         checks.append((icon, text.replace(name, f"{name} ({group})", 1), pts))
+        short.append(_short_index(name.replace("Nifty ", "") if name != "Bank Nifty" else "Banks", sector_pct, icon))
 
     # How far the price has already moved since the setup appeared.
     try:
@@ -117,11 +127,14 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
         if to_target and moved > 0.4 * to_target:
             checks.append((WARN, f"The price (Rs {live:,.2f}) has already moved {moved / to_target:.0%} of the "
                                  "way to the target: you'd be entering late, with less left to gain.", -15))
+            short.append(f"already {moved / to_target:.0%} to target {WARN}")
         elif to_stop and -moved > 0.5 * to_stop:
             checks.append((WARN, f"The price (Rs {live:,.2f}) has already slipped over half-way toward the "
                                  "stop-loss: the idea is weakening.", -10))
+            short.append(f"slipped toward the stop {WARN}")
         else:
             checks.append((OK, f"The price is still close to the entry (Rs {live:,.2f}).", 5))
+            short.append(f"price near entry {OK}")
     else:
         checks.append((INFO, "Live price: couldn't check right now.", 0))
 
@@ -131,6 +144,7 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
     left = f"{mins_left // 60}h {mins_left % 60:02d}m" if mins_left >= 60 else f"{max(mins_left, 0)} min"
     if mins_left < 70:
         checks.append((WARN, f"Only {left} left before the 15:10 close: less time for the target.", -10))
+        short.append(f"only {left} left {WARN}")
     else:
         checks.append((OK, f"{left} left before the 15:10 close.", 0))
 
@@ -148,6 +162,7 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
             checks.append((OK, f"The morning plan expected a {bias}, which fits a {side}.", 5))
         else:
             checks.append((WARN, f"The morning plan expected a {bias}, which goes against a {side}.", -5))
+        short.append(f"plan expected a {'rise' if favours == 'BUY' else 'fall'} {checks[-1][0]}")
 
     checks.append(news_check(symbol))
 
@@ -155,7 +170,10 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
     market_lines = ["Market check:", *[f"{icon} {text}" for icon, text, _ in checks]]
     weighty = sorted((c for c in checks if c[2]), key=lambda c: -abs(c[2]))[:2]
     top_checks = [f"{text} ({pts:+d})" for _, text, pts in weighty]
+    market_short = ((f"Market ({mood}): " if mood else "Market: ")
+                    + (" · ".join(s for s in short if s) or "no live market data right now"))
     out = {"checks_pct": checks_pct, "market_lines": market_lines, "mood": mood, "top_checks": top_checks,
+           "market_short": market_short,
            "shadow": shadow_blocks(side, nifty_pct, mood, market.now_ist())}
     return combine(out, ai_yes_pct, None)
 

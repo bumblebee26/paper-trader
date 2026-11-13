@@ -46,15 +46,21 @@ Each proposal also lists the company's **NSE filings** from today and the last t
 lakehouse news feed), flags worrying ones (regulatory, rating, pledge) and an upcoming board meeting, and
 names the **market mood** (trending up or down, jumpy, choppy). Stale prices pause proposals with an alert.
 
-Each proposal starts with **a suggestion** ("YES, 65% for and 35% against") and explains itself in plain
-words: what you'd buy or sell, why now, what you'd make or lose, and a **market check** of Nifty 50,
+Each proposal is **compact** (about 15 lines): a headline that says BUY (bet on a rise) or SHORT (bet on a fall:
+sell first, buy back by 15:10), the suggestion and its three scores, every number (entry, target and stop with
+the rupees at each, margin, risk), and one line each for the reasons for, the risk against, the agent, the
+reviewer, the market, the track record and news. Buttons under it open the stock in **Groww** (the app, on a
+phone that has it) or on **NSE**, and **ℹ️ Full reasons** replies with the long version: what you'd buy or sell,
+why now, what you'd make or lose, and a **market check** of Nifty 50,
 Sensex, the stock's sector index (Bank Nifty, Nifty IT), whether the price has already run, and the time
 left. An **independent risk reviewer** (a second Claude, with no tools, that sees only facts gathered by
 code, never the trading agent's pitch) tries to argue against each trade and gives its own verdict in
 plain words. The percentage averages three scores: the live checks, the trading agent and the reviewer.
 It is not a chance of profit. With **auto mode** off you make the call. With it on (`/auto on|off`, on by default,
-dummy money only) a trade is placed without asking only if the suggestion is 55%+, the trading agent itself is 50%+
-and the reviewer answered; otherwise it's skipped and what it would have made is recorded. Up to 6 auto trades a day;
+dummy money only) a trade is placed without asking only if the suggestion is over 55%, the trading agent itself is
+over 50% and the reviewer answered (exactly 55% / 50% is a coin flip and is skipped). The bar rises by 5 for a setup,
+market mood or hour whose track record (8+ outcomes) is losing, and to 60% for the opposite side of a stock already
+proposed that day. Otherwise it's skipped, and the day report lists what each skipped trade would have made. Up to 6 auto trades a day;
 the weekly brake turns it off. Rate any proposal with the 👍/👎 buttons or a 👍/👎 reaction, any time within 7 days:
 ratings reach `stocks.gold.track_record`, which every session reads to calibrate its suggestions. The lakehouse table `stocks.gold.trading_decisions` shows later how
 your YES and NO calls worked out.

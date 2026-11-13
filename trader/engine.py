@@ -11,6 +11,7 @@ import advisor
 import config
 import exits
 import track
+import links
 import market
 import news
 import pools
@@ -18,6 +19,7 @@ import reviewer
 import sectors
 import storage
 import telegram_bot as tg
+from http_client import log
 
 JOURNAL_COLUMNS = [
     "timestamp_ist", "event", "symbol", "setup", "side", "entry", "stop", "target", "qty",
@@ -360,7 +362,9 @@ def rating_buttons(state, pid, rating=None):
     buttons = [(mark("like", "👍 good call"), f"fb:like:{pid}"), (mark("dislike", "👎 bad call"), f"fb:dislike:{pid}")]
     if any(pos.get("proposal_id") == pid for pos in state.get("positions", {}).values()):
         buttons.append(("EXIT", f"x:{pid}"))
-    return buttons
+    symbol = (state["proposals"].get(pid) or {}).get("symbol") or next(
+        (v.get("symbol") for v in (state.get("msg_index") or {}).values() if v.get("pid") == pid), "")
+    return [buttons, links.buttons(symbol, pid)] if symbol else buttons
 
 
 def record_feedback(state) -> int:
@@ -381,6 +385,20 @@ def record_feedback(state) -> int:
         if msg_id:
             tg.set_buttons(msg_id, rating_buttons(state, pid, None if kind == "none" else kind))
     return len(taps)
+
+
+def _message_of(state, pid):
+    return (state["proposals"].get(pid) or {}).get("message_id") or next(
+        (int(k) for k, v in (state.get("msg_index") or {}).items() if v.get("pid") == pid), None)
+
+
+def _full_reasons(state, pid) -> str:
+    """The long explanation behind a proposal's Full reasons button (today's from state, older from S3)."""
+    text = (state["proposals"].get(pid) or {}).get("full_text")
+    if not text:
+        day = next((v.get("day") for v in (state.get("msg_index") or {}).values() if v.get("pid") == pid), "")
+        text = storage.backend().get(f"reasons/{day}/{pid}.txt") if day else None
+    return text or "[MOCK] The full reasons for that proposal aren't available any more (kept for 7 days)."
 
 
 def answer_requests(state) -> int:
@@ -412,6 +430,8 @@ def answer_requests(state) -> int:
             tg.send("[MOCK] Resumed: proposals allowed again"
                     + (" (portfolio circuit breaker reset)." if breaker else ".")
                     if (was or stopped or breaker) else "[MOCK] Nothing was paused.")
+        elif ask.startswith("info:"):
+            tg.send(_full_reasons(state, ask[5:]), reply_to=_message_of(state, ask[5:]))
         elif ask == "stop":
             state["stopped"] = True
             journal("stopped_by_user")
@@ -701,6 +721,59 @@ def plain_proposal(side, symbol, setup, entry, stop, target, qty, risk_rs, summa
     return lines
 
 
+def action_word(side) -> str:
+    """BUY stays BUY; a SELL you don't own is a SHORT (sell first, buy back the same day)."""
+    return "BUY" if side == "BUY" else "SHORT"
+
+
+def _short(text, limit=110) -> str:
+    return reviewer.shorten(" ".join(str(text or "").split()), limit)
+
+
+def compact_proposal(*, auto, place, symbol, side, setup, entry, stop, target, qty, risk_rs, rr, risk_pct, need,
+                     free, advice, yes, ai_yes_pct, ai_reason, review, reasons, summary, invalid_if, skip_why, bar,
+                     bar_why, track_line, valid_until) -> str:
+    """The Telegram proposal: every number, reasons in one line each. The long version is behind Full reasons."""
+    buy = side == "BUY"
+    status = "your call" if not auto else "PLACING" if place else "SKIPPED"
+    agent = f"agent {int(round(float(ai_yes_pct)))}" if ai_yes_pct is not None else "agent -"
+    rev = f"reviewer {review['verdict']} {review['yes_pct']}" if review else "reviewer unavailable"
+    if not auto:
+        decide = f"You decide: YES or NO by {valid_until:%H:%M:%S}"
+    elif place:
+        decide = f"Auto: placing it (over {bar:g}%{bar_why}, agent over {config.AUTO_MIN_AGENT_PCT:g}%, reviewer checked)"
+    else:
+        decide = f"Auto: skipped, {skip_why}"
+    gain = abs(target - entry) * qty
+    against = next((r for r in reasons if str(r).lower().startswith("risk")), "")
+    against = against.split(":", 1)[1] if ":" in against[:6] else against
+    pros = [r for r in reasons if r != against and not str(r).lower().startswith("risk")]
+    lines = [
+        f"[MOCK] {'🔺' if buy else '🔻'} {'AUTO · ' if auto else ''}{action_word(side)} {symbol} "
+        f"(bet on a {'rise' if buy else 'fall'}) · {setup}: {status}",
+        f"{advice['verdict']} {yes}% · checks {advice['checks_pct']} · {agent} · {rev}",
+        decide,
+        "",
+        (f"Buy {qty} @ ~{entry:,.2f} now, sell by 15:10" if buy
+         else f"Sell {qty} @ ~{entry:,.2f} now, buy back by 15:10"),
+        f"🎯 {target:,.2f} (+{inr(gain)}) · 🛑 {stop:,.2f} (-{inr(risk_rs)}) · R:R {rr}",
+        f"Margin {inr(need)} of {inr(free)} free · risk {risk_pct}%",
+        "",
+        f"For: {_short(pros[0] if pros else summary)}",
+    ]
+    if against:
+        lines.append(f"Against: {_short(against)}")
+    if ai_yes_pct is not None and ai_reason:
+        lines.append(f"Agent: {_short(ai_reason)}")
+    lines.append(f"Reviewer: {_short(review['why'], 160)}" if review
+                 else f"Reviewer: unavailable ({_short(reviewer.unavailable_reason(), 80)})")
+    lines.append(advice.get("market_short") or "")
+    if track_line:
+        lines.append(track_line)
+    lines += [news.compact(symbol), f"Exit early if: {_short(invalid_if, 90)}"]
+    return "\n".join(x for x in lines if x is not None)
+
+
 # -------------------------------------------------------------- proposals --
 def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news_note="none", summary="",
             ai_yes_pct=None, ai_reason=""):
@@ -719,23 +792,23 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     advice = advisor.combine(advice, ai_yes_pct, review)
     yes = advice["yes_pct"]
     auto = auto_on(state)
-    skip_why = _auto_skip_reason(yes, ai_yes_pct, review) if auto else ""
-    place = auto and not skip_why
-    valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)  # after the review
     mood = advice.get("mood")
     hour = market.now_ist().strftime("%H")
+    skip_why, bar, bar_why = (_auto_skip_reason(state, symbol, side, setup, mood, hour, yes, ai_yes_pct, review)
+                              if auto else ("", None, ""))
+    place = auto and not skip_why
+    valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)  # after the review
 
+    action = action_word(side)
     if not auto:
-        head = [f"[MOCK] {side} {symbol}  ({setup})", advice["lines"][0]]
+        head = [f"[MOCK] {action} {symbol}  ({setup}): full reasons", advice["lines"][0]]
     elif place:
-        head = [f"[MOCK] AUTO · {side} {symbol}  ({setup}): placing it now",
-                f"Decision: TRADE at {advice['verdict']} {yes}% (auto mode trades from "
-                f"{config.AUTO_MIN_YES_PCT:g}%, with the trading agent for it and the reviewer's check). "
-                "Rate it with 👍/👎; EXIT closes it."]
+        head = [f"[MOCK] AUTO · {action} {symbol}  ({setup}): full reasons",
+                f"Decision: TRADE at {advice['verdict']} {yes}% (auto mode needs over {bar:g}%{bar_why}, the "
+                f"trading agent over {config.AUTO_MIN_AGENT_PCT:g}% and the reviewer's check)."]
     else:
-        head = [f"[MOCK] AUTO · {side} {symbol}  ({setup}): skipped",
-                f"Decision: SKIP at {advice['verdict']} {yes}%: {skip_why}. Rate the skip with 👍/👎; what it "
-                "would have made is in the day report."]
+        head = [f"[MOCK] AUTO · {action} {symbol}  ({setup}): full reasons",
+                f"Decision: SKIP at {advice['verdict']} {yes}%: {skip_why}."]
     why_proposed = ["Why proposed:"]
     if summary:
         why_proposed.append(f"- {summary.strip()}")
@@ -767,20 +840,30 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         (f"Valid until {valid_until.strftime('%H:%M:%S')} IST. Dummy money only." if not auto
          else "Dummy money only."),
     ]
-    text = "\n".join(lines)
+    full_text = "\n".join(lines)
+    text = compact_proposal(
+        auto=auto, place=place, symbol=symbol, side=side, setup=setup, entry=entry, stop=stop, target=target,
+        qty=qty, risk_rs=risk_rs, rr=rr, risk_pct=risk_pct, need=need, free=state["balance"] - margin_used(state),
+        advice=advice, yes=yes, ai_yes_pct=ai_yes_pct, ai_reason=ai_reason, review=review, reasons=reasons,
+        summary=summary, invalid_if=invalid_if, skip_why=skip_why, bar=bar, bar_why=bar_why,
+        track_line=track.compact(setup, yes, mood, hour), valid_until=valid_until)
     if not auto:
-        buttons = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
+        first = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
     else:
-        buttons = [("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}")]
+        first = [("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}")]
         if place:
-            buttons.append(("EXIT", f"x:{pid}"))
-    msg_id = tg.send(text, buttons=buttons)
+            first.append(("EXIT", f"x:{pid}"))
+    msg_id = tg.send(text, buttons=[first, links.buttons(symbol, pid)])
+    try:
+        storage.backend().put(f"reasons/{_today()}/{pid}.txt", full_text)
+    except Exception as err:  # noqa: BLE001 - the full reasons are a convenience; never block a proposal
+        log.warning("couldn't save the full reasons: %s", err)
     state["proposals"][pid] = {
         "day": _today(), "symbol": symbol, "side": side, "setup": setup, "entry": entry,
         "stop": stop, "target": target, "qty": qty, "risk_rs": risk_rs, "rr": rr,
         "reasons": reasons[:3], "invalid_if": invalid_if, "status": "pending",
         "sent_at": _now(), "valid_until": valid_until.strftime("%Y-%m-%d %H:%M:%S"),
-        "message_id": msg_id, "text": text, "suggested_yes_pct": yes,
+        "message_id": msg_id, "text": text, "full_text": full_text, "suggested_yes_pct": yes,
         "review": review, "mode": "auto" if auto else "human",
     }
     state.setdefault("msg_index", {})[str(msg_id)] = {"pid": pid, "day": _today(), "symbol": symbol, "setup": setup,
@@ -809,17 +892,35 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     return {**base, "status": "pending", "valid_until": p["valid_until"]}
 
 
-def _auto_skip_reason(yes, ai_yes_pct, review) -> str:
-    """Why auto mode won't place this trade ('' = place it). All three must hold: the combined suggestion is high
-    enough, Claude itself is for it, and the independent reviewer answered."""
-    if yes < config.AUTO_MIN_YES_PCT:
-        return f"the suggestion is below the {config.AUTO_MIN_YES_PCT:g}% auto mode needs"
-    if ai_yes_pct is None or float(ai_yes_pct) < config.AUTO_MIN_AGENT_PCT:
-        return (f"the trading agent itself is against it ({ai_yes_pct if ai_yes_pct is not None else 'no'}% "
-                f"< {config.AUTO_MIN_AGENT_PCT:g}%)")
+def _auto_bar(state, symbol, side, setup, mood, hour):
+    """(bar, why): the combined suggestion auto mode must beat. Starts at AUTO_MIN_YES_PCT; +5 when this setup,
+    mood or hour has a judged, losing track record; at least AUTO_FLIP_MIN_YES_PCT for the opposite side of a
+    stock already proposed today (a flip on a choppy day is how you get whipsawed)."""
+    bar, why = config.AUTO_MIN_YES_PCT, []
+    losing = track.losing(setup, mood, hour)
+    if losing:
+        bar += config.AUTO_LOSING_GROUP_BUMP
+        why.append(f"+{config.AUTO_LOSING_GROUP_BUMP:g}: {' and '.join(losing)} losing")
+    flip = any(p.get("day") == _today() and p.get("symbol") == symbol and p.get("side") != side
+               for p in state["proposals"].values())
+    if flip and bar < config.AUTO_FLIP_MIN_YES_PCT:
+        bar = config.AUTO_FLIP_MIN_YES_PCT
+        why.append(f"{bar:g}%: flips an earlier {symbol} proposal today")
+    return bar, (" (" + "; ".join(why) + ")") if why else ""
+
+
+def _auto_skip_reason(state, symbol, side, setup, mood, hour, yes, ai_yes_pct, review):
+    """(reason, bar, bar_why): why auto mode won't place this trade ('' = place it). All must hold: the combined
+    suggestion beats the bar, Claude itself is for it (over 50%, not a coin flip), and the reviewer answered."""
+    bar, bar_why = _auto_bar(state, symbol, side, setup, mood, hour)
+    if yes <= bar:
+        return f"the suggestion needs to be over {bar:g}%{bar_why}", bar, bar_why
+    if ai_yes_pct is None or float(ai_yes_pct) <= config.AUTO_MIN_AGENT_PCT:
+        return (f"the trading agent itself isn't for it ({ai_yes_pct if ai_yes_pct is not None else 'no'}%, "
+                f"needs over {config.AUTO_MIN_AGENT_PCT:g}%)"), bar, bar_why
     if config.AUTO_NEEDS_REVIEWER and review is None:
-        return "the independent reviewer didn't answer, and auto mode needs its check"
-    return ""
+        return "the independent reviewer didn't answer, and auto mode needs its check", bar, bar_why
+    return "", bar, bar_why
 
 
 def _expired(p) -> bool:
@@ -846,7 +947,8 @@ def wait_decision(state, pid, max_wait=45):
                 p["status"] = "expired"
                 tg.edit(p["message_id"], p["text"] + "\n\n-> YES arrived after expiry. Not placed, no money used.")
             elif p["status"] == "rejected":
-                tg.edit(p["message_id"], p["text"] + "\n\n-> Skipped (NO). Not placed, no money used.")
+                tg.edit(p["message_id"], p["text"] + "\n\n-> Skipped (NO). Not placed, no money used.",
+                        buttons=[links.buttons(p["symbol"], pid)])
                 journal("rejected", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], side=p["side"],
                         entry=p["entry"], stop=p["stop"], target=p["target"], user_reply="NO")
             if p["status"] == "expired":
@@ -904,14 +1006,14 @@ def execute(state, pid):
         "target": p["target"], "opened_at": _now(), "setup": p["setup"], "proposal_id": pid,
     }
     p["status"] = "filled"
-    keep = (rating_buttons(state, pid, p.get("feedback"))
-            if p.get("mode") == "auto" else None)  # auto mode: keep the rating and EXIT buttons on the message
+    keep = (rating_buttons(state, pid, p.get("feedback")) if p.get("mode") == "auto"
+            else [links.buttons(p["symbol"], pid)])  # auto: rating and EXIT buttons; always the links
     tg.edit(p["message_id"], p["text"] + f"\n\n-> Placed @ {fill:,.2f}", buttons=keep)
-    tg.send(f"Placed [MOCK] {p['side']} {p['symbol']} {p['qty']} @ {fill:,.2f}. "
-            f"SL {p['stop']:,.2f}, TGT {p['target']:,.2f}.\n"
-            f"In plain words: you now {'own' if p['side'] == 'BUY' else 'are short'} {p['qty']} {p['symbol']} "
-            f"shares. It closes by itself at Rs {p['target']:,.2f} (profit) or Rs {p['stop']:,.2f} "
-            f"(small loss), or at 15:10 whatever the price. Send EXIT {p['symbol']} to close earlier.\n"
+    if p["side"] == "BUY":
+        did = f"Bought {p['qty']} {p['symbol']} @ {fill:,.2f}: will sell by 15:10"
+    else:
+        did = f"Shorted {p['qty']} {p['symbol']} @ {fill:,.2f}: sold first, will buy back by 15:10"
+    tg.send(f"[MOCK] {did}.\n🎯 {p['target']:,.2f} · 🛑 {p['stop']:,.2f} · EXIT {p['symbol']} closes it now.\n"
             f"{ledger_line(state)}")
     journal("filled", proposal_id=pid, risk_rs=p["risk_rs"], fees_rs=costs(fill * p["qty"]),
             symbol=p["symbol"], setup=p["setup"], side=p["side"], entry=p["entry"],
@@ -936,10 +1038,9 @@ def close(state, symbol, exit_price, reason, notify=True):
             setup=pos["setup"], side=pos["side"], qty=pos["qty"], fill_price=pos["fill_price"],
             exit_price=exit_fill, exit_reason=reason, pnl_rs=net)
     if notify:
-        tg.send(f"[MOCK] Closed {symbol} ({reason}) @ {exit_fill:,.2f}. "
-                f"P&L {inr(net, sign=True)}.\n"
-                f"In plain words: {EXIT_PLAIN.get(reason, 'It was closed.')} "
-                f"{'You made' if net > 0 else 'You lost'} {inr(abs(net))} on this trade, after fees.\n"
+        did = (f"Sold {pos['qty']} {symbol}" if pos["side"] == "BUY" else f"Bought back {pos['qty']} {symbol}")
+        tg.send(f"[MOCK] {did} @ {exit_fill:,.2f} ({reason.replace('_', ' ')}): {inr(net, sign=True)} after fees.\n"
+                f"{EXIT_PLAIN.get(reason, 'It was closed.')}\n"
                 f"{ledger_line(state)}")
     check_loss_limit(state)
     check_weekly_brake(state)
@@ -1049,7 +1150,9 @@ def report(state, send=True):
     hypo = {}
     for pid, p in passed:
         pnl = _hypothetical(p)
-        hypo[f"{p['symbol']} ({p['status']})"] = pnl
+        how = "skipped by auto mode" if p.get("mode") == "auto" else {"rejected": "you said NO"}.get(
+            p["status"], "no reply")
+        hypo[f"{action_word(p['side'])} {p['symbol']} ({how})"] = pnl
         # Fixed event_id: re-running the report doesn't double-count in Databricks.
         journal("passed_outcome", event_id=f"passed-{pid}", proposal_id=pid, symbol=p["symbol"],
                 setup=p["setup"], side=p["side"], qty=p["qty"], risk_rs=p["risk_rs"], pnl_rs=pnl,
@@ -1102,7 +1205,8 @@ def report(state, send=True):
             f" | blocked {summary['signals_blocked_by_risk_gate']}",
         ]
         if hypo:
-            lines.append(f"Passed trades would have made: Rs {sum(hypo.values()):,.0f}")
+            lines.append(f"Passed trades would have made: {inr(sum(hypo.values()), sign=True)}")
+            lines += [f"- {k}: {inr(v, sign=True)}" for k, v in hypo.items()]
         lines += _shadow_exit_lines(summary)
         lines += _auto_lines(state)
         if summary["open_positions"]:

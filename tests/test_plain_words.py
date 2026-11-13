@@ -14,7 +14,7 @@ class PlainWordsTest(unittest.TestCase):
             r = engine.propose(st, "RELIANCE", "BUY", "ORB long", 1452.0, 1441.5, 1473.0,
                                ["broke OR high 1449.8 on 1.8x vol"], "5m close < 1446",
                                summary="Oil stocks are rising with the market today.")
-            msg = env.sent[-1]
+            msg = env.full()
             self.assertIn("In plain words:", msg)
             self.assertIn("Buy 95 RELIANCE shares at about Rs 1,452.00", msg)
             self.assertIn("first 15-minute range", msg)
@@ -26,18 +26,20 @@ class PlainWordsTest(unittest.TestCase):
             env.tap("yes", r["proposal_id"])
             engine.wait_decision(st, r["proposal_id"], 1)
             engine.execute(st, r["proposal_id"])
-            self.assertIn("In plain words: you now own 95 RELIANCE shares", env.sent[-1])
+            self.assertIn("Bought 95 RELIANCE @", env.sent[-1])
 
             engine.close(st, "RELIANCE", 1473.0, "target")
             self.assertIn("It reached the target price", env.sent[-1])
-            self.assertIn("You made", env.sent[-1])
+            self.assertIn("after fees", env.sent[-1])
 
     def test_sell_is_explained(self):
         with Env() as env:
             st = engine.load()
             engine.propose(st, "TCS", "SELL", "VWAP rejection", 3000.0, 3010.0, 2980.0, ["a"], "x")
-            self.assertIn("buy them back later today (this profits if the price falls)", env.sent[-1])
-            self.assertIn("the price rises to Rs 3,010.00", env.sent[-1])
+            self.assertIn("buy them back later today (this profits if the price falls)", env.full())
+            self.assertIn("the price rises to Rs 3,010.00", env.full())
+            self.assertIn("SHORT TCS (bet on a fall)", env.sent[-1])
+            self.assertIn("Sell 50 @ ~3,000.00 now, buy back by 15:10", env.sent[-1])
 
 
 if __name__ == "__main__":

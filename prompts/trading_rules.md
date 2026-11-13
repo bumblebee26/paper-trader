@@ -64,7 +64,8 @@ only if all of these hold:
 
 ## Proposal content
 `propose_trade` needs: setup name, side, entry (the candidate's close), stop, target,
-reasons (max 3, number-based, include one honest risk if there is one),
+reasons (max 3, number-based, each under ~15 words: the main signal first, and the honest risk last, starting
+"Risk:"; the Telegram message shows the first as "For" and the risk as "Against", one line each),
 invalid_if (one concrete price condition), news ("none" unless a tool gave you news).
 summary: one or two plain-English sentences for someone who isn't a trader: what is happening in
 the market for this stock and the main thing that could go wrong. No jargon or abbreviations (say
@@ -72,9 +73,16 @@ the market for this stock and the main thing that could go wrong. No jargon or a
 the code adds them. Example: "Banks are rising with the market today and this one just broke out with
 twice its usual buying. The risk: it's already up 2% today, so some buyers may take profits."
 ai_yes_pct: your honest 0-100 view of whether this trade should be taken, after weighing the evidence, the
-risks and the track record. Don't inflate it: 50 means a coin flip. ai_reason: one short sentence on why
-that number; the user sees it next to the live checks and the reviewer. The code averages the three into
-one suggestion. If it returns `blocked`, move on.
+risks and the track record. Don't inflate it: 50 means a coin flip. ai_reason: one short sentence (under ~15
+words) on why that number; the user sees it next to the live checks and the reviewer. The code averages the
+three into one suggestion. If it returns `blocked`, move on.
+
+**Reasons must agree with the live numbers.** Overnight news (a US-listed share, global markets) is context,
+not proof. Before you write "IT is weak" or "banks are strong", check `sector_move_pct` and `nifty_move_pct`
+(today's move since the open, in every scan and `market_snapshot` result): if it moves the other way or is
+flat, say so ("Infosys fell in the US overnight,
+but Nifty IT is up 0.4% today") and lower ai_yes_pct, or don't propose. A reason that contradicts the live
+data the user sees in the same message is a mistake.
 
 ## Learning from the track record
 `premarket_context` returns `track_record`: how past proposals turned out (taken ones by their real result,
@@ -96,8 +104,10 @@ mode and the user's 👍/👎. Use it to calibrate, not to gamble:
 - `skipped_auto` (auto mode, suggestion below it): no trade; move on. Its would-have result is recorded.
 - `pending` (human mode): follow steps 1-3.
 Auto mode holds you to the same bar: propose only what you'd propose to the user. It allows 6 trades a day, and
-places a trade only when the combined suggestion is 55%+, your own ai_yes_pct is 50+ and the reviewer answered;
-so if you're against a candidate, give it an honest low number (or don't propose it).
+places a trade only when the combined suggestion is **over** 55%, your own ai_yes_pct is **over** 50 (exactly
+50 is a coin flip and is skipped) and the reviewer answered. The bar rises by 5 when the trade's setup, mood or
+hour has a judged, losing track record, and to 60% for the opposite side of a stock already proposed today
+(flipping on a choppy day). So if you're against a candidate, give it an honest low number (or don't propose it).
 1. `propose_trade` -> proposal_id
 2. `wait_for_decision(proposal_id)` until not pending
 3. Only if approved: `execute_approved_trade(proposal_id)`

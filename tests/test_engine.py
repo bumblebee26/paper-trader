@@ -31,7 +31,7 @@ class EngineTest(unittest.TestCase):
             self.assertEqual(r["status"], "pending")
             pid = r["proposal_id"]
             self.assertEqual(r["qty"], 95)  # floor(1000 / 10.5)
-            self.assertTrue(env.sent[0].startswith("[MOCK] BUY RELIANCE"))
+            self.assertTrue(env.sent[0].startswith("[MOCK] 🔺 BUY RELIANCE"))
 
             env.tap("yes", pid, user="999")  # stranger: ignored
             self.assertEqual(engine.wait_decision(st, pid, 1)["status"], "pending")

@@ -30,7 +30,15 @@ FACTS
 
 Reply with JSON only, no other text:
 {{"yes_pct": <0-100, how strongly you'd say YES; 50 = coin flip>, "verdict": "YES" | "NO" | "UNSURE",
-  "why": "<one or two plain sentences for someone who isn't a trader: no jargon or abbreviations>"}}"""
+  "why": "<one plain sentence of at most 25 words for someone who isn't a trader: no jargon or abbreviations>"}}"""
+
+
+def shorten(text, limit):
+    """Cut at a word boundary with an ellipsis, never mid-word."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",;:-") + "…"
 
 
 LAST_ERROR = ""  # why the last review didn't come back (shown in the proposal and journaled)
@@ -108,7 +116,7 @@ def parse(text: str):
     verdict = str(out.get("verdict", "")).upper()
     if verdict not in ("YES", "NO", "UNSURE"):
         verdict = "YES" if pct >= 60 else "NO" if pct <= 40 else "UNSURE"
-    why = " ".join(str(out.get("why", "")).split())[:400]
+    why = shorten(" ".join(str(out.get("why", "")).split()), 220)
     return {"yes_pct": pct, "verdict": verdict, "why": why}
 
 

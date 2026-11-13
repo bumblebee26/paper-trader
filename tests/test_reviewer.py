@@ -47,7 +47,7 @@ class ReviewerTest(unittest.TestCase):
             r = engine.propose(st, "HDFCBANK", "BUY", "ORB long", 1600.0, 1592.0, 1616.0,
                                ["SECRET-REASON broke OR high"], "x", summary="SECRET-SUMMARY looks great",
                                ai_yes_pct=80)
-            msg = env.sent[-1]
+            msg = env.full()
             self.assertIn("Independent reviewer NO 20%: Third bank buy today while the market falls.", msg)
             self.assertIn("- Live checks 60%", msg)
             self.assertIn("- Trading agent 80%", msg)
@@ -82,7 +82,7 @@ class ReviewerTest(unittest.TestCase):
                 st = engine.load()
                 r = engine.propose(st, "TCS", "SELL", "VWAP rejection", 3000.0, 3010.0, 2980.0, ["a"], "x")
                 self.assertEqual(r["status"], "pending")
-                self.assertIn("Independent reviewer: unavailable this time, not counted (", env.sent[-1])
+                self.assertIn("Independent reviewer: unavailable this time, not counted (", env.full())
 
 
 class ReasonTest(unittest.TestCase):

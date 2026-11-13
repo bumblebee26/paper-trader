@@ -20,7 +20,7 @@ class NewsOnProposalsTest(unittest.TestCase):
             env.prices["HDFCBANK"] = 800.0
             st = engine.load()
             engine.propose(st, "HDFCBANK", "BUY", "ORB long", 800.0, 797.0, 806.0, ["a"], "x")
-            msg = env.sent[-1]
+            msg = env.full()
             self.assertIn("Recent filing to read first: 09 Nov 10:05, credit rating:", msg)
             self.assertIn("News (NSE filings):", msg)
             self.assertIn("https://x/y.pdf", msg)
@@ -32,12 +32,12 @@ class NewsOnProposalsTest(unittest.TestCase):
             env.prices["ITC"] = 400.0
             st = engine.load()
             engine.propose(st, "ITC", "BUY", "ORB long", 400.0, 398.0, 404.0, ["a"], "x")
-            self.assertIn("No NSE filings for this company today or yesterday.", env.sent[-1])
+            self.assertIn("No NSE filings for this company today or yesterday.", env.full())
         with Env() as env:
             env.prices["ITC"] = 400.0
             st = engine.load()
             engine.propose(st, "ITC", "BUY", "ORB long", 400.0, 398.0, 404.0, ["a"], "x")
-            self.assertIn("News: unavailable right now", env.sent[-1])
+            self.assertIn("News: unavailable right now", env.full())
 
     def test_board_meeting_soon(self):
         with Env() as env:
@@ -69,7 +69,7 @@ class MoodAndShadowTest(unittest.TestCase):
             st = engine.load()
             st["plan"] = {"vix": 28.2}
             engine.propose(st, "RELIANCE", "BUY", "ORB long", 1452.0, 1441.5, 1473.0, ["a"], "x")
-            self.assertIn("Market mood: trending down (Nifty -0.62% since the open, VIX 28.2).", env.sent[-1])
+            self.assertIn("Market mood: trending down (Nifty -0.62% since the open, VIX 28.2).", env.full())
             note = [r for r in engine.storage.read_rows("journal/2026-11-09.csv") if r["event"] == "proposed"][0]["note"]
             self.assertIn("mood trending down", note)
             self.assertIn("shadow-block nifty_against_0.3,against_mood,after_14h", note)
