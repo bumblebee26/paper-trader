@@ -4,7 +4,7 @@
 > is in [paper-trader](https://github.com/bumblebee26/paper-trader/blob/main/docs/SYSTEM_PLAN.md) and
 > [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse/blob/main/docs/SYSTEM_PLAN.md); change
 > both together. For how the running system fits together, see [PLATFORM.md](PLATFORM.md).
-> As of 9 Nov 2026. Each section says what is **built** and what is still **planned**.
+> As of 13 Nov 2026. Each section says what is **built** and what is still **planned**.
 
 Everything is dummy money. Nothing here is investment advice; it is a system for learning how these
 strategies behave.
@@ -14,7 +14,7 @@ strategies behave.
 The paper trader is growing from one intraday strategy into a three-pool dummy portfolio of Rs 2,00,000,
 driven by live market data, company news and company financials, with you approving trades on Telegram.
 
-| Phase | Status (9 Nov 2026) | Next gate |
+| Phase | Status (13 Nov 2026) | Next gate |
 |---|---|---|
 | 1 Intraday upgrades | Built, live from 10 Nov | Track-record review, 23 Nov |
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
@@ -162,18 +162,20 @@ Approximations; check with a chartered accountant before real money.
 
 - **Auto mode** (`/auto on|off`, on by default): a proposal with a combined suggestion over 55%, the trading
   agent itself for it (over 50%) and the reviewer's check is placed without waiting for you; otherwise it's skipped
-  and what it would have made is recorded and listed in the day report. The bar rises by 5 for a setup, mood or
-  hour with a losing judged record, and to 60% for flipping a stock already proposed that day. 6 trades a day;
+  and what it would have made is recorded and listed in the day report. The bar rises by 5 for a setup, mood,
+  hour, sector or direction (BUY or SHORT) with a losing judged record, and to 60% for flipping a stock already proposed that day. 6 trades a day;
   switches itself off at the weekly brake. Every code limit still applies.
 - **Compact messages (from 16 Nov):** BUY / SHORT headline, the suggestion and its three scores, every number,
   and one line each for: for, against, agent, reviewer, market, track record, news. Buttons: 👍/👎 (the chosen
-  one ticked), EXIT, Groww and NSE quote links, and ℹ️ Full reasons, which replies with the long version (kept
+  one gets a ✅, also when you rate with a reaction), EXIT while the trade is open, Groww (any tradable stock: the
+  address is made from the company name) and NSE quote links, and ℹ️ Full reasons, which replies with the long version (kept
   7 days). Reasons must agree with the live Nifty and sector moves.
 - **Your 👍/👎** on every auto decision is recorded (`user_feedback`), and EXIT closes a position.
 - **The feedback loop:** the lakehouse builds `gold.proposal_outcomes` (every proposal: scores, decision,
-  outcome, your rating) and `gold.track_record` (by setup, hour, mood, suggestion band, reviewer, mode,
-  decision and your rating, last 90 days). Each session reads it. Claude adjusts its own score only where a
-  row has 8+ outcomes, and every proposal shows the record with its counts. Your ratings are measured
+  outcome, your rating) and `gold.track_record` (by setup, hour, mood, sector, direction, suggestion band,
+  reviewer, mode, decision, news or watchlist and your rating, last 90 days). Each session reads it. Claude adjusts its own score only where a
+  row has 8+ outcomes, and every proposal shows the record with its counts, including the stock's sector and
+  the direction (e.g. "Banks 3/10 · shorts 2/9"). Your ratings are measured
   against outcomes too, so their weight is earned.
 - At the 23 Nov review: calibration (do 60-69% suggestions win 60-69% of the time?), auto vs human,
   your 👍/👎 accuracy, and the exit rules on trial.
@@ -230,8 +232,9 @@ their rules run as plain code in GitHub Actions, which keeps Claude usage to the
 | Loss brake | 4R a day incl. open risk; 8R a week halves risk; 30-min cool-off after 3 losses | — | Sells what stops qualifying |
 | Whole portfolio | Circuit breaker at 12% below the peak of all pools combined; `/resume` to restart | | |
 
-Costs in the simulation: intraday about Rs 20 a side plus 0.05% slippage; delivery 0.12% a side plus Rs 16
-per sell plus slippage.
+Costs in the simulation: intraday Rs 20 brokerage a side plus 0.05% slippage, and from 16 Nov also STT, exchange
+and SEBI fees, GST and stamp duty (about 0.26% of the position per round trip in all); delivery 0.12% a side plus
+Rs 16 per sell plus slippage.
 
 ## Telegram, reports and analytics
 

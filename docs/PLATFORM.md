@@ -3,7 +3,7 @@
 > The shared overview of both repositories. The same file is in
 > [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse/blob/main/docs/PLATFORM.md) and
 > [paper-trader](https://github.com/bumblebee26/paper-trader/blob/main/docs/PLATFORM.md); change both together
-> (only the diagram path differs). As of 9 Nov 2026.
+> (only the diagram path differs). As of 13 Nov 2026.
 
 ## Overview
 
@@ -55,14 +55,14 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 15:10 | Mon–Fri | Trader | Square-off, then day report to Telegram |
 | 15:12 / 15:40 | Mon–Fri | Trader | Guardian backstops: square-off and report if the session didn't |
 | 15:14 | Mon–Fri | Trader | Guardian puts the swing pool's idle cash into NIFTYBEES |
-| 15:50 | Mon–Fri | Trader | Swing shadow test: news breakouts from `gold.swing_signals` bought and sold on paper, vs NIFTYBEES |
 | 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` and portfolio snapshot to `landing/portfolio/`; pipeline builds the trading and portfolio tables |
+| 15:50 | Mon–Fri | Trader | Swing shadow test: news breakouts from `gold.swing_signals` bought and sold on paper, vs NIFTYBEES; stops and targets on your own swing trades checked |
 | 17:55 | Fri | Trader | Weekly report to Telegram |
 | 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy for the day; pipeline refresh, then the dashboard's plain-words summaries |
 | 23:30 | Mon–Fri | Trader → Lakehouse | Late export: the last 4 days' journals again, so evening 👍/👎 ratings reach the track record overnight |
 | 07:15 | Sat | Trader → Lakehouse | Company fundamentals job: Nifty 200 financials to `landing/fundamentals/`, the list to `landing/index_members/` |
 | 10:15 | Sat | Lakehouse → Trader | Long-term shadow job: reads this week's picks, "buys"/sells in the shadow ledger, report to Telegram |
-| every 2 min | all week | Trader | Responder answers Telegram commands when no session is live |
+| every 2 min | all week | Trader | Responder answers Telegram commands (and your own orders) when no session is live |
 
 ## Components
 
@@ -72,7 +72,7 @@ there are no servers.
 | Component | Repo | Runs on | What it does |
 |---|---|---|---|
 | Fetcher Lambdas (NSE, Massive, FRED) | lakehouse | AWS Lambda | Download a day of data, archive it in S3, push the same file to the Databricks volume |
-| News Lambda | lakehouse | AWS Lambda | Every 30 min: NSE announcements, results, board meetings and corporate actions to the news volume (`/Volumes/stocks/bronze/news/`), kept out of the landing volume so it doesn't trigger a refresh |
+| News Lambda | lakehouse | AWS Lambda | Every minute 09:00–15:59, every 30 min otherwise (08:00–19:30): NSE announcements, results, board meetings and corporate actions to the news volume (`/Volumes/stocks/bronze/news/`), kept out of the landing volume so it doesn't trigger a refresh |
 | S3 landing bucket | lakehouse | AWS S3 | Permanent, untouched raw archive (private, encrypted, versioned) |
 | Sync Lambda | lakehouse | AWS Lambda | Copies anything missing from S3 to the volume (backfills, repairs) |
 | Landing volume | lakehouse | Databricks | `/Volumes/stocks/bronze/landing/<source>/date=…/`, what the pipeline reads |
@@ -81,11 +81,11 @@ there are no servers.
 | Dashboard | lakehouse | Databricks | Pages Overview, Portfolio, Intraday trading, Company quality and Details, each with an "In plain words" summary |
 | Pre-market Lambda | lakehouse | AWS Lambda | 08:45 brief: queries gold, sends Telegram |
 | Trading session | paper-trader | GitHub Actions | Claude Code + paper-trader MCP tools; morning and afternoon runs |
-| Trader engine and MCP tools | paper-trader | inside the session | Ledger, risk gate, Telegram approvals, simulated fills, exits, report |
+| Trader engine and MCP tools | paper-trader | inside the session | Ledger, risk gate, Telegram approvals, simulated fills, exits, report; your own orders (`/buy`, `/short`, `/swing`, `/longterm`) while a session is live |
 | Trader state bucket | paper-trader | AWS S3 | Ledger, journal, plans, reports, exports |
 | Kicker Lambda | paper-trader | AWS Lambda | Starts each session on time via the GitHub API |
-| Guardian Lambda | paper-trader | AWS Lambda | No Claude: 15:12 square-off, 15:14 swing pool into NIFTYBEES, 15:40 report, 15:45 journal + portfolio export to the lakehouse, Fri 17:55 weekly report |
-| Responder Lambda | paper-trader | AWS Lambda | Answers every Telegram command outside sessions within ~2 min |
+| Guardian Lambda | paper-trader | AWS Lambda | No Claude: 15:12 square-off, 15:14 swing pool into NIFTYBEES, 15:40 report, 15:45 journal + portfolio export to the lakehouse, 15:50 swing shadow test and your swing stops/targets, 23:30 late export, Fri 17:55 weekly report |
+| Responder Lambda | paper-trader | AWS Lambda | Answers every Telegram command outside sessions within ~2 min, including `/analyze` (reads company figures over the SQL warehouse) and your own orders |
 | Company fundamentals job | paper-trader | GitHub Actions | Saturdays 07:15, no Claude: Nifty 200 list + Yahoo financials to the landing volume |
 | Long-term shadow job | paper-trader | GitHub Actions | Saturdays 10:15, no Claude: acts on `longterm_candidates` in a shadow ledger (nothing real bought), report to Telegram |
 | Backtests (swing, long-term) | paper-trader | GitHub Actions | Manual, no Claude: test pool rules on the lakehouse's NSE prices and company figures, summary to Telegram |
@@ -99,14 +99,15 @@ portfolio), and two per week on Saturdays (fundamentals and the Nifty 200 list).
 | Flow | From → to | Contract | When |
 |---|---|---|---|
 | Market data in | NSE, Massive, FRED → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 04:30 (+07:30 retry), 06:00, 19:30 |
-| Pre-market context | gold tables → trader (`premarket_context`) | Read-only SQL on `nifty_after_us_moves_summary`, `global_snapshot`, `unusual_volume`, `silver.daily_bars` | ~09:10 |
+| Pre-market context | gold tables → trader (`premarket_context`) | Read-only SQL on `nifty_after_us_moves_summary`, `global_snapshot`, `unusual_volume`, `intraday_universe` (news radar, tradable list with company names for the Groww buttons), `track_record`, `silver.daily_bars` | ~09:10 |
 | Company news | news volume `date=YYYY-MM-DD/latest.jsonl` → trader | Read through the Files API (today and the last day), cached 10 min; failure = "news unavailable" | every proposal, `/news` |
 | Approvals | Trader ↔ Telegram | Proposal with YES/NO buttons; no reply in 3 min = skipped; `EXIT SYMBOL` closes | 09:20–14:30 |
-| Commands | You → Telegram → session or responder | `/help` (also "what can you do?"), `/ledger`, `/plan`, `/exit`, `/news`, `/portfolio`, `/pause`, `/stop`, `/resume`. Telegram allows one reader: the session answers while live, the responder otherwise | any time |
+| Commands | You → Telegram → session or responder | `/help` (also "what can you do?"), `/ledger`, `/plan`, `/exit`, `/news`, `/portfolio`, `/shadow`, `/auto`, `/analyze`, your own orders `/buy`, `/short`, `/swing`, `/longterm` (Confirm within 3 min), `/pause`, `/stop`, `/resume`. Telegram allows one reader: the session answers while live, the responder otherwise | any time |
 | Ledger | Trader ↔ S3 `state/ledger.json` | Read, change, write back on every tool call; versioned 30 days | all session |
 | Journal export | Trader → `landing/trades/date=YYYY-MM-DD/events.jsonl` | One line per event with unique `event_id` + `proposal_id`; last line `ledger_snapshot` | 15:45 |
 | Portfolio snapshot | Trader → `landing/portfolio/date=YYYY-MM-DD/portfolio.jsonl` | One `pool` row per pool (capital, cash, holdings value, equity) and one `holding` row per holding; newest file per day wins | 15:45 |
 | Long-term picks | `gold.longterm_candidates` → shadow job | Read-only SQL: rank, `is_pick`, `target_weight_pct`, `reasons`, last close | Sat 10:15 |
+| Swing signals | `gold.swing_signals` → guardian | Read-only SQL: yesterday's news breakouts with their stop | 15:50 |
 | Fundamentals | Trader job → `landing/fundamentals/date=YYYY-MM-DD/fundamentals.jsonl`, `landing/index_members/date=YYYY-MM-DD/nifty200.jsonl` | One line per company × metric × period; one line per Nifty 200 company (symbol, company, industry, ISIN) | Sat 07:15 |
 | Trading analysis | `trades_raw` → `trade_events` → `gold.trad*` | Newest copy per `event_id`; net P&L = exit `pnl_rs` − entry `fees_rs` | after 15:45 |
 
@@ -119,8 +120,11 @@ with `Ledger: balance … | in use … | free … | today …`. In use = positio
 margin), free = balance − in use.
 
 **Gold tables for trading:** `trades` (each trade, R multiple), `trading_daily`, `trading_by_setup`,
-`trading_by_hour`, `trading_decisions` (what skipped proposals would have made). **For the portfolio:**
-`portfolio_daily` (value of all pools vs NIFTYBEES), `holdings_latest`. **For the long-term pool:**
+`trading_by_hour`, `trading_decisions` (what skipped proposals would have made), `proposal_outcomes` and
+`track_record` (how every proposal turned out by setup, hour, mood, sector, direction and more; read back every
+session), `custom_trades` (your own Telegram trades). **For the portfolio:**
+`portfolio_daily` (value of all pools vs NIFTYBEES), `holdings_latest`, `shadow_pools_daily` (rules tested on paper).
+**For the news radar:** `intraday_universe` (what the trader may trade), `swing_signals`. **For the long-term pool:**
 `company_fundamentals` (quality tests), `longterm_candidates` (this week's picks and weights; shadow mode, nothing
 is bought yet).
 
@@ -131,11 +135,11 @@ Where each phase of the system plan stands. The full plan (pools, rules, backtes
 
 | Phase | Status | Live parts | Next |
 |---|---|---|---|
-| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, realistic costs (STT, fees, GST, stamp), stocks-in-play focus at 09:25, VWAP and sector-strength checks, opening-range test on paper, auto mode (places a trade only if the suggestion is over 55%, raised for losing groups and flips, the trading agent over 50% and the reviewer answered; 6 trades a day; off at the weekly brake) with 👍/👎 ratings by button or reaction for 7 days and a lakehouse track record read every session, 36 stocks in 11 sectors plus a news radar over the Nifty 200 (liquidity guardrails, news-labelled track record), sector and position caps | Track-record review 23 Nov |
+| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, realistic costs (STT, fees, GST, stamp), stocks-in-play focus at 09:25, VWAP and sector-strength checks, opening-range test on paper, auto mode (places a trade only if the suggestion is over 55%, raised by 5 for a losing setup, mood, hour, sector or direction and to 60% for flips, the trading agent over 50% and the reviewer answered; 6 trades a day; off at the weekly brake) with 👍/👎 ratings by button or reaction for 7 days and a lakehouse track record read every session, 36 stocks in 11 sectors plus a news radar over the Nifty 200 (liquidity guardrails, news-labelled track record), sector and position caps | Track-record review 23 Nov |
 | 2 Foundations | Live | Company news on proposals, market mood, shadow rule variants, `/news` `/portfolio` `/stop`, data alerts, pool ledgers, circuit breaker, weekly report | One-tap reasons, idle-cash interest (later) |
 | 3 Swing pool | Shadow test | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14); news-breakout rules on paper from 16 Nov (`/shadow`) | Shadow review vs NIFTYBEES, mid-Dec |
 | 4 Long-term pool | Shadow mode | Weekly figures for the Nifty 200, quality tests, 10 picks a week, backtest, Saturday shadow report | Go/no-go 18 Dec, live buying from 21 Dec |
-| 5 Track record | Collecting data | Suggestion %, agent and reviewer scores and shadow-rule blocks recorded on every proposal | Review 23 Nov |
+| 5 Track record and auto mode | Live from 12 Nov | Auto mode, 👍/👎 ratings, `gold.track_record` (by setup, hour, mood, sector, direction, suggestion band, reviewer, mode, news or watchlist) shown in every proposal and read every session; your own trades from Telegram from 16 Nov (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`, marked custom) | Review 23 Nov |
 
 | Backtest | Period | Result | NIFTYBEES |
 |---|---|---|---|
@@ -177,7 +181,7 @@ Each identity can do one job; no secret lives in code, and the only person with 
 | `stocks-gha-apply` | Both repos: apply on merge | Manage project services; IAM only for `stocks-*` roles and `stocks-gha-*` users |
 | `stocks-gha-trader` | Trading session, fundamentals, shadow and backtest jobs | Read/write the trader state bucket (no delete); read Telegram + Databricks parameters |
 | Lakehouse Lambda roles | Fetchers (incl. news), sync, pre-market | Their own bucket, parameters and the pusher token |
-| `stocks-trader-guardian-role` | Guardian and responder Lambdas | Trader state bucket; Telegram + Databricks push parameters |
+| `stocks-trader-guardian-role` | Guardian and responder Lambdas | Trader state bucket; Telegram + Databricks parameters (push token, SQL warehouse) |
 | `stocks-trader-kicker-role` | Kicker Lambda | Read the GitHub dispatch token only |
 | Claude in a session | Trading session | Only the paper-trader MCP tools; no shell, files or web |
 

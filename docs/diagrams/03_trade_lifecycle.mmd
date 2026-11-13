@@ -6,10 +6,10 @@ flowchart LR
     C["<b>Candidate</b><br/>ORB · VWAP · PDH/PDL<br/>from run_cycle"]
     J{"Claude: fits rules<br/>and day plan?"}
     G{"<b>Risk gate</b> (code)<br/>window · limits · R:R<br/>size from day risk %"}
-    P["<b>Proposal on Telegram</b><br/>3 reasons · invalid-if<br/>valid 3 min"]
+    P["<b>Proposal on Telegram</b><br/>compact · reasons · invalid-if<br/>valid 3 min (auto mode: code decides)"]
     D{"Your reply"}
     R{"<b>Re-check</b> (code)<br/>still valid · price drift<br/>· stop not hit"}
-    F["<b>Simulated fill</b><br/>slippage + Rs 20"]
+    F["<b>Simulated fill</b><br/>slippage + costs<br/>(brokerage, STT, fees, GST, stamp)"]
     X["<b>Exit</b><br/>target · stop · EXIT msg<br/>· 15:10 square-off"]
     JN[("<b>Journal</b><br/>every step, event_id")]
     E["<b>15:45 export</b><br/>→ lakehouse gold"]

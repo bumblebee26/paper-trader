@@ -25,7 +25,7 @@ life of one trade).
 | 15:10 | Everything squared off, then the day report |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | The day's journal and a portfolio snapshot (all pools and holdings) are copied to the lakehouse; its pipeline builds the trading and portfolio tables and dashboard pages |
-| 15:50 | Swing shadow test: news breakouts bought and sold on paper, compared with NIFTYBEES (`/shadow`) |
+| 15:50 | Swing shadow test: news breakouts bought and sold on paper, compared with NIFTYBEES (`/shadow`); stops and targets on your own swing trades checked |
 | 23:30 | The last 4 days' journals are copied again, so ratings you give in the evening reach the lakehouse |
 
 Money is split into three dummy pools (Rs 2,00,000 in total): **intraday** Rs 40,000 (trading now), **swing**
@@ -51,7 +51,7 @@ Each proposal is **compact** (about 15 lines): a headline that says BUY (bet on 
 sell first, buy back by 15:10), the suggestion and its three scores, every number (entry, target and stop with
 the rupees at each, margin, risk), and one line each for the reasons for, the risk against, the agent, the
 reviewer, the market, the track record and news. Buttons under it open the stock in **Groww** (the app, on a
-phone that has it) or on **NSE**, and **ℹ️ Full reasons** replies with the long version: what you'd buy or sell,
+phone that has it; any tradable stock, its address made from the company name) or on **NSE**, and **ℹ️ Full reasons** replies with the long version: what you'd buy or sell,
 why now, what you'd make or lose, and a **market check** of Nifty 50,
 Sensex, the stock's sector index (Bank Nifty, Nifty IT), whether the price has already run, and the time
 left. An **independent risk reviewer** (a second Claude, with no tools, that sees only facts gathered by
@@ -60,14 +60,14 @@ plain words. The percentage averages three scores: the live checks, the trading 
 It is not a chance of profit. With **auto mode** off you make the call. With it on (`/auto on|off`, on by default,
 dummy money only) a trade is placed without asking only if the suggestion is over 55%, the trading agent itself is
 over 50% and the reviewer answered (exactly 55% / 50% is a coin flip and is skipped). The bar rises by 5 for a setup,
-market mood or hour whose track record (8+ outcomes) is losing, and to 60% for the opposite side of a stock already
+market mood, hour, sector or direction (BUY or SHORT) whose track record (8+ outcomes) is losing, and to 60% for the opposite side of a stock already
 proposed that day. Otherwise it's skipped, and the day report lists what each skipped trade would have made. Up to 6 auto trades a day;
-the weekly brake turns it off. Rate any proposal with the 👍/👎 buttons or a 👍/👎 reaction, any time within 7 days:
-ratings reach `stocks.gold.track_record`, which every session reads to calibrate its suggestions. The lakehouse table `stocks.gold.trading_decisions` shows later how
+the weekly brake turns it off. Rate any proposal with the 👍/👎 buttons or a 👍/👎 reaction, any time within 7 days
+(the chosen button gets a ✅): ratings reach `stocks.gold.track_record`, which every session reads to calibrate its suggestions. The lakehouse table `stocks.gold.trading_decisions` shows later how
 your YES and NO calls worked out.
 
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,
-`/exit SYMBOL`, `/news SYMBOL`, `/portfolio`, `/shadow` (everything tested on paper), `/analyze SYMBOL`, your own trades with `/buy`, `/short`, `/swing buy|sell`, `/longterm buy|sell` (confirm first; marked custom), `/auto on|off`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
+`/exit SYMBOL`, `/news SYMBOL`, `/portfolio`, `/shadow` (everything tested on paper), `/analyze SYMBOL`, your own trades with `/buy`, `/short`, `/swing buy|sell`, `/longterm buy|sell` (each order shows its numbers and costs and runs only when you tap Confirm within 3 minutes; marked custom and kept out of the trader's own track record), `/auto on|off`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
 within seconds during sessions, within ~2 minutes otherwise (evenings, weekends). A `/pause` sent in the evening
 skips the next trading day. `EXIT RELIANCE` closes that position; `LEDGER` gives a statement: balance,
 money in use, money free, and open positions with live P&L. Every fill and exit also ends with a one-line ledger.
@@ -75,8 +75,9 @@ money in use, money free, and open positions with live P&L. Every fill and exit 
 ## Repository layout
 
 ```
-trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, exit rules on trial, weekly report, export,
-                   storage (S3/local), Telegram, MCP server, Lambda handlers. Standard library + boto3 only.
+trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, track record, exit rules on trial, swing shadow,
+                   your own trades (custom.py), Groww/NSE links, weekly report, export, storage (S3/local), Telegram,
+                   MCP server, Lambda handlers. Standard library + boto3 only.
 jobs/              fundamentals.py (weekly company financials for the lakehouse), longterm_shadow.py (weekly shadow pool)
 backtest/          Swing and long-term backtests on the lakehouse's NSE daily prices
 prompts/           trading_rules.md: the rules Claude follows in a session

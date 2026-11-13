@@ -15,12 +15,12 @@ flowchart TB
 
     subgraph AWS["AWS account · free plan · ap-southeast-2 (Sydney)"]
         direction TB
-        SCH["<b>EventBridge Scheduler</b> (Asia/Kolkata)<br/>kicks 09:08 · 12:27 · guards 15:12 · 15:14 · 15:40 · 15:45<br/>weekly report Fri 17:55 · responder every 2 min"]
+        SCH["<b>EventBridge Scheduler</b> (Asia/Kolkata)<br/>kicks 09:08 · 12:27 · guards 15:12 · 15:14 · 15:40 · 15:45 · 15:50 · 23:30<br/>weekly report Fri 17:55 · responder every 2 min"]
         subgraph LAMBDAS["Lambda functions (Python 3.13, arm64)"]
             direction LR
             KICK["stocks-trader-kicker"]
             GUARD["stocks-trader-guardian<br/><i>no Claude</i>"]
-            RESP["stocks-trader-responder<br/><i>commands when no session</i>"]
+            RESP["stocks-trader-responder<br/><i>commands + your orders when no session</i>"]
         end
         S3[("<b>Trader state bucket</b><br/>state/ledger.json · state/pools/ · journal/<br/>plans/ · reports/ · exports/ · sessions/")]
         SSM[["<b>SSM Parameter Store</b><br/>/stocks-trader/github-dispatch-token<br/>/stocks/telegram-* · /stocks/databricks-*"]]
@@ -44,7 +44,7 @@ flowchart TB
     MCP <-- "7 · ledger · journal" --> S3
     SCH -- "8 · invoke" --> GUARD
     GUARD <-- "9 · square-off · report" --> S3
-    GUARD -- "10 · 15:45 journal + portfolio (Files API)" --> VOL
+    GUARD -- "10 · 15:45 journal + portfolio, 23:30 again (Files API)" --> VOL
     SCH -- "11 · every 2 min" --> RESP
     RESP <-- "12 · all commands<br/>(only when no session)" --> TG
     SSM -. "secrets at runtime" .-> KICK & GUARD & RESP & MCP

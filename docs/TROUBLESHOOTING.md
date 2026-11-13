@@ -50,6 +50,23 @@ Ratings are exported at 15:45 and 23:30 on weekdays (the last 4 days' journals),
 Only ratings within 7 days of the proposal count, and only 👍/👎 (other emoji are ignored). Removing a
 reaction records `none`, which clears the rating.
 
+### My own order wasn't placed (`/buy`, `/short`, `/swing`, `/longterm`)
+The reply under the order says why: **Expired (3 minutes)** means Confirm came too late; **the price moved**
+means it went more than 1% from the preview, so send the order again to see the new numbers; **orders run
+09:15–15:00** (intraday) or **15:30** (pools) on trading days only. `That order is no longer open` means it was
+already confirmed, cancelled or expired. Outside sessions the responder answers within ~2 minutes, so tap
+Confirm soon after the preview arrives.
+
+### `/analyze` says the long-term view isn't reachable
+That view reads `stocks.gold.company_fundamentals` over the SQL warehouse. Check the warehouse ID parameter
+(`/stocks/databricks-warehouse-id`) and the pusher token, as for `Lakehouse data: unavailable` below. A stock
+with "no company figures" isn't in the Nifty 200 or the watchlist (figures are fetched weekly for those).
+
+### A proposal has no Groww button
+Groww pages are named after the company. Watchlist stocks are listed in `trader/links.py`; other stocks need
+their company name in `state/universe.json`, which comes from `stocks.gold.intraday_universe` each morning. If
+the morning lakehouse read failed, non-watchlist stocks may show only the NSE button that day.
+
 ### Claude Code: `Invalid API key` / `401`
 The `CLAUDE_CODE_OAUTH_TOKEN` secret is missing, expired or has spaces. Run `claude setup-token` again.
 Also make sure no `ANTHROPIC_API_KEY` secret exists (the workflow unsets it anyway).

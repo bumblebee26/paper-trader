@@ -31,7 +31,7 @@ flowchart TB
             KICK["<b>Kicker Lambda</b><br/>09:08 · 12:27"]
             GUARD["<b>Guardian Lambda</b><br/>15:12 square-off · 15:14 swing into NIFTYBEES<br/>15:40 report · 15:45 export · 15:50 swing shadow<br/>23:30 late export · Fri weekly report"]
             S3T[("<b>Trader state bucket</b><br/>ledger · pools · journal · reports")]
-            RESP["<b>Responder Lambda</b><br/>commands when no session"]
+            RESP["<b>Responder Lambda</b><br/>commands + your own orders<br/>when no session"]
         end
     end
 
@@ -76,7 +76,9 @@ flowchart TB
     SESS <-- "proposals · YES/NO" --> TG
     GUARD <-- "backstops" --> S3T
     GUARD -- "15:45 journal + portfolio" --> VOL
+    WH -- "15:50 swing signals (SQL)" --> GUARD
     RESP <-- "commands, any time" --> TG
+    RESP -- "/analyze (SQL)" --> WH
 
     classDef ext fill:#eef2ff,stroke:#6366f1,color:#1e1b4b
     classDef aws fill:#fff7ed,stroke:#f59e0b,color:#451a03
