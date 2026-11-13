@@ -106,10 +106,10 @@ data the user sees in the same message is a mistake.
 
 ## Learning from the track record
 `premarket_context` returns `track_record`: how past proposals turned out (taken ones by their real result,
-skipped ones by what they would have made), by setup, hour, market mood, suggestion band, reviewer verdict,
-mode and the user's 👍/👎. Use it to calibrate, not to gamble:
+skipped ones by what they would have made), by setup, hour, market mood, sector, direction (BUY or SELL),
+suggestion band, reviewer verdict, mode, news or watchlist and the user's 👍/👎. Use it to calibrate, not to gamble:
 - Only rows with `judged: true` (8+ outcomes) count. Ignore the others; small samples are noise.
-- A setup, hour or mood with a judged win rate under 35% or a negative average: lower ai_yes_pct by 10-20
+- A setup, hour, mood, sector or direction with a judged win rate under 35% or a negative average: lower ai_yes_pct by 10-20
   and say so in ai_reason ("ORB longs before 10:00 won 2 of 11"). Above 55% with a positive average: you may
   raise it by up to 10. Never above 80 on the record alone.
 - If a suggestion band's real results disagree with its number (e.g. 60-69% proposals win 30% of the time),
@@ -126,7 +126,7 @@ mode and the user's 👍/👎. Use it to calibrate, not to gamble:
 Auto mode holds you to the same bar: propose only what you'd propose to the user. It allows 6 trades a day, and
 places a trade only when the combined suggestion is **over** 55%, your own ai_yes_pct is **over** 50 (exactly
 50 is a coin flip and is skipped) and the reviewer answered. The bar rises by 5 when the trade's setup, mood or
-hour has a judged, losing track record, and to 60% for the opposite side of a stock already proposed today
+hour, sector or direction has a judged, losing track record, and to 60% for the opposite side of a stock already proposed today
 (flipping on a choppy day). So if you're against a candidate, give it an honest low number (or don't propose it).
 1. `propose_trade` -> proposal_id
 2. `wait_for_decision(proposal_id)` until not pending

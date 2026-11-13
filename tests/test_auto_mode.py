@@ -245,6 +245,16 @@ class AutoModeTest(unittest.TestCase):
         why, bar, bar_why = engine._auto_skip_reason(st, "TCS", "SELL", "PDL break", "choppy", "11", 58, 70, REVIEW)
         self.assertEqual(bar, 60.0)
         self.assertIn("+5: choppy mood losing", why)
+        track._cache.append({"dimension": "sector", "value": "Banks", "trades": 10, "wins": 3, "win_rate_pct": 30.0,
+                             "avg_outcome_rs": -198.0, "total_outcome_rs": -1980.0})
+        track._cache.append({"dimension": "side", "value": "SELL", "trades": 9, "wins": 2, "win_rate_pct": 22.0,
+                             "avg_outcome_rs": -50.0, "total_outcome_rs": -450.0})
+        why, bar, _ = engine._auto_skip_reason(st, "SBIN", "SELL", "PDL break", "trending up", "11", 58, 70, REVIEW)
+        self.assertEqual(bar, 60.0)                                  # one +5, however many groups are losing
+        self.assertIn("Banks sector and shorts losing", why)
+        self.assertIn("Banks 3/10 (avg -Rs 198) · shorts 2/9 (avg -Rs 50)",
+                      track.compact("PDL break", 58, sector="Banks", side="SELL"))
+        del track._cache[-2:]
         self.assertEqual(engine._auto_skip_reason(st, "TCS", "SELL", "PDL break", "trending up", "11", 58, 70,
                                                   REVIEW)[0], "")
 

@@ -1033,7 +1033,8 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         qty=qty, risk_rs=risk_rs, rr=rr, risk_pct=risk_pct, need=need, free=state["balance"] - margin_used(state),
         advice=advice, yes=yes, ai_yes_pct=ai_yes_pct, ai_reason=ai_reason, review=review, reasons=reasons,
         summary=summary, invalid_if=invalid_if, skip_why=skip_why, bar=bar, bar_why=bar_why,
-        track_line=track.compact(setup, yes, mood, hour), valid_until=valid_until,
+        track_line=track.compact(setup, yes, mood, hour, sectors.SECTOR_OF.get(symbol, "Other"), side),
+        valid_until=valid_until,
         news_pick=is_news_pick(state, symbol))
     if not auto:
         first = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
@@ -1063,7 +1064,8 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
                   f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '- (' + reviewer.unavailable_reason()[:80].replace('|', '/') + ')'}"
                   f" | mood {mood or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"
                   f" | mode {'auto' if auto else 'human'}"
-                  f" | source {'news' if is_news_pick(state, symbol) else 'watchlist'}"))
+                  f" | source {'news' if is_news_pick(state, symbol) else 'watchlist'}"
+                  f" | sector {sectors.SECTOR_OF.get(symbol, 'Other')} |"))
     base = {"proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
             "suggestion": f"{advice['verdict']} {yes}%"}
     p = state["proposals"][pid]
@@ -1086,7 +1088,7 @@ def _auto_bar(state, symbol, side, setup, mood, hour):
     mood or hour has a judged, losing track record; at least AUTO_FLIP_MIN_YES_PCT for the opposite side of a
     stock already proposed today (a flip on a choppy day is how you get whipsawed)."""
     bar, why = config.AUTO_MIN_YES_PCT, []
-    losing = track.losing(setup, mood, hour)
+    losing = track.losing(setup, mood, hour, sectors.SECTOR_OF.get(symbol, "Other"), side)
     if losing:
         bar += config.AUTO_LOSING_GROUP_BUMP
         why.append(f"+{config.AUTO_LOSING_GROUP_BUMP:g}: {' and '.join(losing)} losing")
