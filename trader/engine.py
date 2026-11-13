@@ -669,11 +669,12 @@ def news_alerts(state, limit=8) -> list:
     items = news.items() or []
     seen = set(state.get("news_seen") or [])
     today = _today()
-    fresh = [i for i in items
-             if i.get("id") not in seen and (i.get("symbol") or "") and tradable(i["symbol"])
-             and i.get("category") in config.NEWS_RADAR_CATEGORIES
-             and (i.get("published_ist") or i.get("fetched_at_ist") or "").startswith(today)]
-    state["news_seen"] = list(seen | {i.get("id") for i in items})[-2000:]
+    relevant = [i for i in items
+                if (i.get("symbol") or "") and tradable(i["symbol"])
+                and i.get("category") in config.NEWS_RADAR_CATEGORIES
+                and (i.get("published_ist") or i.get("fetched_at_ist") or "").startswith(today)]
+    fresh = [i for i in relevant if i.get("id") not in seen]
+    state["news_seen"] = [i.get("id") for i in relevant]   # today's relevant filings only: small, never truncated
     out = []
     for i in fresh[:limit]:
         sym = i["symbol"].upper()
