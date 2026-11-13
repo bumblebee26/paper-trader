@@ -67,7 +67,7 @@ ratings reach `stocks.gold.track_record`, which every session reads to calibrate
 your YES and NO calls worked out.
 
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,
-`/exit SYMBOL`, `/news SYMBOL`, `/portfolio`, `/shadow` (everything tested on paper), `/auto on|off`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
+`/exit SYMBOL`, `/news SYMBOL`, `/portfolio`, `/shadow` (everything tested on paper), `/analyze SYMBOL`, your own trades with `/buy`, `/short`, `/swing buy|sell`, `/longterm buy|sell` (confirm first; marked custom), `/auto on|off`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
 within seconds during sessions, within ~2 minutes otherwise (evenings, weekends). A `/pause` sent in the evening
 skips the next trading day. `EXIT RELIANCE` closes that position; `LEDGER` gives a statement: balance,
 money in use, money free, and open positions with live P&L. Every fill and exit also ends with a one-line ledger.

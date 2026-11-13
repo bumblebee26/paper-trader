@@ -94,7 +94,7 @@ resource "aws_lambda_function" "responder" {
   runtime       = var.lambda_python_runtime
   architectures = ["arm64"]
   handler       = "handlers.responder"
-  timeout       = 60
+  timeout       = 110
   memory_size   = 128
 
   filename         = data.archive_file.trader.output_path
@@ -102,11 +102,12 @@ resource "aws_lambda_function" "responder" {
 
   environment {
     variables = {
-      STATE_BUCKET           = module.state.id
-      TELEGRAM_TOKEN_PARAM   = local.lakehouse_params.telegram_token
-      TELEGRAM_CHAT_ID_PARAM = local.lakehouse_params.telegram_chat_id
-      DATABRICKS_URL_PARAM   = local.lakehouse_params.databricks_url
-      DATABRICKS_TOKEN_PARAM = local.lakehouse_params.databricks_token
+      STATE_BUCKET               = module.state.id
+      TELEGRAM_TOKEN_PARAM       = local.lakehouse_params.telegram_token
+      TELEGRAM_CHAT_ID_PARAM     = local.lakehouse_params.telegram_chat_id
+      DATABRICKS_URL_PARAM       = local.lakehouse_params.databricks_url
+      DATABRICKS_TOKEN_PARAM     = local.lakehouse_params.databricks_token
+      DATABRICKS_WAREHOUSE_PARAM = local.lakehouse_params.databricks_warehouse
     }
   }
 

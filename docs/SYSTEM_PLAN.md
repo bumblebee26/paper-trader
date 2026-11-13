@@ -187,6 +187,24 @@ filing on a tradable stock adds it to the scan (up to 5 extra). Penny stocks (un
 record), so news picks are judged on their own results. News says which stock may move, not which way: a
 setup must still fire after the filing.
 
+## Your own trades from Telegram (from 16 Nov)
+
+Any NSE stock, any pool, in the same dummy ledgers, marked **custom** for analysis:
+
+| Command | What it does |
+|---|---|
+| `/analyze TCS [intraday\|swing\|longterm]` | The trader's view: intraday levels, setup and live checks (BUY vs SHORT); swing trend, 20-day range, 1- and 3-month return vs NIFTYBEES; long-term quality tests, P/E and this week's rank from the lakehouse. Code only, no Claude |
+| `/buy TCS [qty] [sl X] [tgt Y]`, `/short ...` | Intraday on the intraday ledger. Defaults: stop 1% away, target 2x the risk, size = one normal trade's risk (1R) within the 30% margin cap |
+| `/swing buy\|sell TCS [qty] [sl X] [tgt Y]` | Swing pool (delivery). A buy is paid for by selling NIFTYBEES if the pool's cash is short; optional stop/target checked daily at 15:50 |
+| `/longterm buy\|sell TCS [qty]` (also `/lt`) | Long-term pool (delivery). Default size 10% of the pool |
+
+Every order first shows its numbers, costs and warnings (off the trader's list, penny stock, costs over 30% of the
+risk, beyond today's loss room, bigger than a normal trade) and runs only when you tap **Confirm** within 3 minutes,
+at the live price (not if it moved more than 1%). Orders run 09:15–15:00 (intraday) or 15:30 (pools) on trading days.
+Your trades pay the same costs, don't use the trader's daily allowance, and count toward the daily loss limit.
+In Databricks: `gold.custom_trades`; intraday ones also in `gold.trades` (setup "Custom") and `gold.track_record`
+under dimension `source` = custom only, so they never change how the trader judges its own ideas.
+
 ## Agents and the decision flow
 
 ```
@@ -269,7 +287,7 @@ Cost review: Sun 15 Nov.
 | 13 Nov | First weekly report |
 | 14 Nov | First long-term shadow week |
 | 15 Nov | Cost review: is Claude usage sustainable? |
-| 16 Nov | News radar (Nifty 200 beyond the watchlist) and the swing shadow pool start |
+| 16 Nov | News radar (Nifty 200 beyond the watchlist) and the swing shadow pool start; your own trades from Telegram (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`) |
 | 23 Nov | Track-record review (phase 5), including news vs watchlist picks |
 | 18 Dec | Long-term go/no-go (backtest + 5 shadow weeks) |
 | 21 Dec | Long-term buying starts, if approved |
