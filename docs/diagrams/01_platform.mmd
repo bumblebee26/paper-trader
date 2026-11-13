@@ -24,12 +24,12 @@ flowchart TB
             FET["<b>Fetcher Lambdas</b><br/>NSE 19:30 · Massive 04:30 · FRED 06:00"]
             S3L[("<b>S3 landing bucket</b><br/>raw archive")]
             PM["<b>Pre-market Lambda</b><br/>08:45 brief"]
-            NEWS["<b>News Lambda</b><br/>NSE filings every 30 min"]
+            NEWS["<b>News Lambda</b><br/>NSE filings every minute 09:00–15:59<br/>(every 30 min otherwise)"]
         end
         subgraph PTA["paper-trader"]
             direction TB
             KICK["<b>Kicker Lambda</b><br/>09:08 · 12:27"]
-            GUARD["<b>Guardian Lambda</b><br/>15:12 square-off · 15:14 swing into NIFTYBEES<br/>15:40 report · 15:45 export · Fri weekly report"]
+            GUARD["<b>Guardian Lambda</b><br/>15:12 square-off · 15:14 swing into NIFTYBEES<br/>15:40 report · 15:45 export · 15:50 swing shadow<br/>23:30 late export · Fri weekly report"]
             S3T[("<b>Trader state bucket</b><br/>ledger · pools · journal · reports")]
             RESP["<b>Responder Lambda</b><br/>commands when no session"]
         end
