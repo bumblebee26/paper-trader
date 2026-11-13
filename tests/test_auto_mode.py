@@ -142,6 +142,27 @@ class AutoModeTest(unittest.TestCase):
         self.assertNotIn("HDFCBANK", st["positions"])            # EXIT button closed it
         self.assertEqual(st["decisions"], {})                    # a like is never an approval
 
+    def test_the_saved_rating_shows_on_the_message(self):
+        env = self.env()
+        st = engine.load()
+        r = self.propose(env, st, yes=5)                         # skipped: rating buttons only
+        msg_id = st["proposals"][r["proposal_id"]]["message_id"]
+        env.tap("fb:like", r["proposal_id"])
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertEqual(env.button_sets[-1], (msg_id, [("✅ 👍 good call", f"fb:like:{r['proposal_id']}"),
+                                                       ("👎 bad call", f"fb:dislike:{r['proposal_id']}")]))
+        env.tap("fb:dislike", r["proposal_id"])                  # changing your mind moves the tick
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertEqual([b[0] for b in env.button_sets[-1][1]], ["👍 good call", "✅ 👎 bad call"])
+        r2 = self.propose(env, st, symbol="TCS", yes=95, price=3000.0)
+        engine.execute(st, r2["proposal_id"])
+        env.react(st["proposals"][r2["proposal_id"]]["message_id"], "👍")   # a reaction ticks it too
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertEqual([b[0] for b in env.button_sets[-1][1]], ["✅ 👍 good call", "👎 bad call", "EXIT"])
+
     def test_commands_toggle_auto_mode(self):
         env = self.env()
         st = engine.load()

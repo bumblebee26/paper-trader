@@ -41,7 +41,7 @@ class Env:
         self.capital = capital  # tests of the mechanics use Rs 1 lakh; the live intraday pool is config's
         self.clock = when.replace(tzinfo=market.IST)
         self.store = MemoryStore()
-        self.sent, self.edits, self.updates, self.edit_buttons = [], [], [], []
+        self.sent, self.edits, self.updates, self.edit_buttons, self.button_sets = [], [], [], [], []
         self.prices, self.bars = {}, {}
         self._patches = []
 
@@ -66,6 +66,7 @@ class Env:
             mock.patch.object(tg, "send", fake_send),
             mock.patch.object(tg, "edit", lambda m, t, buttons=None: (self.edits.append(t),
                                                                        self.edit_buttons.append(buttons))),
+            mock.patch.object(tg, "set_buttons", lambda m, b: self.button_sets.append((m, b))),
             mock.patch.object(market, "last_price", lambda s: (self.prices.get(s), "2026-11-09 10:40")),
             mock.patch.object(market, "candles", lambda s, i="5m", d=1: self.bars.get((s, i), [])),
             mock.patch.object(config, "STARTING_CAPITAL", self.capital),

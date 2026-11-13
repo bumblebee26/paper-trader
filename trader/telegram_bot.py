@@ -81,6 +81,15 @@ def edit(message_id, text, buttons=None) -> None:
         pass  # unchanged or too old; harmless
 
 
+def set_buttons(message_id, buttons) -> None:
+    """Change only a message's buttons (the text stays as it is)."""
+    try:
+        _api("editMessageReplyMarkup", chat_id=config.telegram_chat_id(), message_id=message_id,
+             reply_markup=_keyboard(buttons) if buttons else {"inline_keyboard": []})
+    except TelegramError:
+        pass  # unchanged or too old; harmless
+
+
 def poll(state, wait=0) -> None:
     """Read new updates once (long-polling up to `wait` seconds) into `state`.
 
@@ -106,9 +115,11 @@ def poll(state, wait=0) -> None:
             if str(cq["from"]["id"]) != allowed:
                 continue
             data = cq.get("data", "")
+            answer = "Got it"
             if data.startswith("fb:"):                      # fb:like:<id> / fb:dislike:<id>: feedback only
                 _, kind, pid = data.split(":", 2)
                 state.setdefault("feedback", {})[pid] = kind
+                answer = f"Saved: {'👍 good call' if kind == 'like' else '👎 bad call'}. Tap the other to change it."
             elif data.startswith("x:"):                     # x:<id>: EXIT button on an auto-placed trade
                 sym = state.get("proposals", {}).get(data[2:], {}).get("symbol")
                 if sym:
@@ -117,7 +128,7 @@ def poll(state, wait=0) -> None:
                 verdict, pid = data.split(":", 1)
                 state.setdefault("decisions", {}).setdefault(pid, verdict)
             try:
-                _api("answerCallbackQuery", callback_query_id=cq["id"], text="Got it")
+                _api("answerCallbackQuery", callback_query_id=cq["id"], text=answer)
             except TelegramError:
                 pass
         elif "message_reaction" in u:
