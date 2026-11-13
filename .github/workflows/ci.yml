@@ -47,7 +47,9 @@ jobs:
           p.kill()
           print(len(tools), "tools:", ", ".join(tools))
           assert {"premarket_context", "start_day", "run_cycle", "propose_trade", "wait_for_decision",
-                  "execute_approved_trade", "wait_for_next_candle", "end_of_day_report"} <= set(tools)
+                  "execute_approved_trade", "wait_for_next_candle", "end_of_day_report", "market_snapshot",
+                  "scan_setups", "company_news"} <= set(tools), tools
+          assert not [t for t in tools if t.startswith("_")], "a helper was registered as a tool"
           PY
 
   terraform-fmt:
