@@ -20,11 +20,12 @@ life of one trade).
 |---|---|
 | 08:45 | Lakehouse pre-market brief arrives on Telegram (unchanged) |
 | 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data, sends the day plan and focus list |
-| 09:20–12:25 | Every 5 minutes: check positions, scan the focus list (up to 15 of 36 stocks across 11 sectors), propose setups. You tap YES / NO |
+| 09:20–12:25 | Every 5 minutes: check positions, scan the focus list (up to 15 names: the 36-stock watchlist plus news-radar picks from the Nifty 200), and any stock with a fresh NSE filing; propose setups |
 | 12:27 | Afternoon session. New entries stop at 14:30 |
 | 15:10 | Everything squared off, then the day report |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | The day's journal and a portfolio snapshot (all pools and holdings) are copied to the lakehouse; its pipeline builds the trading and portfolio tables and dashboard pages |
+| 15:50 | Swing shadow test: news breakouts bought and sold on paper, compared with NIFTYBEES (`/shadow`) |
 | 23:30 | The last 4 days' journals are copied again, so ratings you give in the evening reach the lakehouse |
 
 Money is split into three dummy pools (Rs 2,00,000 in total): **intraday** Rs 40,000 (trading now), **swing**
@@ -66,7 +67,7 @@ ratings reach `stocks.gold.track_record`, which every session reads to calibrate
 your YES and NO calls worked out.
 
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,
-`/exit SYMBOL`, `/news SYMBOL`, `/portfolio`, `/auto on|off`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
+`/exit SYMBOL`, `/news SYMBOL`, `/portfolio`, `/shadow` (everything tested on paper), `/auto on|off`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
 within seconds during sessions, within ~2 minutes otherwise (evenings, weekends). A `/pause` sent in the evening
 skips the next trading day. `EXIT RELIANCE` closes that position; `LEDGER` gives a statement: balance,
 money in use, money free, and open positions with live P&L. Every fill and exit also ends with a one-line ledger.

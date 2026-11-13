@@ -40,6 +40,19 @@ class BriefTest(unittest.TestCase):
         self.assertEqual(plan["adr_moves_pct"], {"INFY": -3.2})
         self.assertEqual(plan["source"], "stocks_lakehouse gold tables")
 
+    def test_news_radar_and_tradable_universe(self):
+        data = {**SAMPLE,
+                "universe": [{"symbol": "GODREJIND"}, {"symbol": "HDFCBANK"}],
+                "radar": [{"symbol": "GODREJIND", "company": "Godrej Industries", "industry": "Diversified",
+                           "close": 1095.0, "return_pct": 11.88, "volume_ratio": 29.6,
+                           "reasons": "NSE filing: mna, moved 11.9%, 29.6x usual volume",
+                           "latest_news_title": "Primary infusion of capital in Godrej Capital"}]}
+        plan = brief.build_plan(data)
+        self.assertEqual(plan["tradable_universe"], ["GODREJIND", "HDFCBANK"])
+        self.assertEqual(plan["news_radar"][0]["symbol"], "GODREJIND")
+        self.assertIn("29.6x usual volume", plan["news_radar"][0]["why"])
+        self.assertEqual(plan["unusual_volume_nse"], [])          # TATAPOWER isn't in the tradable universe
+
     def test_risk_scales_with_vix(self):
         base = config.RISK_PER_TRADE_PCT
         self.assertEqual(brief.risk_for_vix(None), base)
