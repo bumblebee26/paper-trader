@@ -354,6 +354,15 @@ def set_auto(state, on: bool, reason="by you") -> None:
 RATING_DAYS = 7  # how long a proposal message can still be rated by a reaction
 
 
+def rating_buttons(state, pid, rating=None):
+    """👍/👎 buttons for an auto-mode proposal, the chosen one ticked, plus EXIT while its trade is open."""
+    mark = lambda kind, label: ("✅ " if rating == kind else "") + label  # noqa: E731
+    buttons = [(mark("like", "👍 good call"), f"fb:like:{pid}"), (mark("dislike", "👎 bad call"), f"fb:dislike:{pid}")]
+    if any(pos.get("proposal_id") == pid for pos in state.get("positions", {}).values()):
+        buttons.append(("EXIT", f"x:{pid}"))
+    return buttons
+
+
 def record_feedback(state) -> int:
     """Journal the user's 👍/👎 (buttons or reactions; 'none' when a reaction is removed). Feedback never changes
     a trade. Works for proposals of earlier days too (the journal row carries the proposal_id)."""
@@ -366,6 +375,11 @@ def record_feedback(state) -> int:
         journal("user_feedback", event_id=f"fb-{pid}", proposal_id=pid, symbol=p.get("symbol", ""),
                 setup=p.get("setup", ""), side=p.get("side", ""), user_reply=kind,
                 note=f"decision {p.get('user_reply', '?')} at suggestion {p.get('suggested_yes_pct', '?')}%")
+        # Show the saved rating on the message itself: the chosen button gets a ✅ (none after a removal)
+        msg_id = (state["proposals"].get(pid) or {}).get("message_id") or next(
+            (int(k) for k, v in (state.get("msg_index") or {}).items() if v.get("pid") == pid), None)
+        if msg_id:
+            tg.set_buttons(msg_id, rating_buttons(state, pid, None if kind == "none" else kind))
     return len(taps)
 
 
@@ -890,7 +904,7 @@ def execute(state, pid):
         "target": p["target"], "opened_at": _now(), "setup": p["setup"], "proposal_id": pid,
     }
     p["status"] = "filled"
-    keep = ([("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}"), ("EXIT", f"x:{pid}")]
+    keep = (rating_buttons(state, pid, p.get("feedback"))
             if p.get("mode") == "auto" else None)  # auto mode: keep the rating and EXIT buttons on the message
     tg.edit(p["message_id"], p["text"] + f"\n\n-> Placed @ {fill:,.2f}", buttons=keep)
     tg.send(f"Placed [MOCK] {p['side']} {p['symbol']} {p['qty']} @ {fill:,.2f}. "
