@@ -55,14 +55,16 @@ more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follow
 | Trades per day | 5 | 10 |
 | Daily loss limit | 2% | 4R (Rs 1,200–1,600 with VIX) including open positions' risk; lifts again if a winning exit brings the day back under it (Rs 4,000 from 9 to 11 Nov) |
 | Weekly brake | none | Week down 8R: half-size trades until Monday |
-| Cost filter | none | No trade whose fees and slippage exceed 30% of its risk |
+| Costs | Rs 20 per order + 0.05% slippage | From 16 Nov, every order also pays STT (0.025% on sells), exchange and SEBI fees, GST and stamp duty (0.003% on buys), as on a contract note: about 0.26% of the position per round trip with slippage |
+| Cost filter | none | No trade whose costs exceed 30% of its risk (in practice a stop of about 0.9% or more) |
 | Exit rules | fixed stop and 2R target | Same, with four alternatives and a day profit lock on trial in the background (reports; decided at a review) |
 | Cool-off | none | 30 minutes without new proposals after 3 losses in a row |
 | Watchlist | 16 stocks, mostly banks and IT | 36 stocks across 11 sectors (`trader/sectors.py`) |
-| Focus list each morning | up to 10 | up to 15, at least 6 sectors |
+| Focus list each morning | up to 10 | up to 15, at least 6 sectors; from 16 Nov re-ranked at 09:25 by opening relative volume (the first 10 minutes vs the usual), the "stocks in play" |
 | Sector caps | none | 1 open position per sector, 2 trades per sector a day |
 | Position cap | margin limit only | One trade uses at most 30% of the balance as margin |
-| Proposal | numbers | Suggestion % (live checks + trading agent + independent reviewer), plain words, market check, company news |
+| Proposal | numbers | Suggestion % (live checks + trading agent + independent reviewer), plain words, market check, company news; from 16 Nov the live checks also score the VWAP side and strength against the stock's sector |
+| Research tests (paper, from 16 Nov) | none | Background rules "no BUY below VWAP" and "no BUY on a stock weaker than its sector" (mirrored for SELL); opening-range breakout on the top 10 stocks in play with 5- vs 15-minute ranges, 2R target vs held to 15:10. Decided at a review |
 
 ## Phase 2: foundations (built)
 

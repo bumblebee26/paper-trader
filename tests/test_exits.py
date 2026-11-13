@@ -6,6 +6,7 @@ from helpers import Env
 
 import engine
 import exits
+import fees
 import storage
 import weekly
 
@@ -45,7 +46,9 @@ class ReplayTest(unittest.TestCase):
 
     def test_runner(self):
         cur, half, trail = (run(r, RUNNER) for r in ("current", "half_and_run", "trailing"))
-        self.assertAlmostEqual(cur, (104 * 0.9995 - 100) * 100 - 40, delta=1)   # target at 104 (prices to the paisa)
+        exit_px = round(104 * 0.9995, 2)
+        self.assertAlmostEqual(cur, (exit_px - 100) * 100 - fees.round_trip(100 * 100, exit_px * 100, "BUY"),
+                               delta=0.05)                 # target at 104, every order's charges
         self.assertGreater(trail, cur)             # let the winner run past 104
         self.assertLess(half, cur)                 # half sold at 102
 

@@ -73,6 +73,10 @@ class Env:
             # Mechanics tests use toy prices (very tight stops) and a fixed Rs 4,000 day limit; the R-based limits,
             # weekly brake and cost filter are tested with their real settings in test_risk_limits.py.
             mock.patch.object(config, "DAILY_LOSS_LIMIT_RS", 4_000),
+            # Mechanics tests keep the flat Rs 20 per order; statutory charges are tested in test_fees.py.
+            mock.patch.object(config, "STT_SELL_PCT", 0.0), mock.patch.object(config, "EXCHANGE_FEE_PCT", 0.0),
+            mock.patch.object(config, "SEBI_FEE_PCT", 0.0), mock.patch.object(config, "GST_PCT", 0.0),
+            mock.patch.object(config, "STAMP_BUY_PCT", 0.0),
             mock.patch.object(config, "WEEKLY_LOSS_LIMIT_R", 0),
             mock.patch.object(config, "MAX_COST_SHARE_PCT", 0),
             mock.patch.object(config, "AUTO_MODE_DEFAULT", False),  # human-in-the-loop unless a test turns it on

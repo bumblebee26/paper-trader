@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import advisor
 import config
 import exits
+import fees
 import track
 import links
 import market
@@ -162,12 +163,23 @@ def in_entry_window() -> bool:
     return market.is_trading_day(now) and _at(config.ENTRY_START) <= now <= _at(config.ENTRY_END)
 
 
+def in_session_hours() -> bool:
+    now = market.now_ist()
+    return market.is_trading_day(now) and _at(config.IN_PLAY_AT) <= now <= _at(config.ENTRY_END)
+
+
 def past_square_off() -> bool:
     return market.now_ist() >= _at(config.SQUARE_OFF)
 
 
-def costs(value: float) -> float:
-    return config.BROKERAGE_PER_ORDER  # per order; slippage is applied to the price itself
+def costs(value: float, side: str = "BUY") -> float:
+    """One order's charges (brokerage, STT, exchange, SEBI, GST, stamp: trader/fees.py). side = the ORDER's side.
+    Slippage is applied to the price itself."""
+    return fees.order(value, side)
+
+
+def _exit_side(trade_side: str) -> str:
+    return "SELL" if trade_side == "BUY" else "BUY"
 
 
 def slip(price: float, side: str, opening: bool) -> float:
@@ -689,6 +701,62 @@ def news_alerts(state, limit=8) -> list:
     return out
 
 
+def opening_rvol(symbol, bars=None):
+    """{symbol, rvol, gap_pct}: the first IN_PLAY_BARS 5-minute bars' volume today vs the same bars on earlier
+    days (up to 14), and today's gap vs yesterday's close. None if there isn't enough data."""
+    try:
+        bars = bars if bars is not None else market.candles(symbol, "5m", 15)
+    except Exception:  # noqa: BLE001
+        return None
+    days = {}
+    for b in bars:
+        days.setdefault(b["time"][:10], []).append(b)
+    order = sorted(days)
+    if len(order) < 3:
+        return None
+    today, past = order[-1], order[-15:-1]
+    first = lambda d: [b for b in days[d] if b["time"][11:16] >= "09:15"][:config.IN_PLAY_BARS]  # noqa: E731
+    now_bars = first(today)
+    if len(now_bars) < config.IN_PLAY_BARS:
+        return None
+    usual = [sum(b["volume"] for b in first(d)) for d in past if len(first(d)) == config.IN_PLAY_BARS]
+    usual = [u for u in usual if u > 0]
+    if not usual:
+        return None
+    rvol = sum(b["volume"] for b in now_bars) / (sum(usual) / len(usual))
+    prev_close = days[past[-1]][-1]["close"]
+    gap = (now_bars[0]["open"] - prev_close) / prev_close * 100 if prev_close else 0.0
+    return {"symbol": symbol, "rvol": round(rvol, 2), "gap_pct": round(gap, 2)}
+
+
+def rank_in_play(state, pause=0.0) -> list:
+    """Once a day at IN_PLAY_AT: rank the watchlist, today's focus and the news radar by opening relative volume
+    and make the top FOCUS_MAX the focus list (stocks with news count as 1 extra x). Open positions stay."""
+    if state.get("in_play_day") == _today() or market.now_ist().strftime("%H:%M") < config.IN_PLAY_AT:
+        return []
+    state["in_play_day"] = _today()
+    radar = (storage.get_json(UNIVERSE_KEY) or {}).get("radar") or []
+    pool = list(dict.fromkeys([*(state.get("focus") or []), *radar, *(state.get("news_symbols") or []),
+                               *sectors.WATCHLIST]))
+    ranked = []
+    for i, sym in enumerate(pool):
+        if pause and i and i % 5 == 0:
+            time.sleep(pause)   # gentle on Yahoo's rate limits
+        r = opening_rvol(sym)
+        if r and tradable(sym):
+            r["news"] = sym in (state.get("news_symbols") or []) or sym in radar
+            r["score"] = round(r["rvol"] + (1 if r["news"] else 0), 2)
+            ranked.append(r)
+    ranked.sort(key=lambda r: -r["score"])
+    if not ranked:
+        return []
+    top = [r["symbol"] for r in ranked[:config.FOCUS_MAX]]
+    state["focus"] = list(dict.fromkeys([*top, *[s for s in state["positions"] if s not in top]]))
+    state["in_play"] = ranked[:20]
+    journal("in_play", note=" ".join(f"{r['symbol']}:{r['rvol']}x" for r in ranked[:config.FOCUS_MAX]))
+    return ranked[:config.FOCUS_MAX]
+
+
 def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, target: float):
     """Return (ok, reason, qty, risk_rs, rr)."""
     side = side.upper()
@@ -763,16 +831,16 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     # Judge the stop as if the trade were full size: a trade made smaller by the weekly brake or the room left
     # under the limit pays the same Rs 20 per order, but that's the price of the brake, not a too-tight stop.
     full_qty = max(1, min(math.floor(full_budget / per_share), max_qty_by_cap))
-    share = cost_share_pct(entry, per_share, full_qty)
+    share = cost_share_pct(entry, per_share, full_qty, side)
     if config.MAX_COST_SHARE_PCT > 0 and share > config.MAX_COST_SHARE_PCT:
         return False, (f"fees and slippage would be {share:.0f}% of the risk (max {config.MAX_COST_SHARE_PCT:g}%): "
                        "the stop is too tight for the costs"), 0, 0, rr
     return True, "ok", qty, round(qty * per_share, 2), rr
 
 
-def cost_share_pct(entry, per_share, qty) -> float:
-    """Round-trip costs (2 orders' brokerage + slippage on both fills) as a % of the trade's planned risk."""
-    costs_rs = 2 * config.BROKERAGE_PER_ORDER + 2 * entry * qty * config.SLIPPAGE_PCT / 100
+def cost_share_pct(entry, per_share, qty, side="BUY") -> float:
+    """Round-trip costs (both orders' charges + slippage on both fills) as a % of the trade's planned risk."""
+    costs_rs = fees.round_trip(entry * qty, entry * qty, side) + 2 * entry * qty * config.SLIPPAGE_PCT / 100
     return costs_rs / (qty * per_share) * 100
 
 
@@ -1096,8 +1164,9 @@ def execute(state, pid):
         return {"status": "skipped", "reason": reason}
 
     fill = slip(price, p["side"], opening=True)
-    state["balance"] -= costs(fill * p["qty"])
-    state["realized_today"] -= costs(fill * p["qty"])
+    entry_fees = costs(fill * p["qty"], p["side"])
+    state["balance"] -= entry_fees
+    state["realized_today"] -= entry_fees
     check_loss_limit(state)
     state["trades_today"] += 1
     sec = sectors.sector(p["symbol"])
@@ -1116,7 +1185,7 @@ def execute(state, pid):
         did = f"Shorted {p['qty']} {p['symbol']} @ {fill:,.2f}: sold first, will buy back by 15:10"
     tg.send(f"[MOCK] {did}.\n🎯 {p['target']:,.2f} · 🛑 {p['stop']:,.2f} · EXIT {p['symbol']} closes it now.\n"
             f"{ledger_line(state)}")
-    journal("filled", proposal_id=pid, risk_rs=p["risk_rs"], fees_rs=costs(fill * p["qty"]),
+    journal("filled", proposal_id=pid, risk_rs=p["risk_rs"], fees_rs=entry_fees,
             symbol=p["symbol"], setup=p["setup"], side=p["side"], entry=p["entry"],
             stop=p["stop"], target=p["target"], qty=p["qty"], fill_price=fill, user_reply="YES",
             note=f"quote time {ts}")
@@ -1131,11 +1200,12 @@ def close(state, symbol, exit_price, reason, notify=True):
     exit_fill = slip(exit_price, pos["side"], opening=False)
     direction = 1 if pos["side"] == "BUY" else -1
     gross = (exit_fill - pos["fill_price"]) * pos["qty"] * direction
-    net = round(gross - costs(exit_fill * pos["qty"]), 2)
+    exit_fees = costs(exit_fill * pos["qty"], _exit_side(pos["side"]))
+    net = round(gross - exit_fees, 2)
     state["balance"] += net
     state["realized_today"] += net
     journal("squared_off" if reason == "square_off" else "exited", proposal_id=pos.get("proposal_id", ""),
-            fees_rs=costs(exit_fill * pos["qty"]), symbol=symbol,
+            fees_rs=exit_fees, symbol=symbol,
             setup=pos["setup"], side=pos["side"], qty=pos["qty"], fill_price=pos["fill_price"],
             exit_price=exit_fill, exit_reason=reason, pnl_rs=net)
     if notify:
@@ -1238,7 +1308,8 @@ def _hypothetical(p) -> float:
         if tgt_hit:
             exit_price = p["target"]
             break
-    return round((exit_price - entry) * p["qty"] * direction - 2 * config.BROKERAGE_PER_ORDER, 2)
+    return round((exit_price - entry) * p["qty"] * direction
+                 - fees.round_trip(entry * p["qty"], exit_price * p["qty"], p["side"]), 2)
 
 
 def report(state, send=True):
@@ -1282,6 +1353,10 @@ def report(state, send=True):
     except Exception as err:  # noqa: BLE001 - a trial must never stop the day report
         summary["exit_rules_error"] = str(err)
     try:
+        summary.update(_orb_shadow(state))
+    except Exception as err:  # noqa: BLE001
+        summary["orb_trial_error"] = str(err)
+    try:
         snap = pools.snapshot(state)
         summary["portfolio_total_rs"] = snap["total"]
         summary["portfolio_drawdown_pct"] = snap["drawdown_pct"]
@@ -1309,6 +1384,7 @@ def report(state, send=True):
             lines.append(f"Passed trades would have made: {inr(sum(hypo.values()), sign=True)}")
             lines += [f"- {k}: {inr(v, sign=True)}" for k, v in hypo.items()]
         lines += _shadow_exit_lines(summary)
+        lines += _orb_lines(summary)
         lines += _auto_lines(state)
         if summary["open_positions"]:
             lines.append(f"WARNING still open: {', '.join(summary['open_positions'])}")
@@ -1349,6 +1425,77 @@ def _shadow_exits(state, rows) -> dict:
                 note=f"skipped {lock['skipped']} trades; actual {lock['day_actual']}")
         out["profit_lock"] = lock
     return out
+
+
+# --------------------------------------------- opening-range test (paper) --
+ORB_VARIANTS = (("orb5", 5), ("orb15", 15))   # opening range of 5 or 15 minutes from 09:15
+ORB_MIN_STOP_PCT = 0.9                        # stop at least this far, so costs stay under ~30% of the risk
+ORB_STOCKS = 10                               # the top stocks in play
+
+
+def orb_trade(bars, minutes, one_r_rs, balance):
+    """On paper: the first 5-minute close outside the opening range (09:15 + `minutes`) before ENTRY_END, entry at
+    that close, stop at the other side of the range (at least ORB_MIN_STOP_PCT away). Results with a 2R target
+    ('2r') and held to the square-off ('eod'), same costs and slippage as real trades. None if no breakout."""
+    end = f"09:{15 + minutes:02d}"
+    rng = [b for b in bars if "09:15" <= b["time"][11:16] < end]
+    if len(rng) < minutes // 5:
+        return None
+    hi, lo = max(b["high"] for b in rng), min(b["low"] for b in rng)
+    for b in bars:
+        t = b["time"][11:16]
+        if t < end or t >= config.ENTRY_END:
+            continue
+        side = "BUY" if b["close"] > hi else "SELL" if b["close"] < lo else None
+        if not side:
+            continue
+        entry = b["close"]
+        d = 1 if side == "BUY" else -1
+        per_share = max(abs(entry - (lo if side == "BUY" else hi)), entry * ORB_MIN_STOP_PCT / 100)
+        stop = entry - d * per_share
+        qty = math.floor(min(one_r_rs / per_share,
+                             balance * config.MAX_POSITION_MARGIN_PCT / 100 * config.INTRADAY_LEVERAGE / entry))
+        if qty < 1:
+            return None
+        fill = slip(entry, side, opening=True)
+        opened = f"{b['time']}:00"
+        res = {"2r": exits.replay("current", side, qty, fill, stop, entry + d * 2 * per_share, opened, bars),
+               "eod": exits.replay("eod", side, qty, fill, stop, entry + d * 2 * per_share, opened, bars)}
+        return {"side": side, "time": t, **res}
+    return None
+
+
+def _orb_shadow(state) -> dict:
+    """Opening-range test on today's top stocks in play: 5- vs 15-minute ranges, 2R target vs held to 15:10."""
+    names = [r["symbol"] for r in (state.get("in_play") or [])[:ORB_STOCKS]]
+    if not names:
+        return {}
+    totals = {f"{v}_{k}": 0.0 for v, _ in ORB_VARIANTS for k in ("2r", "eod")}
+    trades = {v: 0 for v, _ in ORB_VARIANTS}
+    for sym in names:
+        bars = [b for b in market.candles(sym, "5m", 1) if b["time"].startswith(_today())]
+        results = {}
+        for v, minutes in ORB_VARIANTS:
+            t = orb_trade(bars, minutes, one_r(state), state["balance"])
+            if t and t["2r"] is not None and t["eod"] is not None:
+                trades[v] += 1
+                for k in ("2r", "eod"):
+                    results[f"{v}_{k}"] = t[k]
+                    totals[f"{v}_{k}"] += t[k]
+        if results:
+            journal("orb_shadow", event_id=f"orb-{_today()}-{sym}", symbol=sym, note=exits.note_text(results))
+    return {"orb_trial_stocks": len(names), "orb_trial_trades": trades,
+            "orb_trial_rs": {k: round(v, 2) for k, v in totals.items()}}
+
+
+def _orb_lines(summary) -> list:
+    if not summary.get("orb_trial_stocks"):
+        return []
+    t, n = summary["orb_trial_rs"], summary["orb_trial_trades"]
+    return [f"Opening-range test on the top {summary['orb_trial_stocks']} stocks in play (paper): "
+            f"5-min range {n['orb5']} trades, {inr(t['orb5_2r'], sign=True)} with a 2R target / "
+            f"{inr(t['orb5_eod'], sign=True)} held to 15:10; 15-min range {n['orb15']} trades, "
+            f"{inr(t['orb15_2r'], sign=True)} / {inr(t['orb15_eod'], sign=True)}"]
 
 
 def _auto_lines(state) -> list:
