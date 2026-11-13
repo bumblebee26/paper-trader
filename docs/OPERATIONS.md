@@ -14,12 +14,12 @@
 | 15:14 | Guardian: puts the swing pool's idle cash into NIFTYBEES (once; nothing to do afterwards) | `state/pools/swing.json` |
 | 15:40 | Guardian: report if none was sent; daily portfolio snapshot (circuit breaker at 12% below the peak) | `state/portfolio.json` |
 | 15:45 | Guardian: export the last 4 days' journals (so late ratings get through) and a portfolio snapshot (every pool and holding, swing and long-term prices refreshed; shadow pools as `shadow_pool` rows) | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/`; `exports/portfolio/date=<date>/portfolio.jsonl` + volume `portfolio/` |
-| 15:50 | Guardian: swing shadow test (`swing_shadow.py`): yesterday's `gold.swing_signals` bought at today's open, exits on today's candle; Telegram note when something moves | `state/pools/swing_shadow.json`, `shadow/swing/<date>.json`, `journal/pools/swing_shadow/` |
+| 15:50 | Guardian: swing shadow test (`swing_shadow.py`): yesterday's `gold.swing_signals` bought at today's open, exits on today's candle; Telegram note when something moves. Also sells your own swing holdings whose stop or target was hit today | `state/pools/swing_shadow.json`, `state/pools/swing.json`, `shadow/swing/<date>.json`, `journal/pools/swing_shadow/` |
 | 23:30 | Guardian: export the last 4 days' journals again, so 👍/👎 given in the evening reach the lakehouse overnight | same journal files |
 | Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools) | `reports/weekly/<date>.json` |
 | Sat 07:15 | GitHub Actions *Company fundamentals*: NSE's Nifty 200 list (the 250 most traded NSE stocks if the list can't be read) plus the watchlist; financials → lakehouse `landing/fundamentals/` (feeds `stocks.gold.company_fundamentals`), the list → `landing/index_members/` | `fundamentals/date=<date>/fundamentals.jsonl`, `index_members/date=<date>/nifty200.jsonl` |
 | Sat 10:15 | GitHub Actions *Long-term shadow*: what the long-term pool would buy or sell this week (shadow ledger `state/pools/long_term_shadow.json`, never in the real portfolio); Telegram report | `shadow/longterm/<date>.json` |
-| every 2 min | Responder: answers Telegram commands when no session is live | — |
+| every 2 min | Responder: answers Telegram commands (including `/analyze` and your own orders) when no session is live | ledger and pool files when you place an order |
 
 **NSE holidays.** Fetched live from NSE's own list (`nseindia.com/api/holiday-master`, `trader/nse_calendar.py`):
 each session claim on the GitHub runner reads it and caches it in S3 (`state/nse_holidays.json`); the Lambdas
@@ -37,7 +37,7 @@ when it finds no prices.
 | 1R (one trade's risk) | Start-of-day balance × today's risk %: Rs 400, or Rs 300 at VIX ≥ 20, Rs 200 at VIX ≥ 30 | `RISK_PER_TRADE_PCT` (VIX scaling in `trader/brief.py`) |
 | Daily loss limit | 4R (Rs 1,600; Rs 1,200 at VIX ≥ 20), counting today's loss **plus the risk in open positions**: a new trade is sized to fit what's left, or blocked. Lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_R` (`DAILY_LOSS_LIMIT_RS` > 0 = a fixed rupee limit instead) |
 | Weekly brake | Week's loss reaches 8R: risk per trade halved until Monday | `WEEKLY_LOSS_LIMIT_R`, `WEEKLY_BRAKE_FACTOR` |
-| Cost filter | Blocks a trade whose round-trip fees and slippage exceed 30% of its risk at full size (stops tighter than about 0.6% of the price, about 1% at VIX ≥ 30); trades made smaller by the weekly brake or the room left aren't penalised for it | `MAX_COST_SHARE_PCT` |
+| Cost filter | Blocks a trade whose round-trip costs (brokerage, STT, exchange and SEBI fees, GST, stamp duty) and slippage exceed 30% of its risk at full size (stops tighter than about 0.9% of the price, about 1.2% at VIX ≥ 30); trades made smaller by the weekly brake or the room left aren't penalised for it | `MAX_COST_SHARE_PCT` |
 | Cool-off | 30 min without new proposals after 3 losses in a row | `COOLOFF_AFTER_LOSSES`, `COOLOFF_MIN` |
 | Open positions | 3 in total, 1 per sector | `MAX_OPEN_POSITIONS`, `MAX_OPEN_PER_SECTOR` |
 | Trades per sector | 2 a day | `MAX_TRADES_PER_SECTOR` |
@@ -47,18 +47,22 @@ when it finds no prices.
 `/ledger` shows today's limit, the room left and the week so far.
 
 **Auto mode** (`/auto on`, `/auto off`; on by default via `AUTO_MODE_DEFAULT`): a proposal is placed without a YES
-only when the combined suggestion is at least `AUTO_MIN_YES_PCT` (55%), the trading agent's own score is at least
-`AUTO_MIN_AGENT_PCT` (50%) and the independent reviewer answered (`AUTO_NEEDS_REVIEWER`); the rest are skipped (journal
+only when the combined suggestion is over `AUTO_MIN_YES_PCT` (55%), the trading agent's own score is over
+`AUTO_MIN_AGENT_PCT` (50%; exactly 55% / 50% is a coin flip and is skipped) and the independent reviewer answered
+(`AUTO_NEEDS_REVIEWER`). The bar rises by `AUTO_LOSING_GROUP_BUMP` (5) when the trade's setup, mood, hour, sector
+or direction (BUY or SHORT) has a judged, losing track record, and to `AUTO_FLIP_MIN_YES_PCT` (60%) for the
+opposite side of a stock already proposed today; the rest are skipped (journal
 `rejected` with `AUTO-NO`, and `passed_outcome` with `auto_skipped`). `AUTO_MAX_TRADES_PER_DAY` (6) replaces the
 10-trade cap; the weekly brake switches auto mode off. Each message has 👍/👎 buttons (journal `user_feedback`;
-feedback never changes a trade) and, for placed trades, EXIT; the buttons stay after the "Placed" update, and a
-👍 or 👎 *reaction* on the message counts as a rating too. Ratings can be given or changed for 7 days (the newest
+feedback never changes a trade) and, while a placed trade is open, EXIT; the buttons stay after the "Placed"
+update, the chosen 👍/👎 gets a ✅ (and Telegram says "Saved"), and a 👍 or 👎 *reaction* on the message counts
+as a rating too. Ratings can be given or changed for 7 days (the newest
 wins; removing the reaction records "none", i.e. not rated). They reach the lakehouse with the next export
 (15:45 or 23:30 on weekdays; weekend ratings on Monday). A midday summary arrives at `MIDDAY_SUMMARY_AT`
 (12:30) and the day report counts placed, skipped and rated decisions.
 
 **Track record** (`trader/track.py`): read once per session from `stocks.gold.track_record` and shown in every
-proposal with its counts (rows under 8 outcomes are marked "too few to judge"); `premarket_context` gives it to
+proposal with its counts by setup, suggestion band, mood, hour, the stock's sector and the direction (rows under 8 outcomes are marked "too few to judge"); `premarket_context` gives it to
 Claude, whose rules allow adjusting its own score only on judged rows.
 
 **Exit rules on trial** (`trader/exits.py`, from 11 Nov; nothing changes real trades): after the close each
@@ -66,6 +70,16 @@ trade is replayed on its 1-minute candles under the current exits and four alter
 +1R, sell half at +1R, a trailing stop, a 60-minute time stop), plus a day profit lock (once the day is +3R, no
 new trades if it falls back to half). The day report and the weekly report show how each would have done;
 journal events `exit_variants` and `profit_lock_shadow`. Adopt one only at a review, after 15+ trades.
+
+**Your own trades** (`trader/custom.py`, from 16 Nov): `/analyze SYMBOL` gives the trader's view of any NSE stock
+(code only, no Claude). `/buy` and `/short` trade on the intraday ledger (defaults: stop 1% away, target 2x the
+risk, size one normal trade's risk within the 30% margin cap); `/swing buy|sell` and `/longterm buy|sell` (also
+`/lt`) trade in the pools with delivery costs (a pool buy defaults to 10% of the pool; a swing buy sells NIFTYBEES if
+the pool's cash is short). Each order is shown first with its costs and warnings and runs only when you tap
+**Confirm** within 3 minutes, at the live price (not if it moved more than 1%). Orders run 09:15–15:00 (intraday)
+or 09:15–15:30 (pools) on trading days. Your intraday trades don't use the trader's daily allowance or sector
+counts, but their profit or loss counts toward the daily loss limit. Journal: setup `Custom` and `source custom`
+(intraday), `pool_trade` events (pools); in the lakehouse `stocks.gold.custom_trades`.
 
 ## Making a change
 
@@ -84,6 +98,8 @@ journal events `exit_variants` and `profit_lock_shadow`. Adopt one only at a rev
 | Risk limits, capital, costs, times | defaults in `trader/config.py` (or `env:` in the workflow) |
 | VIX → risk scaling, bias thresholds | `risk_for_vix` / `build_plan` in `trader/brief.py` |
 | Setups (ORB, VWAP, PDH/PDL) | `trader/scanner.py` |
+| Your own trades (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`) | `trader/custom.py` (defaults at the top) |
+| Groww and NSE buttons | `trader/links.py` (hand-checked Groww addresses for the watchlist) |
 | Session times | `trader/session_ctl.py`, `infra/aws/schedules.tf`, cron in `trading-session.yml` |
 | Kicker / guardian on or off | `infra/aws/project.auto.tfvars` |
 | Models | `CLAUDE_MODEL` (trading agent) and `REVIEWER_MODEL` in `trading-session.yml` |
@@ -104,6 +120,8 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | See today's plan again | Send `/plan` |
 | A company's latest filings | Send `/news SYMBOL` (NSE announcements, results, board meetings; from the lakehouse news feed) |
 | All pools | Send `/portfolio`: intraday (live), swing Rs 60,000 (held in NIFTYBEES) and long-term Rs 1,00,000 (shadow mode until the 18 Dec review) |
+| Analyse any stock | Send `/analyze TCS` (add `intraday`, `swing` or `longterm` for one view) |
+| Place your own trade | `/buy TCS 10 sl 2400 tgt 2480`, `/short TCS`, `/swing buy TCS 5`, `/longterm sell TCS`; then tap **Confirm** within 3 minutes |
 | Kill switch | Send `/stop`: no new proposals on any day until `/resume`; open positions are still managed |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session, ~2 min otherwise |
