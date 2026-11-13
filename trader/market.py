@@ -69,6 +69,12 @@ def candles(symbol: str, interval: str = "5m", days: int = 1):
     return _parse(get_json(url))
 
 
+def daily(symbol: str, rng: str = "1y"):
+    """Daily candles over a Yahoo range ('6mo', '1y', '2y')."""
+    url = CHART_URL.format(symbol=urllib.parse.quote(to_yahoo(symbol)), interval="1d", range=rng)
+    return _parse(get_json(url))
+
+
 def last_price(symbol: str):
     rows = candles(symbol, "1m", 1)
     if not rows:

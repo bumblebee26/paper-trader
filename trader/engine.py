@@ -2,6 +2,7 @@
 
 No broker or bank is ever contacted. Prices come from `market`, approvals from `telegram_bot`.
 """
+import json
 import math
 import time
 import uuid
@@ -263,6 +264,10 @@ Commands (with or without the /):
 /exit SYMBOL  close that position now, e.g. /exit HDFCBANK
 /news SYMBOL  the company's latest NSE filings with links, e.g. /news RELIANCE
 /portfolio  all dummy pools: intraday, swing and long-term (Rs 2 lakh in total)
+/analyze SYMBOL  my view of any NSE stock: intraday, swing and long-term (add one of those words for one view)
+/buy SYMBOL [qty] [sl X] [tgt Y]  your own intraday buy (defaults: 1% stop, 2x target, a normal trade's size); /short the same for a short
+/swing buy|sell SYMBOL [qty] [sl X] [tgt Y]  your own swing trade (delivery; paid from the pool's NIFTYBEES if needed)
+/longterm buy|sell SYMBOL [qty]  your own long-term trade (also /lt). Every order asks you to Confirm first and is marked custom
 /shadow  everything tested on paper: exit rules, background rules, skipped trades, news vs watchlist picks, the swing and long-term shadow pools
 /stop  kill switch: no new proposals at all until /resume (open positions still managed)
 /pause  no new proposals for the day; open positions are still managed. After 14:30, at weekends or on holidays it applies to the next trading day
@@ -441,6 +446,9 @@ def _full_reasons(state, pid) -> str:
 def answer_requests(state) -> int:
     """Reply to Telegram commands that came in (ledger, help, plan, pause, resume, auto)."""
     record_feedback(state)
+    if state.get("custom_orders"):
+        import custom
+        custom.expire(state)
     asks = list(dict.fromkeys(state.pop("requests", [])))
     for ask in asks:
         if ask == "ledger":
@@ -467,6 +475,18 @@ def answer_requests(state) -> int:
             tg.send("[MOCK] Resumed: proposals allowed again"
                     + (" (portfolio circuit breaker reset)." if breaker else ".")
                     if (was or stopped or breaker) else "[MOCK] Nothing was paused.")
+        elif ask.startswith("analyze:"):
+            import custom
+            _, sym, view = (ask.split(":", 2) + [""])[:3]
+            tg.send(custom.analyze_text(state, sym, view or None))
+        elif ask.startswith("order:"):
+            import custom
+            custom.preview(state, json.loads(ask[6:]))
+        elif ask.startswith(("confirm:", "cancel:")):
+            import custom
+            custom.confirm(state, ask.split(":", 1)[1], yes=ask.startswith("confirm:"))
+        elif ask.startswith("say:"):
+            tg.send("[MOCK] " + ask[4:])
         elif ask.startswith("info:"):
             tg.send(_full_reasons(state, ask[5:]), reply_to=_message_of(state, ask[5:]))
         elif ask == "stop":
@@ -1147,7 +1167,9 @@ def execute(state, pid):
         return {"status": "refused", "reason": "no price available"}
     drift = abs(price - p["entry"]) / p["entry"] * 100
     stop_hit = price <= p["stop"] if p["side"] == "BUY" else price >= p["stop"]
-    ok, why, _, _, _ = risk_gate(state, p["symbol"], p["side"], p["entry"], p["stop"], p["target"])
+    custom = p.get("mode") == "custom"   # your own order: you already saw its warnings and confirmed
+    ok, why, _, _, _ = ((True, "", 0, 0, 0) if custom
+                        else risk_gate(state, p["symbol"], p["side"], p["entry"], p["stop"], p["target"]))
     reason = None
     if drift > config.ENTRY_TOLERANCE_PCT:
         reason = f"price moved to {price} ({drift:.2f}% from entry)"
@@ -1168,9 +1190,10 @@ def execute(state, pid):
     state["balance"] -= entry_fees
     state["realized_today"] -= entry_fees
     check_loss_limit(state)
-    state["trades_today"] += 1
-    sec = sectors.sector(p["symbol"])
-    state.setdefault("sector_trades", {})[sec] = state["sector_trades"].get(sec, 0) + 1
+    if not custom:   # your own trades don't use the trader's daily allowance or sector counts
+        state["trades_today"] += 1
+        sec = sectors.sector(p["symbol"])
+        state.setdefault("sector_trades", {})[sec] = state["sector_trades"].get(sec, 0) + 1
     state["positions"][p["symbol"]] = {
         "side": p["side"], "qty": p["qty"], "fill_price": fill, "stop": p["stop"],
         "target": p["target"], "opened_at": _now(), "setup": p["setup"], "proposal_id": pid,
@@ -1187,7 +1210,8 @@ def execute(state, pid):
             f"{ledger_line(state)}")
     journal("filled", proposal_id=pid, risk_rs=p["risk_rs"], fees_rs=entry_fees,
             symbol=p["symbol"], setup=p["setup"], side=p["side"], entry=p["entry"],
-            stop=p["stop"], target=p["target"], qty=p["qty"], fill_price=fill, user_reply="YES",
+            stop=p["stop"], target=p["target"], qty=p["qty"], fill_price=fill,
+            user_reply="CUSTOM" if custom else "YES",
             note=f"quote time {ts}")
     return {"status": "filled", "fill_price": fill, "qty": p["qty"]}
 

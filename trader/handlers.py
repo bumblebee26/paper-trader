@@ -42,6 +42,12 @@ def kicker(event, context):
     return {"dispatched": phase}
 
 
+def market_open_today():
+    import market
+
+    return market.is_trading_day(market.now_ist())
+
+
 def guardian(event, context):
     action = (event or {}).get("action", "squareoff")
     if action == "squareoff":
@@ -81,9 +87,13 @@ def guardian(event, context):
                     "passes a test. /portfolio shows how it's doing.")
         return out
     if action == "swing_shadow":
+        import custom
         import swing_shadow
 
-        return swing_shadow.run(send=True)
+        out = swing_shadow.run(send=True)
+        if market_open_today():
+            out = {**out, "your_swing_exits": custom.check_swing_stops()}
+        return out
     if action == "weekly":
         import weekly
 

@@ -49,6 +49,11 @@ COMMANDS = [
     ("news", "Latest NSE filings for a stock, e.g. /news RELIANCE"),
     ("portfolio", "All dummy pools: intraday, swing, long-term"),
     ("shadow", "Everything tested on paper, and how it's doing"),
+    ("analyze", "Your stock: /analyze TCS (intraday, swing, long-term view)"),
+    ("buy", "Your intraday buy: /buy TCS 10 sl 2400 tgt 2480"),
+    ("short", "Your intraday short: /short TCS 10"),
+    ("swing", "Swing pool: /swing buy TCS 5 or /swing sell TCS"),
+    ("longterm", "Long-term pool: /longterm buy TCS 5 or /longterm sell TCS"),
     ("pause", "No new proposals today (open positions still managed)"),
     ("stop", "Kill switch: no new proposals until /resume"),
     ("resume", "Allow new proposals again"),
@@ -128,6 +133,9 @@ def poll(state, wait=0) -> None:
                 _, kind, pid = data.split(":", 2)
                 state.setdefault("feedback", {})[pid] = kind
                 answer = f"Saved: {'👍 good call' if kind == 'like' else '👎 bad call'}. Tap the other to change it."
+            elif data.startswith(("cf:", "cx:")):          # Confirm / Cancel on your own order
+                state.setdefault("requests", []).append(("confirm:" if data.startswith("cf:") else "cancel:") + data[3:])
+                answer = "Placing it…" if data.startswith("cf:") else "Cancelled"
             elif data.startswith("info:"):                  # info:<id>: send the full reasons as a reply
                 state.setdefault("requests", []).append(data)
                 answer = "Sending the full reasons…"
@@ -169,7 +177,17 @@ def poll(state, wait=0) -> None:
             parts = [w.lstrip("/").split("@")[0] for w in (msg.get("text") or "").strip().upper().split()]
             cmd = parts[0] if parts else ""
             asks = state.setdefault("requests", [])
-            if len(parts) == 2 and cmd == "EXIT":
+            import custom   # /analyze, /buy, /short, /swing, /longterm: your own analysis and trades
+            mine = custom.parse(parts)
+            if mine:
+                kind, data = mine
+                if kind == "analyze":
+                    asks.append(f"analyze:{data['symbol']}:{data['view'] or ''}")
+                elif kind == "order":
+                    asks.append("order:" + json.dumps(data, separators=(",", ":")))
+                else:
+                    asks.append("say:" + data)
+            elif len(parts) == 2 and cmd == "EXIT":
                 state.setdefault("exit_requests", []).append(parts[1])
             elif cmd in ("LEDGER", "BALANCE", "STATUS"):
                 asks.append("ledger")
