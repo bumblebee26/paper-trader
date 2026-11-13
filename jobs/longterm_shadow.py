@@ -112,6 +112,7 @@ def week(today, cands, nifty):
             "moves": moves, "holdings": {s: {"qty": h["qty"], "last_price": h.get("last_price")} for s, h in p["holdings"].items()},
             "picks": [c["symbol"] for c in picks]}
     storage.put_json(f"shadow/longterm/{today}.json", snap)
+    storage.put_json("shadow/longterm/latest.json", snap)   # for /shadow
     return snap
 
 

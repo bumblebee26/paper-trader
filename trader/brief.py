@@ -33,6 +33,14 @@ QUERIES = {
         WHERE instrument IN ('VIXCLS', 'DEXINUS', 'DCOILBRENTEU', 'NIKKEI225')
     """,
     "summary": "SELECT * FROM stocks.gold.nifty_after_us_moves_summary",
+    "radar": """
+        SELECT symbol, company, industry, close, return_pct, volume_ratio, avg_turnover_cr, reasons,
+               latest_news_category, latest_news_title
+        FROM stocks.gold.intraday_universe
+        WHERE flagged
+        ORDER BY news_count DESC, abs(return_pct) DESC LIMIT 12
+    """,
+    "universe": "SELECT symbol FROM stocks.gold.intraday_universe WHERE eligible",
     "unusual_in": """
         SELECT symbol, trade_date, close, return_pct, volume_ratio
         FROM stocks.gold.unusual_volume
@@ -127,11 +135,17 @@ def build_plan(data, failed=()):
     else:
         bias = "gap-up tendency" if avg_gap > 0 else "gap-down tendency"
 
+    universe = sorted({r["symbol"] for r in data.get("universe", [])})
     unusual = [
         {"symbol": r["symbol"], "volume_x": round(r["volume_ratio"], 1), "ret_pct": round(r["return_pct"] or 0, 2),
          "close": r["close"]}
-        for r in data.get("unusual_in", []) if (r.get("close") or 0) >= 100
+        for r in data.get("unusual_in", [])
+        if (r.get("close") or 0) >= 100 and (not universe or r["symbol"] in universe)  # tradable names only
     ][:8]
+    radar = [{"symbol": r["symbol"], "company": r.get("company"), "industry": r.get("industry"),
+              "close": r.get("close"), "ret_pct": r.get("return_pct"), "volume_x": r.get("volume_ratio"),
+              "why": r.get("reasons"), "news": (r.get("latest_news_title") or "")[:160] or None}
+             for r in data.get("radar", [])]
     adr_moves = {nse: round(bars[adr]["return_pct"], 2) for adr, nse in ADRS.items() if adr in bars}
 
     return {
@@ -152,6 +166,8 @@ def build_plan(data, failed=()):
         "bias": bias,
         "risk_per_trade_pct": risk_for_vix(vix),
         "unusual_volume_nse": unusual,
+        "news_radar": radar,
+        "tradable_universe": universe,
         "adr_moves_pct": adr_moves,
         "failed_queries": list(failed),
         "source": "stocks_lakehouse gold tables" if len(failed) < len(QUERIES) else "unavailable",

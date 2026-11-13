@@ -70,9 +70,16 @@ def build(today: date):
     against_outcome = 0.0
     reviewer_no = []
     shadow = defaultdict(list)
+    by_source = defaultdict(lambda: {"proposals": 0, "outcomes": 0, "wins": 0, "pnl": 0.0})
     for pid, r in proposals.items():
         note = r.get("note") or ""
         outcome = taken.get(pid, passed.get(pid))
+        src = by_source["news" if "source news" in note else "watchlist"]
+        src["proposals"] += 1
+        if outcome is not None:
+            src["outcomes"] += 1
+            src["wins"] += outcome > 0
+            src["pnl"] += outcome
         you = "YES" if pid in taken else ("NO" if pid in passed else None)
         m = SUGGESTED.search(note)
         if m and you and m.group(1) != "UNSURE":
@@ -122,6 +129,7 @@ def build(today: date):
         "agree": agree, "against": against, "against_result": round(against_outcome, 2),
         "reviewer_no": len(reviewer_no), "reviewer_no_pnl": round(sum(reviewer_no), 2),
         "shadow": {k: {"trades": len(v), "pnl": round(sum(v), 2)} for k, v in shadow.items()},
+        "by_source": {k: {**v, "pnl": round(v["pnl"], 2)} for k, v in by_source.items()},
         "cooloffs": sum(1 for r in rows if r["event"] == "cooloff"),
         "loss_limit_days": len({r["timestamp_ist"][:10] for r in rows if r["event"] == "loss_limit_hit"}),
     }
@@ -169,25 +177,10 @@ def message(w, intraday_state):
         lines.append(f"- The reviewer said NO {_times(w['reviewer_no'])}; those proposals made "
                      f"{_inr(w['reviewer_no_pnl'], sign=True)}"
                      + (" (the reviewer was right)." if w["reviewer_no_pnl"] < 0 else "."))
-    if w["shadow"]:
-        lines += ["", "Rules being tested in the background (not used yet):"]
-        for rule, s in sorted(w["shadow"].items()):
-            effect = (f"would have avoided {s['trades']} trades worth {_inr(s['pnl'], sign=True)}"
-                      + (": it would have helped." if s["pnl"] < 0 else ": it would have cost money."))
-            lines.append(f"- {SHADOW_WORDS.get(rule, rule)}: {effect}")
-    ex = w.get("exit_rules") or {}
-    if ex.get("trades"):
-        base = ex["totals"]["current"]
-        lines += ["", f"Exit rules on trial ({ex['trades']} trades; current rules {_inr(base, sign=True)}):"]
-        for k in exits.RULES[1:]:
-            diff = ex["totals"][k] - base
-            lines.append(f"- {exits.RULE_WORDS[k]}: {_inr(diff, sign=True)}"
-                         + (" better" if diff > 0 else " worse" if diff < 0 else ""))
-        lines.append("  Decided at the review after 15+ trades; one week is mostly noise.")
-    lock = w.get("profit_lock") or {}
-    if lock.get("days"):
-        lines.append(f"Profit lock on trial: armed on {lock['days']} day(s); it would have changed the result by "
-                     f"{_inr(lock['change'], sign=True)}.")
+    import swing_shadow
+
+    paper = paper_lines(w) + [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
+    lines += ["", "Tested on paper (not used for real trades yet; /shadow any time):", *paper]
     if w["cooloffs"] or w["loss_limit_days"] or w.get("weekly_brake"):
         lines.append(f"Brakes used: {w['cooloffs']} cool-off(s), loss limit on {w['loss_limit_days']} day(s)"
                      + (", weekly brake (half-size trades)." if w.get("weekly_brake") else "."))
@@ -202,6 +195,39 @@ def message(w, intraday_state):
         total, start = total + eq, start + cap
     lines.append(f"- Total {_inr(total)} of {_inr(start)} ({_inr(total - start, sign=True)})")
     return "\n".join(lines)
+
+
+def paper_lines(w) -> list:
+    """Everything tested on paper this week, one line each (weekly report and /shadow)."""
+    lines = []
+    for rule, s in sorted(w["shadow"].items()):
+        effect = (f"would have avoided {s['trades']} trades worth {_inr(s['pnl'], sign=True)}"
+                  + (": it would have helped." if s["pnl"] < 0 else ": it would have cost money."))
+        lines.append(f"- Background rule, {SHADOW_WORDS.get(rule, rule)}: {effect}")
+    ex = w.get("exit_rules") or {}
+    if ex.get("trades"):
+        base = ex["totals"]["current"]
+        parts = []
+        for k in exits.RULES[1:]:
+            diff = ex["totals"][k] - base
+            parts.append(f"{exits.RULE_WORDS[k]} {_inr(diff, sign=True)}")
+        lines.append(f"- Exit rules on trial ({ex['trades']} trades; current rules {_inr(base, sign=True)}): "
+                     + ", ".join(parts) + ". Decided after 15+ trades; one week is mostly noise.")
+    lock = w.get("profit_lock") or {}
+    if lock.get("days"):
+        lines.append(f"- Profit lock: armed on {lock['days']} day(s); it would have changed the result by "
+                     f"{_inr(lock['change'], sign=True)}.")
+    if w.get("passed"):
+        lines.append(f"- Skipped proposals ({w['passed']}) would have made {_inr(w['passed_pnl'], sign=True)}"
+                     + (": skipping saved money." if w["passed_pnl"] < 0 else "."))
+    src = w.get("by_source") or {}
+    if src.get("news"):
+        def part(k):
+            s = src.get(k) or {"proposals": 0, "outcomes": 0, "wins": 0, "pnl": 0.0}
+            won = f", won {s['wins']} of {s['outcomes']}" if s["outcomes"] else ""
+            return f"{k} picks {s['proposals']}{won}, {_inr(s['pnl'], sign=True)}"
+        lines.append(f"- News vs watchlist (taken or would-have): {part('news')}; {part('watchlist')}.")
+    return lines
 
 
 def run(intraday_state, send=True, today=None):

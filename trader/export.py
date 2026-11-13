@@ -143,6 +143,22 @@ def build_portfolio(day):
                          "sector": "Index fund" if sym in pools.INDEX_FUNDS else sectors.sector(sym),
                          "qty": float(h["qty"]), "avg_cost": round(h["avg_cost"], 4), "last_price": last,
                          "value": value, "pnl": round(value - cost, 2), "opened": h.get("opened")})
+    # Shadow pools (rules tested on paper): their own record types, so they never mix into the portfolio totals
+    for name in pools.SHADOW_POOLS:
+        p = pools.load(name)
+        if not (p.get("meta") or {}).get("start_date") and not p["holdings"]:
+            continue
+        p = pools.refresh_prices(p)
+        pools.save(p)
+        hv = pools.holdings_value(p)
+        rows.append({"record_type": "shadow_pool", "snapshot_date": day, "pool": name, "capital": float(p["capital"]),
+                     "cash": round(p["cash"], 2), "holdings_value": hv, "equity": round(p["cash"] + hv, 2)})
+        for sym, h in p["holdings"].items():
+            last = float(h.get("last_price") or h["avg_cost"])
+            rows.append({"record_type": "shadow_holding", "snapshot_date": day, "pool": name, "symbol": sym,
+                         "sector": sectors.sector(sym), "qty": float(h["qty"]), "avg_cost": round(h["avg_cost"], 4),
+                         "last_price": last, "value": round(h["qty"] * last, 2),
+                         "pnl": round(h["qty"] * (last - h["avg_cost"]), 2), "opened": h.get("opened")})
     return "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows)
 
 

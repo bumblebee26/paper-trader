@@ -40,6 +40,19 @@ VIX, USD/INR, ADR moves and NSE unusual-volume names.
   stock in the same direction; be wary of the opposite direction before 10:30.
 - Mention the relevant plan fact as one of the reasons when it supports the trade.
 
+## News radar (beyond the 36-stock watchlist)
+- `premarket_context.news_radar` lists up to 12 Nifty 200 stocks that pass the guardrails (main board, Rs 50+,
+  Rs 50 crore+ traded a day) and had a fresh NSE filing, a 3%+ move or 2x volume. Put up to 5 of them in the
+  focus list with `start_day` (15 names in total), the ones with a filing first. `tradable_universe` is every
+  name the code will let you trade; anything else is blocked, and so are penny stocks and frozen prices.
+- During the session `run_cycle` returns `news_alerts`: new filings on tradable stocks since the last cycle.
+  Their stocks are scanned automatically. Call `company_news` and read the filing before proposing.
+- **News tells you which stock may move, not which way.** Trade only a setup that fired after the filing, in the
+  direction the price is actually going, with the same checks as any other trade. Don't chase a stock that has
+  already run: a big gap often fades (GODREJIND +11.9% on 11 Nov faded the next morning).
+- Proposals on these stocks are labelled "news" in the journal and the track record (`source`), so news picks
+  are judged separately from the watchlist. Use their judged record like any other.
+
 ## Choosing which candidates to propose
 `run_cycle` returns candidates (ORB, VWAP reclaim/rejection, PDH/PDL break). Propose one
 only if all of these hold:

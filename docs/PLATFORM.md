@@ -46,7 +46,7 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 |---|---|---|---|
 | 04:30 | Tue–Sat | Lakehouse | Massive: previous US session, all US stocks (07:30 retry catches up any missed day) |
 | 06:00 | Tue–Sat | Lakehouse | FRED: indices, FX, VIX, oil, rates (21-day window) |
-| every 30 min, 08:00–19:30 | Mon–Fri | Lakehouse | NSE company news to the news volume (`latest.jsonl`, read by the trader) |
+| every minute 09:00–15:59; every 30 min 08:00–19:30 otherwise | Mon–Fri | Lakehouse | NSE company news to the news volume (`latest.jsonl`, read by the trader within about a minute) |
 | 08:45 | Mon–Fri | Lakehouse | Pre-market brief to Telegram |
 | 09:08 | Mon–Fri | Trader | Kicker Lambda starts the morning session; plan + focus list to Telegram |
 | 09:16 | Mon–Fri | Trader | GitHub cron backup start (skips if already running) |
@@ -55,6 +55,7 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 15:10 | Mon–Fri | Trader | Square-off, then day report to Telegram |
 | 15:12 / 15:40 | Mon–Fri | Trader | Guardian backstops: square-off and report if the session didn't |
 | 15:14 | Mon–Fri | Trader | Guardian puts the swing pool's idle cash into NIFTYBEES |
+| 15:50 | Mon–Fri | Trader | Swing shadow test: news breakouts from `gold.swing_signals` bought and sold on paper, vs NIFTYBEES |
 | 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` and portfolio snapshot to `landing/portfolio/`; pipeline builds the trading and portfolio tables |
 | 17:55 | Fri | Trader | Weekly report to Telegram |
 | 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy for the day; pipeline refresh, then the dashboard's plain-words summaries |
@@ -130,9 +131,9 @@ Where each phase of the system plan stands. The full plan (pools, rules, backtes
 
 | Phase | Status | Live parts | Next |
 |---|---|---|---|
-| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, auto mode (places a trade only if the suggestion is over 55%, raised for losing groups and flips, the trading agent over 50% and the reviewer answered; 6 trades a day; off at the weekly brake) with 👍/👎 ratings by button or reaction for 7 days and a lakehouse track record read every session, 36 stocks in 11 sectors, sector and position caps | Track-record review 23 Nov |
+| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, auto mode (places a trade only if the suggestion is over 55%, raised for losing groups and flips, the trading agent over 50% and the reviewer answered; 6 trades a day; off at the weekly brake) with 👍/👎 ratings by button or reaction for 7 days and a lakehouse track record read every session, 36 stocks in 11 sectors plus a news radar over the Nifty 200 (liquidity guardrails, news-labelled track record), sector and position caps | Track-record review 23 Nov |
 | 2 Foundations | Live | Company news on proposals, market mood, shadow rule variants, `/news` `/portfolio` `/stop`, data alerts, pool ledgers, circuit breaker, weekly report | One-tap reasons, idle-cash interest (later) |
-| 3 Swing pool | On hold | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14) | Retry with results-based setups once news history exists |
+| 3 Swing pool | Shadow test | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14); news-breakout rules on paper from 16 Nov (`/shadow`) | Shadow review vs NIFTYBEES, mid-Dec |
 | 4 Long-term pool | Shadow mode | Weekly figures for the Nifty 200, quality tests, 10 picks a week, backtest, Saturday shadow report | Go/no-go 18 Dec, live buying from 21 Dec |
 | 5 Track record | Collecting data | Suggestion %, agent and reviewer scores and shadow-rule blocks recorded on every proposal | Review 23 Nov |
 

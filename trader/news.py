@@ -1,8 +1,8 @@
-"""Company news from the lakehouse (NSE RSS, fetched every 30 min by stocks-fetch-news).
+"""Company news from the lakehouse (NSE RSS, fetched every minute in market hours by stocks-fetch-news).
 
 Reads <news volume>/date=YYYY-MM-DD/latest.jsonl through the Databricks Files API: no SQL
 warehouse, no pipeline run. Today's and the previous day's files are merged and cached for
-10 minutes. Any failure returns None ("news unavailable"), never an exception.
+1 minute. Any failure returns None ("news unavailable"), never an exception.
 """
 import json
 import re
@@ -14,7 +14,7 @@ import config
 import market
 from http_client import log, request
 
-CACHE_SEC = 600
+CACHE_SEC = 60   # the lakehouse fetches NSE news every minute during market hours
 _cache = {"at": 0.0, "items": None, "age_min": None, "loaded": False}
 FAIL_CACHE_SEC = 120  # after a failure, try again in 2 minutes, not on every call
 DATE_IN_TEXT = re.compile(r"(\d{1,2}-[A-Za-z]{3}-\d{4})")

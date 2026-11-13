@@ -38,11 +38,14 @@ _run = engine.run_tool
 def premarket_context() -> dict:
     """Today's pre-market context from the stocks_lakehouse gold tables (US move, India's usual
     opening gap after such US days, VIX and risk level, unusual-volume NSE names, ADR moves).
+    news_radar: up to 12 Nifty 200 stocks with a fresh NSE filing, a 3%+ move or 2x volume that pass the
+    guardrails; tradable_universe: every Nifty 200 name you may trade beyond default_watchlist.
     Also: track_record (how past proposals turned out by setup, hour, mood, suggestion band, reviewer
     verdict, mode and the user's 👍/👎; rows with judged=false have too few outcomes to act on) and
     auto_mode. Call once at the start of the day, then call start_day."""
     data, failed = brief.fetch()
     plan = brief.build_plan(data, failed)
+    engine.save_universe(plan)
     plan["default_watchlist"] = DEFAULT_WATCHLIST
     plan["track_record"] = track.for_claude()
     plan["auto_mode"] = engine.auto_on(engine.load())
@@ -121,11 +124,14 @@ def scan_setups(symbols: list[str]) -> dict:
 def run_cycle() -> dict:
     """One 5-minute cycle in a single call: monitor positions (stops, targets, EXIT messages,
     square-off), then scan today's focus list if entries are allowed. Returns events, a short
-    account line and any candidates. Use this instead of separate monitor/scan calls."""
+    account line and any candidates. Use this instead of separate monitor/scan calls.
+    news_alerts: fresh NSE filings on tradable stocks since the last cycle; those stocks are added to the
+    scan (up to 5 extra). Read the filing before proposing: news says which stock may move, not which way."""
     state = engine.load()
     try:
         mon = engine.monitor(state)
-        focus = state.get("focus") or DEFAULT_WATCHLIST
+        alerts = engine.news_alerts(state) if mon["account"]["entry_window_open"] else []
+        focus = list(dict.fromkeys((state.get("focus") or DEFAULT_WATCHLIST) + (state.get("focus_news") or [])))
         nifty = scanner.nifty_context() if mon["account"]["entry_window_open"] else None
         if nifty is not None:
             engine.data_health(state, nifty)
@@ -141,6 +147,8 @@ def run_cycle() -> dict:
         "open_positions": list(acct["open_positions"].keys()),
         "entry_window_open": acct["entry_window_open"],
     }
+    if alerts:
+        out["news_alerts"] = alerts   # their stocks are in this cycle's scan; trades on them count as 'news'
     if acct["entry_window_open"]:
         out["nifty"] = nifty
         out["market_mood"] = advisor.market_mood(nifty.get("change_from_open_pct"),

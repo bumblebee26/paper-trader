@@ -132,6 +132,9 @@ def _new_day(state: dict) -> None:
     state["day_risk_pct"] = config.RISK_PER_TRADE_PCT
     state["plan"] = None
     state["focus"] = []
+    state["focus_news"] = []
+    state["news_symbols"] = []
+    state["news_seen"] = []
     if state["positions"]:
         state["carried_over_warning"] = list(state["positions"].keys())
 
@@ -248,15 +251,37 @@ Commands (with or without the /):
 /exit SYMBOL  close that position now, e.g. /exit HDFCBANK
 /news SYMBOL  the company's latest NSE filings with links, e.g. /news RELIANCE
 /portfolio  all dummy pools: intraday, swing and long-term (Rs 2 lakh in total)
+/shadow  everything tested on paper: exit rules, background rules, skipped trades, news vs watchlist picks, the swing and long-term shadow pools
 /stop  kill switch: no new proposals at all until /resume (open positions still managed)
 /pause  no new proposals for the day; open positions are still managed. After 14:30, at weekends or on holidays it applies to the next trading day
 /resume  allow new proposals again (undoes /pause and /stop)
-/auto on | /auto off  auto mode: trades with a suggestion of at least 55% YES are placed without asking you (you rate them with 👍/👎); off = every trade needs your YES
+/auto on | /auto off  auto mode: trades with a suggestion over 55% YES (higher for losing groups) are placed without asking you (you rate them with 👍/👎); off = every trade needs your YES
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
 On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30 (auto mode: placed if 55%+ YES; otherwise each needs your YES within 3 min); stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
 During sessions (09:08-15:25 IST) I reply within seconds; at other times within about 2 minutes. Dummy money only."""
+
+
+def shadow_text(state) -> str:
+    """/shadow: every rule being tested on paper, in one message."""
+    import swing_shadow
+    import weekly
+
+    w = weekly.build(market.now_ist().date())
+    lines = ["[MOCK] Tested on paper (nothing here touched real trades), this week so far:", ""]
+    lines += weekly.paper_lines(w) or ["- Nothing to compare yet this week."]
+    lines += ["", "Shadow pools (since they started):"]
+    lines += [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
+    lt = storage.get_json("shadow/longterm/latest.json") or {}
+    if lt:
+        lines.append(f"- Long-term (weekly quality picks), week {lt.get('week')}: {inr(lt['equity'] - config.LONG_TERM_CAPITAL, sign=True)} "
+                     f"({lt['return_pct']:+.2f}%)"
+                     + (f" vs NIFTYBEES {lt['nifty_return_pct']:+.2f}%" if lt.get("nifty_return_pct") is not None else "")
+                     + "; review on 18 Dec.")
+    lines += ["", "In Databricks: gold.shadow_pools_daily (pools vs NIFTYBEES), gold.track_record "
+              "(dimension 'source': news vs watchlist; 'decision': skipped trades), gold.swing_signals."]
+    return "\n".join(lines)
 
 
 def _plan_text(state) -> str:
@@ -332,7 +357,7 @@ def data_health(state, nifty) -> None:
     state["data_stale"] = stale
     if live and state.get("news_alert_day") != _today():
         age = news.feed_age_min()
-        if age is None or age > 90:
+        if age is None or age > 20:   # fetched every minute in market hours
             state["news_alert_day"] = _today()
             tg.send("[MOCK] Data alert: the company-news feed is "
                     + ("unreachable" if age is None else f"{age} minutes old")
@@ -449,6 +474,8 @@ def answer_requests(state) -> int:
             tg.send(f"[MOCK] Auto mode is {'ON' if auto_on(state) else 'OFF'}. Send /auto on or /auto off.")
         elif ask == "portfolio":
             tg.send(portfolio_text(state))
+        elif ask == "shadow":
+            tg.send(shadow_text(state))
         elif ask.startswith("news:"):
             tg.send(news_text(ask.split(":", 1)[1]))
         elif ask == "nothing_pending":
@@ -598,6 +625,67 @@ def check_loss_limit(state) -> None:
         journal("loss_limit_cleared", pnl_rs=round(state["realized_today"], 2))
 
 
+# ------------------------------------------------------------ news radar --
+UNIVERSE_KEY = "state/universe.json"
+_universe = {"date": None, "symbols": frozenset()}
+
+
+def save_universe(plan) -> None:
+    """Keep today's tradable Nifty 200 names and the pre-market news radar (from premarket_context)."""
+    symbols = sorted(plan.get("tradable_universe") or [])
+    storage.put_json(UNIVERSE_KEY, {"date": _today(), "symbols": symbols,
+                                    "radar": [r["symbol"] for r in plan.get("news_radar") or []]})
+    _universe.update(date=_today(), symbols=frozenset(symbols))
+
+
+def universe() -> frozenset:
+    """Today's tradable names beyond the watchlist (the last saved list if today's isn't there yet)."""
+    if _universe["date"] != _today():
+        u = storage.get_json(UNIVERSE_KEY) or {}
+        _universe.update(date=_today(), symbols=frozenset(u.get("symbols") or []))
+    return _universe["symbols"]
+
+
+def tradable(symbol) -> bool:
+    return symbol.upper() in sectors.WATCHLIST or symbol.upper() in universe()
+
+
+def price_frozen(symbol) -> bool:
+    """True when the last 10 one-minute candles have no range at all (likely locked at a price limit)."""
+    try:
+        bars = market.candles(symbol, "1m", 1)[-10:]
+    except Exception:  # noqa: BLE001 - can't tell: don't block on it
+        return False
+    return len(bars) >= 10 and all(b["high"] == b["low"] for b in bars) and len({b["close"] for b in bars}) == 1
+
+
+def is_news_pick(state, symbol) -> bool:
+    return symbol in (state.get("news_symbols") or []) or symbol not in sectors.WATCHLIST
+
+
+def news_alerts(state, limit=8) -> list:
+    """New NSE filings (results, orders, mergers, ratings...) on tradable stocks since the last check. Each one's
+    stock joins the scan (up to NEWS_FOCUS_MAX extra names, newest first) and its trades are labelled 'news'."""
+    items = news.items() or []
+    seen = set(state.get("news_seen") or [])
+    today = _today()
+    fresh = [i for i in items
+             if i.get("id") not in seen and (i.get("symbol") or "") and tradable(i["symbol"])
+             and i.get("category") in config.NEWS_RADAR_CATEGORIES
+             and (i.get("published_ist") or i.get("fetched_at_ist") or "").startswith(today)]
+    state["news_seen"] = list(seen | {i.get("id") for i in items})[-2000:]
+    out = []
+    for i in fresh[:limit]:
+        sym = i["symbol"].upper()
+        if sym not in state.setdefault("news_symbols", []):
+            state["news_symbols"].append(sym)
+        extra = [s for s in state.setdefault("focus_news", []) if s != sym]
+        if sym not in (state.get("focus") or []):
+            state["focus_news"] = ([sym] + extra)[:config.NEWS_FOCUS_MAX]
+        out.append({"symbol": sym, "category": i.get("category"), "when": news.when(i), "text": news.describe(i)})
+    return out
+
+
 def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, target: float):
     """Return (ok, reason, qty, risk_rs, rr)."""
     side = side.upper()
@@ -609,6 +697,14 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     if (side == "BUY" and not (stop < entry < target)) or (side == "SELL" and not (target < entry < stop)):
         return False, "for BUY need stop < entry < target; for SELL need target < entry < stop", 0, 0, 0
     rr = round(abs(target - entry) / per_share, 2)
+    if not tradable(symbol):
+        return False, (f"{symbol} isn't on the tradable list: the 36-stock watchlist, or a Nifty 200 stock that "
+                       "passes the guardrails (main board, Rs 50+, Rs 50 crore+ traded a day)"), 0, 0, rr
+    if entry < config.MIN_STOCK_PRICE:
+        return False, f"price under Rs {config.MIN_STOCK_PRICE:g}: no penny stocks", 0, 0, rr
+    if symbol not in sectors.WATCHLIST and price_frozen(symbol):
+        return False, (f"{symbol}'s price hasn't moved for 10 minutes: it may be stuck at its daily price limit, "
+                       "where you can't get out"), 0, 0, rr
     if state.get("stopped"):
         return False, "stopped by you with /stop (send /resume to restart)", 0, 0, rr
     if pools.breaker_on():
@@ -732,7 +828,7 @@ def _short(text, limit=110) -> str:
 
 def compact_proposal(*, auto, place, symbol, side, setup, entry, stop, target, qty, risk_rs, rr, risk_pct, need,
                      free, advice, yes, ai_yes_pct, ai_reason, review, reasons, summary, invalid_if, skip_why, bar,
-                     bar_why, track_line, valid_until) -> str:
+                     bar_why, track_line, valid_until, news_pick=False) -> str:
     """The Telegram proposal: every number, reasons in one line each. The long version is behind Full reasons."""
     buy = side == "BUY"
     status = "your call" if not auto else "PLACING" if place else "SKIPPED"
@@ -750,7 +846,7 @@ def compact_proposal(*, auto, place, symbol, side, setup, entry, stop, target, q
     pros = [r for r in reasons if r != against and not str(r).lower().startswith("risk")]
     lines = [
         f"[MOCK] {'🔺' if buy else '🔻'} {'AUTO · ' if auto else ''}{action_word(side)} {symbol} "
-        f"(bet on a {'rise' if buy else 'fall'}) · {setup}: {status}",
+        f"(bet on a {'rise' if buy else 'fall'}) · {setup}{' · 📰 news pick' if news_pick else ''}: {status}",
         f"{advice['verdict']} {yes}% · checks {advice['checks_pct']} · {agent} · {rev}",
         decide,
         "",
@@ -846,7 +942,8 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         qty=qty, risk_rs=risk_rs, rr=rr, risk_pct=risk_pct, need=need, free=state["balance"] - margin_used(state),
         advice=advice, yes=yes, ai_yes_pct=ai_yes_pct, ai_reason=ai_reason, review=review, reasons=reasons,
         summary=summary, invalid_if=invalid_if, skip_why=skip_why, bar=bar, bar_why=bar_why,
-        track_line=track.compact(setup, yes, mood, hour), valid_until=valid_until)
+        track_line=track.compact(setup, yes, mood, hour), valid_until=valid_until,
+        news_pick=is_news_pick(state, symbol))
     if not auto:
         first = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
     else:
@@ -874,7 +971,8 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
                   f" | agent {ai_yes_pct if ai_yes_pct is not None else '-'}%"
                   f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '- (' + reviewer.unavailable_reason()[:80].replace('|', '/') + ')'}"
                   f" | mood {mood or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"
-                  f" | mode {'auto' if auto else 'human'}"))
+                  f" | mode {'auto' if auto else 'human'}"
+                  f" | source {'news' if is_news_pick(state, symbol) else 'watchlist'}"))
     base = {"proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
             "suggestion": f"{advice['verdict']} {yes}%"}
     p = state["proposals"][pid]
@@ -1283,6 +1381,8 @@ def start_day(state, plan, focus):
     state["day_risk_pct"] = risk
     state["plan"] = plan
     state["focus"] = [f.upper() for f in focus]
+    radar = {r["symbol"] for r in plan.get("news_radar") or [] if r.get("symbol")}
+    state["news_symbols"] = sorted({s for s in state["focus"] if s in radar or s not in sectors.WATCHLIST})
     storage.put_json(f"plans/{_today()}.json", {"plan": plan, "focus": state["focus"]})
     journal("day_plan", note=f"risk {risk}% | bias {plan.get('bias')} | focus {','.join(state['focus'])}")
     return {"risk_per_trade_pct": risk, "focus": state["focus"], "bias": plan.get("bias")}

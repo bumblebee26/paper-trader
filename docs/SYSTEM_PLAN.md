@@ -18,7 +18,7 @@ driven by live market data, company news and company financials, with you approv
 |---|---|---|
 | 1 Intraday upgrades | Built, live from 10 Nov | Track-record review, 23 Nov |
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
-| 3 Swing pool | On hold: rules failed two backtests; Rs 60,000 held in NIFTYBEES | Retry later with new ideas |
+| 3 Swing pool | Rs 60,000 held in NIFTYBEES; news-breakout rules in shadow mode from 16 Nov | Shadow review vs NIFTYBEES, mid-Dec |
 | 4 Long-term pool | Selection, backtest and shadow mode built | Go/no-go 18 Dec, buying from 21 Dec |
 | 5 Track record and auto mode | Live from 12 Nov: auto mode, 👍/👎 feedback, track record fed back every session | Review 23 Nov |
 
@@ -68,7 +68,7 @@ more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follow
 
 | Part | What it does |
 |---|---|
-| Company news | NSE announcements, results, board meetings and corporate actions every 30 min into the lakehouse; every proposal lists the company's filings with links and flags regulatory, rating, pledge filings and board meetings within 2 days |
+| Company news | NSE announcements, results, board meetings and corporate actions into the lakehouse every minute in market hours (every 30 min otherwise); every proposal lists the company's filings with links and flags regulatory, rating, pledge filings and board meetings within 2 days |
 | Market mood | Each proposal says trending up, trending down, jumpy or choppy (Nifty since the open and VIX) |
 | Shadow rule variants | Each proposal records which alternative rules would have blocked it (Nifty against the trade by 0.3%, against the mood, after 14:00), for the 23 Nov review |
 | Commands | `/news SYMBOL`, `/portfolio`, `/stop` (kill switch) plus `/ledger`, `/plan`, `/pause`, `/resume`, `/exit`, `/help`, answered any time |
@@ -95,8 +95,21 @@ The rules, kept for a retry (`backtest/swing.py`):
   at 2.5x risk, trailing exit under the 20-day average once 1x risk in profit, 20-day time stop.
 - **Limits:** 1% risk per trade, at most 5 holdings, 25% each, 2 per sector.
 
-A retry would add results-based setups once a few months of news history exist, judged the same way: tune on
-one stretch, test once on unseen months, and beat holding the index.
+**Retry in shadow mode (from 16 Nov):** results- and news-driven breakouts, traded on paper in a separate
+`swing_shadow` pool (never in the portfolio totals) while the real Rs 60,000 stays in NIFTYBEES:
+
+- **Signal** (`stocks.gold.swing_signals`): an eligible Nifty 200 stock (main-board EQ series, Rs 50+, Rs 50
+  crore+ traded a day) that, within 2 days of an NSE filing (results, an order, a merger...), closes above its
+  20-day high on 2x its usual volume, up 2%+ and above its 50-day average.
+- **Trade:** buy at the next open; stop at the 5-day low (at most 8% below); target 2x the risk; otherwise sell
+  after 10 trading days. 1% risk per trade, at most 20% of the pool in one stock, 5 holdings.
+- **Runs** in the guardian Lambda at 15:50 on trading days (no Claude). Results: `/shadow`, the weekly report and
+  `stocks.gold.shadow_pools_daily`. It moves the real Rs 60,000 only if it beats NIFTYBEES at a review after
+  enough trades (about mid-December), with your OK.
+
+Why not single favourites or penny stocks: a stock like MRF costs over Rs 1 lakh a share (more than the whole
+pool), a hunch can't be tested, and penny stocks can't be simulated honestly (trade-to-trade segment, price
+limits that lock you in, wide spreads), so dummy profits there would be fiction.
 
 ## Phase 4: long-term pool (shadow mode)
 
@@ -162,6 +175,15 @@ Approximations; check with a chartered accountant before real money.
   against outcomes too, so their weight is earned.
 - At the 23 Nov review: calibration (do 60-69% suggestions win 60-69% of the time?), auto vs human,
   your 👍/👎 accuracy, and the exit rules on trial.
+
+**News radar (from 16 Nov):** the intraday trader may go beyond its 36-stock watchlist to any Nifty 200 stock
+that passes the guardrails (`stocks.gold.intraday_universe`: main-board EQ series, Rs 50+, Rs 50 crore+ traded a
+day). Each morning up to 12 flagged names (fresh NSE filing, 3%+ move or 2x volume) are offered for the focus
+list; during the session NSE filings arrive within about a minute (fetched every minute 09:00-15:59) and a
+filing on a tradable stock adds it to the scan (up to 5 extra). Penny stocks (under Rs 50) and frozen prices
+(stuck at a price limit) are blocked. Every proposal is labelled news or watchlist (`source` in the track
+record), so news picks are judged on their own results. News says which stock may move, not which way: a
+setup must still fire after the filing.
 
 ## Agents and the decision flow
 
@@ -245,7 +267,8 @@ Cost review: Sun 15 Nov.
 | 13 Nov | First weekly report |
 | 14 Nov | First long-term shadow week |
 | 15 Nov | Cost review: is Claude usage sustainable? |
-| 23 Nov | Track-record review (phase 5) |
+| 16 Nov | News radar (Nifty 200 beyond the watchlist) and the swing shadow pool start |
+| 23 Nov | Track-record review (phase 5), including news vs watchlist picks |
 | 18 Dec | Long-term go/no-go (backtest + 5 shadow weeks) |
 | 21 Dec | Long-term buying starts, if approved |
 

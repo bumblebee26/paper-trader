@@ -28,12 +28,13 @@ resource "aws_lambda_function" "guardian" {
 
   environment {
     variables = {
-      STATE_BUCKET           = module.state.id
-      TELEGRAM_TOKEN_PARAM   = local.lakehouse_params.telegram_token
-      TELEGRAM_CHAT_ID_PARAM = local.lakehouse_params.telegram_chat_id
-      DATABRICKS_URL_PARAM   = local.lakehouse_params.databricks_url
-      DATABRICKS_TOKEN_PARAM = local.lakehouse_params.databricks_token
-      LANDING_VOLUME_PATH    = var.lakehouse_landing_volume
+      STATE_BUCKET               = module.state.id
+      TELEGRAM_TOKEN_PARAM       = local.lakehouse_params.telegram_token
+      TELEGRAM_CHAT_ID_PARAM     = local.lakehouse_params.telegram_chat_id
+      DATABRICKS_URL_PARAM       = local.lakehouse_params.databricks_url
+      DATABRICKS_TOKEN_PARAM     = local.lakehouse_params.databricks_token
+      DATABRICKS_WAREHOUSE_PARAM = local.lakehouse_params.databricks_warehouse
+      LANDING_VOLUME_PATH        = var.lakehouse_landing_volume
     }
   }
 

@@ -66,8 +66,8 @@ gold tables refreshed (Databricks → Jobs & Pipelines). The day still runs with
 watchlist.
 
 ### Proposals say `News: unavailable` (or a "news feed is ... minutes old" alert)
-The trader reads `/Volumes/stocks/bronze/news/date=<today>/latest.jsonl`, written every 30 minutes
-(08:00–19:30 IST, Mon–Fri) by the lakehouse's `stocks-fetch-news` Lambda. Check that Lambda's log
+The trader reads `/Volumes/stocks/bronze/news/date=<today>/latest.jsonl`, written every minute
+09:00–15:59 IST (every 30 minutes otherwise, 08:00–19:30, Mon–Fri) by the lakehouse's `stocks-fetch-news` Lambda. Check that Lambda's log
 (`aws logs tail /aws/lambda/stocks-fetch-news --since 2h --region ap-southeast-2`): `All NSE news feeds failed`
 means NSE blocked the request; anything else is usually the Databricks pusher token. Trading continues
 without news.

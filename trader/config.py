@@ -91,6 +91,13 @@ MAX_POSITION_MARGIN_PCT = _f("MAX_POSITION_MARGIN_PCT", 30.0)  # one trade's mar
 MAX_OPEN_PER_SECTOR = _i("MAX_OPEN_PER_SECTOR", 1)
 MAX_TRADES_PER_SECTOR = _i("MAX_TRADES_PER_SECTOR", 2)    # per day
 FOCUS_MAX = _i("FOCUS_MAX", 15)
+# News radar: Nifty 200 stocks beyond the watchlist may be traded if they pass the lakehouse's guardrails
+# (stocks.gold.intraday_universe: EQ series, close >= Rs 50, Rs 50 crore+ a day). A fresh NSE filing on one of
+# them during the session adds it to the scan (up to NEWS_FOCUS_MAX extra names at a time).
+NEWS_FOCUS_MAX = _i("NEWS_FOCUS_MAX", 5)
+MIN_STOCK_PRICE = _f("MIN_STOCK_PRICE", 50.0)          # no penny stocks
+NEWS_RADAR_CATEGORIES = ("results", "order", "mna", "management", "rating", "regulatory", "pledge", "insider",
+                         "dividend_split_bonus", "board_meeting")
 MIN_RR = _f("MIN_RR", 1.5)
 INTRADAY_LEVERAGE = _f("INTRADAY_LEVERAGE", 5.0)
 SLIPPAGE_PCT = _f("SLIPPAGE_PCT", 0.05)

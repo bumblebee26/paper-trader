@@ -9,7 +9,8 @@ guardian Backstop that needs no Claude. Event {"action": "squareoff"} at 15:12 I
          15:40 IST sends the day report if the session didn't; {"action": "export"} at 15:45
          IST copies the day's journal to the lakehouse (add "date", or "start"/"end", to
          re-export past days); {"action": "park"} at 15:14 IST puts the swing pool's idle
-         cash into NIFTYBEES (does nothing once invested); {"action": "weekly"} on Fridays at 17:55 IST sends the weekly report.
+         cash into NIFTYBEES (does nothing once invested); {"action": "weekly"} on Fridays at 17:55 IST sends the weekly report;
+         {"action": "swing_shadow"} at 15:50 IST runs the swing pool's shadow test (news breakouts).
 """
 import json
 import os
@@ -79,6 +80,10 @@ def guardian(event, context):
                     "so as you decided, this Rs 60,000 now simply follows the Nifty 50 until a better swing idea "
                     "passes a test. /portfolio shows how it's doing.")
         return out
+    if action == "swing_shadow":
+        import swing_shadow
+
+        return swing_shadow.run(send=True)
     if action == "weekly":
         import weekly
 
