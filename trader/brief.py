@@ -40,7 +40,7 @@ QUERIES = {
         WHERE flagged
         ORDER BY news_count DESC, abs(return_pct) DESC LIMIT 12
     """,
-    "universe": "SELECT symbol FROM stocks.gold.intraday_universe WHERE eligible",
+    "universe": "SELECT symbol, company FROM stocks.gold.intraday_universe WHERE eligible",
     "unusual_in": """
         SELECT symbol, trade_date, close, return_pct, volume_ratio
         FROM stocks.gold.unusual_volume
@@ -168,6 +168,7 @@ def build_plan(data, failed=()):
         "unusual_volume_nse": unusual,
         "news_radar": radar,
         "tradable_universe": universe,
+        "tradable_names": {r["symbol"]: r.get("company") for r in data.get("universe", []) if r.get("company")},
         "adr_moves_pct": adr_moves,
         "failed_queries": list(failed),
         "source": "stocks_lakehouse gold tables" if len(failed) < len(QUERIES) else "unavailable",

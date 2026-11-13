@@ -1,10 +1,16 @@
 """Live-quote links for a stock, shown as buttons under each proposal.
 
-Groww's stock pages are named after the company, not the NSE symbol, so each address is listed here (checked
-by hand). On a phone with the Groww app, groww.in links normally open in the app. A stock not listed gets
-only the NSE quote button, which works for any symbol.
+Groww's stock pages are named after the company, not the NSE symbol: "Avanti Feeds Ltd." is
+groww.in/stocks/avanti-feeds-ltd. The 36 watchlist stocks are listed here (checked by hand); any other tradable
+stock's address is made from its company name in the lakehouse's tradable list (state/universe.json). On a phone
+with the Groww app, groww.in links normally open in the app. A stock with no known name gets only the NSE button.
 """
+import re
 from urllib.parse import quote
+
+import storage
+
+_names = {"loaded": False, "map": {}}
 
 GROWW = {
     "HDFCBANK": "hdfc-bank-ltd",
@@ -46,9 +52,30 @@ GROWW = {
 }
 
 
+def slug(company):
+    """'Dr. Reddy's Laboratories Ltd.' -> 'dr-reddys-laboratories-ltd'; 'Larsen & Toubro Ltd.' -> 'larsen-toubro-ltd'."""
+    s = (company or "").lower().replace("&", " ").replace("'", "").replace("’", "").replace(".", " ")
+    s = re.sub(r"\blimited\b", "ltd", s)
+    return re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+
+
+def _company(symbol):
+    if not _names["loaded"]:
+        try:
+            _names["map"] = (storage.get_json("state/universe.json") or {}).get("names") or {}
+        except Exception:  # noqa: BLE001 - a button is a convenience
+            _names["map"] = {}
+        _names["loaded"] = True
+    return _names["map"].get(symbol.upper())
+
+
+def reset_cache():
+    _names.update(loaded=False, map={})
+
+
 def groww(symbol):
-    slug = GROWW.get(symbol.upper())
-    return f"https://groww.in/stocks/{slug}" if slug else None
+    s = GROWW.get(symbol.upper()) or slug(_company(symbol))
+    return f"https://groww.in/stocks/{s}" if s else None
 
 
 def nse(symbol):

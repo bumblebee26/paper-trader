@@ -289,7 +289,14 @@ class LinksTest(unittest.TestCase):
         import links
         self.assertEqual(links.groww("TCS"), "https://groww.in/stocks/tata-consultancy-services-ltd")
         self.assertEqual(links.nse("M&M"), "https://www.nseindia.com/get-quotes/equity?symbol=M%26M")
-        row = links.buttons("GODREJIND", "abc")                  # not in the list: NSE only
+        self.assertEqual([links.slug(n) for n in ("Avanti Feeds Ltd.", "Dr. Reddy's Laboratories Ltd.",
+                                                  "Larsen & Toubro Ltd.", "Adani Ports and Special Economic Zone Ltd.",
+                                                  "State Bank of India", "Mahindra & Mahindra Limited")],
+                         ["avanti-feeds-ltd", "dr-reddys-laboratories-ltd", "larsen-toubro-ltd",
+                          "adani-ports-and-special-economic-zone-ltd", "state-bank-of-india", "mahindra-mahindra-ltd"])
+        for sym, slug in links.GROWW.items():                    # the checked addresses follow the same pattern
+            self.assertRegex(slug, r"^[a-z0-9-]+$", sym)
+        row = links.buttons("GODREJIND", "abc")                  # no company name known: NSE only
         self.assertEqual([b[0] for b in row], ["NSE quote", "ℹ️ Full reasons"])
         kb = tg._keyboard([[("👍", "fb:like:abc")], row])
         self.assertEqual(kb["inline_keyboard"][1][0], {"text": "NSE quote",

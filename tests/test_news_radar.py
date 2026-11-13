@@ -34,6 +34,9 @@ class GuardrailTest(unittest.TestCase):
             r = engine.propose(st, "GODREJIND", "SELL", "ORB short", 1083.2, 1090.25, 1069.1, ["a"], "x")
             self.assertEqual(r["status"], "pending")
             self.assertIn("📰 news pick", env.sent[-1])
+            engine.save_universe({**plan_with(), "tradable_names": {"GODREJIND": "Godrej Industries Ltd."}})
+            import links
+            self.assertEqual(links.groww("GODREJIND"), "https://groww.in/stocks/godrej-industries-ltd")
             note = [x for x in storage.read_rows("journal/2026-11-16.csv") if x["event"] == "proposed"][-1]["note"]
             self.assertIn("source news", note)
             r = engine.propose(st, "HDFCBANK", "BUY", "ORB long", 1600.0, 1584.0, 1632.0, ["a"], "x")

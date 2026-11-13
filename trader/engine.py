@@ -634,8 +634,10 @@ def save_universe(plan) -> None:
     """Keep today's tradable Nifty 200 names and the pre-market news radar (from premarket_context)."""
     symbols = sorted(plan.get("tradable_universe") or [])
     storage.put_json(UNIVERSE_KEY, {"date": _today(), "symbols": symbols,
+                                    "names": plan.get("tradable_names") or {},
                                     "radar": [r["symbol"] for r in plan.get("news_radar") or []]})
     _universe.update(date=_today(), symbols=frozenset(symbols))
+    links.reset_cache()
 
 
 def universe() -> frozenset:

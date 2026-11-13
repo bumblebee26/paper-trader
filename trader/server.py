@@ -46,6 +46,7 @@ def premarket_context() -> dict:
     data, failed = brief.fetch()
     plan = brief.build_plan(data, failed)
     engine.save_universe(plan)
+    plan.pop("tradable_names", None)   # kept for the Groww buttons; Claude doesn't need 200 company names
     plan["default_watchlist"] = DEFAULT_WATCHLIST
     plan["track_record"] = track.for_claude()
     plan["auto_mode"] = engine.auto_on(engine.load())

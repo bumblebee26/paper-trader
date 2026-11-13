@@ -82,6 +82,8 @@ class Env:
         track.reset_cache()
         import engine
         engine._universe.update(date=None, symbols=frozenset())
+        import links
+        links.reset_cache()
         self.nse_holidays = dict(NSE_2026)  # what the fake NSE holiday list returns; None = NSE unreachable
         self._patches.append(mock.patch.object(nse_calendar, "fetch", self._fake_nse))
         self.news_files = {}  # date -> list of items; empty = feed unavailable
