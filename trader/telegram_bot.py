@@ -60,11 +60,18 @@ def set_commands() -> None:
 
 
 def _keyboard(buttons):
-    return {"inline_keyboard": [[{"text": label, "callback_data": data} for label, data in buttons]]}
+    """buttons: one row [(label, data), ...] or several rows [[...], [...]]. Data starting with http opens a link."""
+    rows = buttons if buttons and isinstance(buttons[0], list) else [buttons]
+    return {"inline_keyboard": [[{"text": label, "url": data} if data.startswith("http")
+                                 else {"text": label, "callback_data": data} for label, data in row]
+                                for row in rows if row]}
 
 
-def send(text, buttons=None) -> int:
-    params = {"chat_id": config.telegram_chat_id(), "text": text}
+def send(text, buttons=None, reply_to=None) -> int:
+    params = {"chat_id": config.telegram_chat_id(), "text": text,
+              "link_preview_options": {"is_disabled": True}}
+    if reply_to:
+        params["reply_parameters"] = {"message_id": reply_to, "allow_sending_without_reply": True}
     if buttons:
         params["reply_markup"] = _keyboard(buttons)
     return _api("sendMessage", **params)["message_id"]
@@ -120,6 +127,9 @@ def poll(state, wait=0) -> None:
                 _, kind, pid = data.split(":", 2)
                 state.setdefault("feedback", {})[pid] = kind
                 answer = f"Saved: {'👍 good call' if kind == 'like' else '👎 bad call'}. Tap the other to change it."
+            elif data.startswith("info:"):                  # info:<id>: send the full reasons as a reply
+                state.setdefault("requests", []).append(data)
+                answer = "Sending the full reasons…"
             elif data.startswith("x:"):                     # x:<id>: EXIT button on an auto-placed trade
                 sym = state.get("proposals", {}).get(data[2:], {}).get("symbol")
                 if sym:

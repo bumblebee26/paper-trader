@@ -109,6 +109,9 @@ AUTO_MIN_YES_PCT = _f("AUTO_MIN_YES_PCT", 55.0)
 AUTO_MIN_AGENT_PCT = _f("AUTO_MIN_AGENT_PCT", 50.0)     # Claude's own score must also be for the trade
 AUTO_NEEDS_REVIEWER = os.environ.get("AUTO_NEEDS_REVIEWER", "on").lower() in ("1", "on", "true", "yes")
 AUTO_MAX_TRADES_PER_DAY = _i("AUTO_MAX_TRADES_PER_DAY", 6)
+# Both minimums above must be beaten, not just met (exactly 55% / 50% is a coin flip and is skipped).
+AUTO_LOSING_GROUP_BUMP = _f("AUTO_LOSING_GROUP_BUMP", 5.0)   # bar +5 if this setup/mood/hour is losing (8+ trades)
+AUTO_FLIP_MIN_YES_PCT = _f("AUTO_FLIP_MIN_YES_PCT", 60.0)    # bar for the opposite side of a stock proposed earlier today
 MIDDAY_SUMMARY_AT = os.environ.get("MIDDAY_SUMMARY_AT", "12:30")   # auto mode: a short summary at this time
 REVIEWER_TIMEOUT_SEC = _i("REVIEWER_TIMEOUT_SEC", 90)
 ENTRY_TOLERANCE_PCT = _f("ENTRY_TOLERANCE_PCT", 0.3)

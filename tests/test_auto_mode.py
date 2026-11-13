@@ -50,10 +50,19 @@ class AutoModeTest(unittest.TestCase):
         r = self.propose(env, st, yes=95)
         self.assertEqual(r["status"], "approved")
         msg = env.sent[-1]
-        for part in ("AUTO · BUY HDFCBANK", "placing it now", "Why proposed:", "- Banks are rising with the market.",
-                     "Why 72% YES", "- Trading agent 95%: Strong breakout in a rising sector.",
-                     "- Independent reviewer YES 60%: Banks and Nifty are both up."):
+        for part in ("AUTO · BUY HDFCBANK (bet on a rise) · ORB long: PLACING",
+                     "YES 72% · checks 60 · agent 95 · reviewer YES 60",
+                     "Auto: placing it (over 55%, agent over 50%, reviewer checked)",
+                     "🎯 1,632.00 (+Rs 1,984) · 🛑 1,584.00 (-Rs 992) · R:R 2.0",
+                     "For: broke the opening range on 2x volume", "Agent: Strong breakout in a rising sector.",
+                     "Reviewer: Banks and Nifty are both up."):
             self.assertIn(part, msg)
+        self.assertLessEqual(len(msg.splitlines()), 17)                 # compact: every number, short reasons
+        full = env.full()
+        for part in ("Why proposed:", "- Banks are rising with the market.", "Why 72% YES",
+                     "- Trading agent 95%: Strong breakout in a rising sector.",
+                     "- Independent reviewer YES 60%: Banks and Nifty are both up."):
+            self.assertIn(part, full)
         self.assertEqual(engine.execute(st, r["proposal_id"])["status"], "filled")
         self.assertIn("mode auto", journal_rows("proposed")[0]["note"])
 
@@ -77,7 +86,7 @@ class AutoModeTest(unittest.TestCase):
         with mock.patch.object(config, "AUTO_MIN_YES_PCT", 40.0):   # the average alone would have traded it
             r = self.propose(env, st, yes=38, review=None)
         self.assertEqual(r["status"], "skipped_auto")
-        self.assertIn("the trading agent itself is against it (38% < 50%)", env.sent[-1])
+        self.assertIn("the trading agent itself isn't for it (38%, needs over 50%)", env.sent[-1])
         r = self.propose(env, st, symbol="TCS", yes=80, price=3000.0, review=None)
         self.assertEqual(r["status"], "skipped_auto")
         self.assertIn("the independent reviewer didn't answer", r["reason"])
@@ -90,8 +99,8 @@ class AutoModeTest(unittest.TestCase):
         r = self.propose(env, st, yes=95)
         engine.execute(st, r["proposal_id"])
         self.assertIn("-> Placed @", env.edits[-1])
-        labels = [b[0] for b in env.edit_buttons[-1]]
-        self.assertEqual(labels, ["👍 good call", "👎 bad call", "EXIT"])
+        rows = [[b[0] for b in row] for row in env.edit_buttons[-1]]
+        self.assertEqual(rows, [["👍 good call", "👎 bad call", "EXIT"], ["📈 Groww", "NSE quote", "ℹ️ Full reasons"]])
         msg_id = st["proposals"][r["proposal_id"]]["message_id"]
         env.react(msg_id, "👎")
         env.react(msg_id, "🔥")                                  # other emoji: ignored
@@ -150,18 +159,19 @@ class AutoModeTest(unittest.TestCase):
         env.tap("fb:like", r["proposal_id"])
         tg.poll(st)
         engine.answer_requests(st)
-        self.assertEqual(env.button_sets[-1], (msg_id, [("✅ 👍 good call", f"fb:like:{r['proposal_id']}"),
-                                                       ("👎 bad call", f"fb:dislike:{r['proposal_id']}")]))
+        self.assertEqual(env.button_sets[-1][0], msg_id)
+        self.assertEqual(env.button_sets[-1][1][0], [("✅ 👍 good call", f"fb:like:{r['proposal_id']}"),
+                                                     ("👎 bad call", f"fb:dislike:{r['proposal_id']}")])
         env.tap("fb:dislike", r["proposal_id"])                  # changing your mind moves the tick
         tg.poll(st)
         engine.answer_requests(st)
-        self.assertEqual([b[0] for b in env.button_sets[-1][1]], ["👍 good call", "✅ 👎 bad call"])
+        self.assertEqual([b[0] for b in env.button_sets[-1][1][0]], ["👍 good call", "✅ 👎 bad call"])
         r2 = self.propose(env, st, symbol="TCS", yes=95, price=3000.0)
         engine.execute(st, r2["proposal_id"])
         env.react(st["proposals"][r2["proposal_id"]]["message_id"], "👍")   # a reaction ticks it too
         tg.poll(st)
         engine.answer_requests(st)
-        self.assertEqual([b[0] for b in env.button_sets[-1][1]], ["✅ 👍 good call", "👎 bad call", "EXIT"])
+        self.assertEqual([b[0] for b in env.button_sets[-1][1][0]], ["✅ 👍 good call", "👎 bad call", "EXIT"])
 
     def test_commands_toggle_auto_mode(self):
         env = self.env()
@@ -210,10 +220,87 @@ class AutoModeTest(unittest.TestCase):
         ]
         self.propose(env, st, yes=95)
         msg = env.sent[-1]
-        self.assertIn("ORB long: won 3 of 11, average -Rs 85", msg)
-        self.assertIn("Suggestions of 70-79%: won 3 of 4, average +Rs 120 (too few to judge)", msg)
+        self.assertIn("Track: ORB long 3/11 (avg -Rs 85) · 70-79% 3/4", msg)
+        self.assertIn("ORB long: won 3 of 11, average -Rs 85", env.full())
+        self.assertIn("Suggestions of 70-79%: won 3 of 4, average +Rs 120 (too few to judge)", env.full())
         judged = {r["value"]: r["judged"] for r in track.for_claude()}
         self.assertEqual(judged, {"ORB long": True, "70-79%": False})
+
+    def test_minimums_must_be_beaten_not_met(self):
+        self.env()
+        st = engine.load()
+        why, bar, _ = engine._auto_skip_reason(st, "TCS", "SELL", "PDL break", None, "11", 55, 50, REVIEW)
+        self.assertIn("needs to be over 55%", why)               # today's TCS: exactly 55% is a coin flip
+        why, *_ = engine._auto_skip_reason(st, "TCS", "SELL", "PDL break", None, "11", 56, 50, REVIEW)
+        self.assertIn("isn't for it (50%, needs over 50%)", why)
+        self.assertEqual(engine._auto_skip_reason(st, "TCS", "SELL", "PDL break", None, "11", 56, 51, REVIEW)[0], "")
+
+    def test_losing_groups_raise_the_bar(self):
+        self.env()
+        st = engine.load()
+        track._cache = [{"dimension": "mood", "value": "choppy", "trades": 14, "wins": 4, "win_rate_pct": 28.6,
+                         "avg_outcome_rs": -99.0, "total_outcome_rs": -1386.0},
+                        {"dimension": "setup", "value": "PDL break", "trades": 4, "wins": 1, "win_rate_pct": 25.0,
+                         "avg_outcome_rs": -94.0, "total_outcome_rs": -376.0}]     # too few to count
+        why, bar, bar_why = engine._auto_skip_reason(st, "TCS", "SELL", "PDL break", "choppy", "11", 58, 70, REVIEW)
+        self.assertEqual(bar, 60.0)
+        self.assertIn("+5: choppy mood losing", why)
+        self.assertEqual(engine._auto_skip_reason(st, "TCS", "SELL", "PDL break", "trending up", "11", 58, 70,
+                                                  REVIEW)[0], "")
+
+    def test_flipping_a_stock_needs_60(self):
+        env = self.env()
+        st = engine.load()
+        self.propose(env, st, symbol="TCS", yes=5, price=3000.0)        # a BUY idea on TCS this morning (skipped)
+        why, bar, _ = engine._auto_skip_reason(st, "TCS", "SELL", "PDL break", None, "11", 58, 70, REVIEW)
+        self.assertEqual(bar, 60.0)
+        self.assertIn("flips an earlier TCS proposal today", why)
+        self.assertEqual(engine._auto_skip_reason(st, "TCS", "BUY", "VWAP reclaim", None, "11", 58, 70, REVIEW)[0], "")
+
+    def test_full_reasons_button_replies_with_the_long_version(self):
+        env = self.env()
+        st = engine.load()
+        r = self.propose(env, st, yes=95)
+        env.tap("info", r["proposal_id"])
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertIn("Why proposed:", env.sent[-1])
+        self.assertIn("In plain words:", env.sent[-1])
+        engine.save(st)
+        env.clock = datetime(2026, 11, 16, 10, 0)                          # days later: read back from storage
+        st = engine.load()
+        env.tap("info", r["proposal_id"])
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertIn("Why proposed:", env.sent[-1])
+
+    def test_day_report_lists_each_skipped_trade(self):
+        env = self.env()
+        st = engine.load()
+        self.propose(env, st, yes=5)
+        env.bars[("HDFCBANK", "1m")] = minute_bars(datetime(2026, 11, 12, 10, 41), [(1600, 1633, 1599, 1632)])
+        env.clock = datetime(2026, 11, 12, 15, 20)
+        engine.report(st)
+        self.assertIn("- BUY HDFCBANK (skipped by auto mode): +Rs", env.sent[-1])
+
+
+class LinksTest(unittest.TestCase):
+    def test_groww_and_nse_buttons(self):
+        import links
+        self.assertEqual(links.groww("TCS"), "https://groww.in/stocks/tata-consultancy-services-ltd")
+        self.assertEqual(links.nse("M&M"), "https://www.nseindia.com/get-quotes/equity?symbol=M%26M")
+        row = links.buttons("GODREJIND", "abc")                  # not in the list: NSE only
+        self.assertEqual([b[0] for b in row], ["NSE quote", "ℹ️ Full reasons"])
+        kb = tg._keyboard([[("👍", "fb:like:abc")], row])
+        self.assertEqual(kb["inline_keyboard"][1][0], {"text": "NSE quote",
+                                                       "url": "https://www.nseindia.com/get-quotes/equity?symbol=GODREJIND"})
+        self.assertEqual(kb["inline_keyboard"][0][0], {"text": "👍", "callback_data": "fb:like:abc"})
+
+    def test_reviewer_reason_is_cut_at_a_word(self):
+        cut = reviewer.shorten("the reward being twice the risk is not enough to make up for this weak backing", 70)
+        self.assertTrue(cut.endswith("…"))
+        self.assertNotIn("backi", cut)
+        self.assertLessEqual(len(cut), 71)
 
 
 if __name__ == "__main__":

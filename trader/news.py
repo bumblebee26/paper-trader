@@ -128,5 +128,18 @@ def lines_for(symbol, limit=3):
     return ["News (NSE filings):"] + [f"- {describe(i)} {i.get('link', '')}".rstrip() for i in found]
 
 
+def compact(symbol) -> str:
+    """One line for the compact message (links are in the full reasons)."""
+    found = for_symbol(symbol, 3)
+    if found is None:
+        return "News: NSE feed unavailable right now"
+    if not found:
+        return "News: no NSE filings today or yesterday"
+    worrying = [i for i in found if i.get("category") in WORRYING]
+    first = describe((worrying or found)[0])
+    first = first if len(first) <= 100 else first[:100].rsplit(" ", 1)[0] + "…"
+    return f"News{' ⚠️' if worrying else ''}: {first}" + (f" (+{len(found) - 1} more)" if len(found) > 1 else "")
+
+
 def reset_cache():
     _cache.update(at=0.0, items=None, age_min=None, loaded=False)

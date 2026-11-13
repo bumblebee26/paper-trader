@@ -23,7 +23,7 @@ class AdvisorTest(unittest.TestCase):
             st = engine.load()
             r = engine.propose(st, "HDFCBANK", "BUY", "VWAP reclaim", 1600.0, 1592.0, 1616.0, ["a"], "x",
                                summary="Banks are leading the market up.", ai_yes_pct=70)
-            msg = env.sent[-1]
+            msg = env.full()
             self.assertIn("My suggestion: YES", msg)
             self.assertIn("You decide.", msg)
             self.assertIn("Market check:", msg)
@@ -45,7 +45,7 @@ class AdvisorTest(unittest.TestCase):
             st = engine.load()
             st["plan"] = {"bias": "gap-down tendency"}
             r = engine.propose(st, "RELIANCE", "BUY", "ORB long", 1452.0, 1441.5, 1473.0, ["a"], "x")
-            msg = env.sent[-1]
+            msg = env.full()
             self.assertIn("My suggestion: NO", msg)
             self.assertIn("against this BUY", msg)
             self.assertIn("entering late", msg)
@@ -58,8 +58,9 @@ class AdvisorTest(unittest.TestCase):
             st = engine.load()
             r = engine.propose(st, "TCS", "SELL", "VWAP rejection", 3000.0, 3010.0, 2980.0, ["a"], "x")
             self.assertEqual(r["status"], "pending")
-            self.assertIn("Nifty 50: couldn't check right now.", env.sent[-1])
-            self.assertIn("Nifty IT (IT companies): couldn't check right now.", env.sent[-1])
+            self.assertIn("Nifty 50: couldn't check right now.", env.full())
+            self.assertIn("Nifty IT (IT companies): couldn't check right now.", env.full())
+            self.assertIn("Market: no live market data right now", env.sent[-1])
 
     def test_score_is_clamped(self):
         with Env():
