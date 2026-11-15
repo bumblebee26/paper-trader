@@ -44,21 +44,23 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 
 | Time (IST) | Days | System | What happens |
 |---|---|---|---|
-| 04:30 | Tue–Sat | Lakehouse | Massive: previous US session, all US stocks (07:30 retry catches up any missed day) |
+| 08:00 | Mon | Lakehouse | NSE F&O stock list |
 | 06:00 | Tue–Sat | Lakehouse | FRED: indices, FX, VIX, oil, rates (21-day window) |
-| every minute 09:00–15:59; every 30 min 08:00–19:30 otherwise | Mon–Fri | Lakehouse | NSE company news to the news volume (`latest.jsonl`, read by the trader within about a minute) |
-| 08:45 | Mon–Fri | Lakehouse | Pre-market brief to Telegram |
+| every minute 09:00–15:59; every 30 min 08:00–19:30 otherwise | Mon–Fri | Lakehouse | NSE company news to the news volume (`latest.jsonl`, read by the trader within about a minute); Business Standard markets every 4 min, RBI and SEBI every 5 min |
+| 08:45 | Mon–Fri | Lakehouse | Pre-market brief (India first; global as support, live from Yahoo; sources missing their day left out) and the technical scanner to Telegram |
 | 09:08 | Mon–Fri | Trader | Kicker Lambda starts the morning session; plan + focus list to Telegram |
 | 09:16 | Mon–Fri | Trader | GitHub cron backup start (skips if already running) |
+| 09:45 | Mon–Fri | Trader | Guardian: the scanner's strict picks checked against the first half hour |
+| 11:00 | Tue–Sat | Lakehouse | Massive: previous US session, all US stocks (history only; the free plan releases it ~10:30 IST) |
 | 09:20–12:25 | Mon–Fri | Trader | Every 5 min: check positions, scan focus list, propose; you tap YES/NO |
 | 12:27 | Mon–Fri | Trader | Afternoon session; new entries stop at 14:30 |
 | 15:10 | Mon–Fri | Trader | Square-off, then day report to Telegram |
 | 15:12 / 15:40 | Mon–Fri | Trader | Guardian backstops: square-off and report if the session didn't |
 | 15:14 | Mon–Fri | Trader | Guardian puts the swing pool's idle cash into NIFTYBEES |
 | 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` and portfolio snapshot to `landing/portfolio/`; pipeline builds the trading and portfolio tables |
-| 15:50 | Mon–Fri | Trader | Swing shadow test: news breakouts from `gold.swing_signals` bought and sold on paper, vs NIFTYBEES; stops and targets on your own swing trades checked |
+| 15:50 | Mon–Fri | Trader | Swing shadow tests: news breakouts from `gold.swing_signals` and the scanner's strict picks from `gold.technical_indicators`, bought and sold on paper, vs NIFTYBEES; stops and targets on your own swing trades checked |
 | 17:55 | Fri | Trader | Weekly report to Telegram |
-| 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy for the day; pipeline refresh, then the dashboard's plain-words summaries |
+| 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy and delivery file for the day; pipeline refresh (including the technical scanner), then the dashboard's plain-words summaries |
 | 23:30 | Mon–Fri | Trader → Lakehouse | Late export: the last 4 days' journals again, so evening 👍/👎 ratings reach the track record overnight |
 | 07:15 | Sat | Trader → Lakehouse | Company fundamentals job: Nifty 200 financials to `landing/fundamentals/`, the list to `landing/index_members/` |
 | 10:15 | Sat | Lakehouse → Trader | Long-term shadow job: reads this week's picks, "buys"/sells in the shadow ledger, report to Telegram |
@@ -98,16 +100,17 @@ portfolio), and two per week on Saturdays (fundamentals and the Nifty 200 list).
 
 | Flow | From → to | Contract | When |
 |---|---|---|---|
-| Market data in | NSE, Massive, FRED → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 04:30 (+07:30 retry), 06:00, 19:30 |
-| Pre-market context | gold tables → trader (`premarket_context`) | Read-only SQL on `nifty_after_us_moves_summary`, `global_snapshot`, `unusual_volume`, `intraday_universe` (news radar, tradable list with company names for the Groww buttons), `track_record`, `silver.daily_bars` | ~09:10 |
+| Market data in | NSE (bhavcopy, delivery, F&O list), Massive, FRED → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 06:00, 11:00, 19:30, Mon 08:00 |
+| Pre-market context | gold tables + Yahoo → trader (`premarket_context`) | Read-only SQL on `data_freshness`, `technical_screen`, `nifty_after_us_moves_summary`, `unusual_volume`, `intraday_universe` (news radar, tradable list with company names for the Groww buttons), `track_record`; live India VIX, S&P 500, Nasdaq, Brent, USD/INR and the ADRs from Yahoo, whose Nifty 50 and S&P 500 candles also say which session each source should have | ~09:10 |
 | Company news | news volume `date=YYYY-MM-DD/latest.jsonl` → trader | Read through the Files API (today and the last day), cached 10 min; failure = "news unavailable" | every proposal, `/news` |
 | Approvals | Trader ↔ Telegram | Proposal with YES/NO buttons; no reply in 3 min = skipped; `EXIT SYMBOL` closes | 09:20–14:30 |
-| Commands | You → Telegram → session or responder | `/help` (also "what can you do?"), `/ledger`, `/plan`, `/exit`, `/news`, `/portfolio`, `/shadow`, `/auto`, `/analyze`, your own orders `/buy`, `/short`, `/swing`, `/longterm` (Confirm within 3 min), `/pause`, `/stop`, `/resume`. Telegram allows one reader: the session answers while live, the responder otherwise | any time |
+| Commands | You → Telegram → session or responder | `/help` (also "what can you do?"), `/ledger`, `/plan`, `/exit`, `/news`, `/portfolio`, `/shadow`, `/screen`, `/auto`, `/analyze`, your own orders `/buy`, `/short`, `/swing`, `/longterm` (Confirm within 3 min), `/pause`, `/stop`, `/resume`. Telegram allows one reader: the session answers while live, the responder otherwise | any time |
 | Ledger | Trader ↔ S3 `state/ledger.json` | Read, change, write back on every tool call; versioned 30 days | all session |
 | Journal export | Trader → `landing/trades/date=YYYY-MM-DD/events.jsonl` | One line per event with unique `event_id` + `proposal_id`; last line `ledger_snapshot` | 15:45 |
 | Portfolio snapshot | Trader → `landing/portfolio/date=YYYY-MM-DD/portfolio.jsonl` | One `pool` row per pool (capital, cash, holdings value, equity) and one `holding` row per holding; newest file per day wins | 15:45 |
 | Long-term picks | `gold.longterm_candidates` → shadow job | Read-only SQL: rank, `is_pick`, `target_weight_pct`, `reasons`, last close | Sat 10:15 |
-| Swing signals | `gold.swing_signals` → guardian | Read-only SQL: yesterday's news breakouts with their stop | 15:50 |
+| Swing signals | `gold.swing_signals`, `gold.technical_indicators` → guardian | Read-only SQL: yesterday's news breakouts with their stop; yesterday's scanner strict picks with entry zone, trigger, stop and T2 | 15:50 |
+| Technical scanner | `gold.technical_screen` → guardian, responder | Read-only SQL: today's strict picks and near-misses (`/screen`, `/analyze`, the 09:45 check) | 09:45, any time |
 | Fundamentals | Trader job → `landing/fundamentals/date=YYYY-MM-DD/fundamentals.jsonl`, `landing/index_members/date=YYYY-MM-DD/nifty200.jsonl` | One line per company × metric × period; one line per Nifty 200 company (symbol, company, industry, ISIN) | Sat 07:15 |
 | Trading analysis | `trades_raw` → `trade_events` → `gold.trad*` | Newest copy per `event_id`; net P&L = exit `pnl_rs` − entry `fees_rs` | after 15:45 |
 

@@ -24,6 +24,7 @@ import news
 import scanner
 import sectors
 import telegram_bot as tg
+from http_client import log
 
 mcp = _Server("paper-trader")
 
@@ -36,18 +37,28 @@ _run = engine.run_tool
 
 @mcp.tool()
 def premarket_context() -> dict:
-    """Today's pre-market context from the stocks_lakehouse gold tables (US move, India's usual
-    opening gap after such US days, VIX and risk level, unusual-volume NSE names, ADR moves).
+    """Today's pre-market context, India first: India VIX and the risk per trade it sets, the Nifty 50's trend
+    (nifty_regime, bias, bias_side), the technical scanner (scanner.strict / scanner.near_miss: Nifty 200 stocks
+    passing the daily filters, with indicative entry zone, trigger, stop, T1/T2), unusual-volume NSE names and
+    ADR moves (evidence for those 5 stocks only). global_supporting (S&P 500, Nasdaq, Brent, USD/INR) is context,
+    not a reason on its own, except a 2%+ shock. missing: sources left out because they lack the day they
+    should have (never use an older day in their place); holidays are listed.
     news_radar: up to 12 Nifty 200 stocks with a fresh NSE filing, a 3%+ move or 2x volume that pass the
     guardrails; tradable_universe: every Nifty 200 name you may trade beyond default_watchlist.
     Also: track_record (how past proposals turned out by setup, hour, mood, suggestion band, reviewer
     verdict, mode and the user's 👍/👎; rows with judged=false have too few outcomes to act on) and
     auto_mode. Call once at the start of the day, then call start_day."""
     data, failed = brief.fetch()
-    plan = brief.build_plan(data, failed)
+    try:
+        sessions, live = brief.fetch_live()
+    except Exception as err:  # noqa: BLE001 - live figures are left out, the plan says so
+        log.warning("live figures unavailable: %s", err)
+        sessions, live = {}, {}
+    plan = brief.build_plan(data, failed, live=live, sessions=sessions, today=market.now_ist().date())
     engine.save_universe(plan)
     plan.pop("tradable_names", None)   # kept for the Groww buttons; Claude doesn't need 200 company names
     plan["default_watchlist"] = DEFAULT_WATCHLIST
+    plan["market_news"] = [news.market_line(i) for i in news.market_items()]
     plan["track_record"] = track.for_claude()
     plan["auto_mode"] = engine.auto_on(engine.load())
     return plan
@@ -127,12 +138,14 @@ def run_cycle() -> dict:
     square-off), then scan today's focus list if entries are allowed. Returns events, a short
     account line and any candidates. Use this instead of separate monitor/scan calls.
     news_alerts: fresh NSE filings on tradable stocks since the last cycle; those stocks are added to the
-    scan (up to 5 extra). stocks_in_play (once, at 09:25): the focus list re-ranked by opening relative volume. Read the filing before proposing: news says which stock may move, not which way."""
+    scan (up to 5 extra); named headlines (category media) count too. market_news: new RBI / SEBI items, context for
+    the whole market only. stocks_in_play (once, at 09:25): the focus list re-ranked by opening relative volume. Read the filing before proposing: news says which stock may move, not which way."""
     state = engine.load()
     try:
         mon = engine.monitor(state)
         in_play = engine.rank_in_play(state, pause=SCAN_PAUSE_SEC) if engine.in_session_hours() else []
         alerts = engine.news_alerts(state) if mon["account"]["entry_window_open"] else []
+        market_news = engine.market_news(state) if mon["account"]["entry_window_open"] else []
         focus = list(dict.fromkeys((state.get("focus") or DEFAULT_WATCHLIST) + (state.get("focus_news") or [])))
         nifty = scanner.nifty_context() if mon["account"]["entry_window_open"] else None
         if nifty is not None:
@@ -151,6 +164,8 @@ def run_cycle() -> dict:
     }
     if in_play:
         out["stocks_in_play"] = in_play   # today's focus list from here on: the most unusually active names
+    if market_news:
+        out["market_news"] = market_news   # RBI / SEBI: whole-market context, never a stock signal on its own
     if alerts:
         out["news_alerts"] = alerts   # their stocks are in this cycle's scan; trades on them count as 'news'
     if acct["entry_window_open"]:

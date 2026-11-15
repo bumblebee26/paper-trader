@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 
 import advisor
+import brief
 import config
 import exits
 import fees
@@ -260,9 +261,10 @@ HELP_TEXT = """[MOCK] paper-trader: what I can do
 
 Commands (with or without the /):
 /ledger  money now: balance, in use, free, open positions with live P&L (also /balance, /status)
-/plan  today's plan: US move, VIX, risk per trade, bias, focus list
+/plan  today's plan: India VIX and risk per trade, Nifty 50 trend, scanner picks, global (supporting), focus list
 /exit SYMBOL  close that position now, e.g. /exit HDFCBANK
 /news SYMBOL  the company's latest NSE filings with links, e.g. /news RELIANCE
+/screen  today's technical scanner (Nifty 200): strict picks with levels, near-misses; /screen SYMBOL for one stock
 /portfolio  all dummy pools: intraday, swing and long-term (Rs 2 lakh in total)
 /analyze SYMBOL  my view of any NSE stock: intraday, swing and long-term (add one of those words for one view)
 /buy SYMBOL [qty] [sl X] [tgt Y]  your own intraday buy (defaults: 1% stop, 2x target, a normal trade's size); /short the same for a short
@@ -276,7 +278,7 @@ Commands (with or without the /):
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
-On its own (Mon-Fri IST): 09:08 day plan; proposals until 14:30 (auto mode: placed if 55%+ YES; otherwise each needs your YES within 3 min); stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
+On its own (Mon-Fri IST): 08:45 brief and technical scanner (lakehouse); 09:08 day plan; 09:45 scanner check; proposals until 14:30 (auto mode: placed if 55%+ YES; otherwise each needs your YES within 3 min); stops and targets watched every 5 min; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
 During sessions (09:08-15:25 IST) I reply within seconds; at other times within about 2 minutes. Dummy money only."""
 
 
@@ -289,7 +291,10 @@ def shadow_text(state) -> str:
     lines = ["[MOCK] Tested on paper (nothing here touched real trades), this week so far:", ""]
     lines += weekly.paper_lines(w) or ["- Nothing to compare yet this week."]
     lines += ["", "Shadow pools (since they started):"]
+    import swing_tech
+
     lines += [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
+    lines += [f"- {x}" for x in swing_tech.lines(swing_tech.summary())]
     lt = storage.get_json("shadow/longterm/latest.json") or {}
     if lt:
         lines.append(f"- Long-term (weekly quality picks), week {lt.get('week')}: {inr(lt['equity'] - config.LONG_TERM_CAPITAL, sign=True)} "
@@ -508,6 +513,10 @@ def answer_requests(state) -> int:
             tg.send(portfolio_text(state))
         elif ask == "shadow":
             tg.send(shadow_text(state))
+        elif ask == "screen" or ask.startswith("screen:"):
+            import screen
+
+            tg.send(screen.text(state, ask.split(":", 1)[1] if ":" in ask else None))
         elif ask.startswith("news:"):
             tg.send(news_text(ask.split(":", 1)[1]))
         elif ask == "nothing_pending":
@@ -721,6 +730,15 @@ def news_alerts(state, limit=8) -> list:
     return out
 
 
+def market_news(state) -> list:
+    """New market-wide items (RBI, SEBI) since the last check, as one line each. They name no stock, so they
+    never add a stock to the scan; they are context for the whole market."""
+    seen = set(state.get("market_seen") or [])
+    fresh = [i for i in news.market_items() if i.get("id") not in seen]
+    state["market_seen"] = [i.get("id") for i in news.market_items()]
+    return [news.market_line(i) for i in fresh]
+
+
 def opening_rvol(symbol, bars=None):
     """{symbol, rvol, gap_pct}: the first IN_PLAY_BARS 5-minute bars' volume today vs the same bars on earlier
     days (up to 14), and today's gap vs yesterday's close. None if there isn't enough data."""
@@ -750,14 +768,18 @@ def opening_rvol(symbol, bars=None):
 
 
 def rank_in_play(state, pause=0.0) -> list:
-    """Once a day at IN_PLAY_AT: rank the watchlist, today's focus and the news radar by opening relative volume
-    and make the top FOCUS_MAX the focus list (stocks with news count as 1 extra x). Open positions stay."""
+    """Once a day at IN_PLAY_AT: rank the watchlist, today's focus, the news radar and the technical scanner's
+    picks by opening relative volume and make the top FOCUS_MAX the focus list (stocks with news count as 1 extra
+    x, scanner strict picks 1x, near-misses 0.5x). Open positions stay."""
     if state.get("in_play_day") == _today() or market.now_ist().strftime("%H:%M") < config.IN_PLAY_AT:
         return []
     state["in_play_day"] = _today()
     radar = (storage.get_json(UNIVERSE_KEY) or {}).get("radar") or []
-    pool = list(dict.fromkeys([*(state.get("focus") or []), *radar, *(state.get("news_symbols") or []),
-                               *sectors.WATCHLIST]))
+    sc = (state.get("plan") or {}).get("scanner") or {}
+    strict = [p["symbol"] for p in sc.get("strict") or []]
+    near = [p["symbol"] for p in sc.get("near_miss") or []]
+    pool = list(dict.fromkeys([*(state.get("focus") or []), *strict, *radar, *(state.get("news_symbols") or []),
+                               *near, *sectors.WATCHLIST]))
     ranked = []
     for i, sym in enumerate(pool):
         if pause and i and i % 5 == 0:
@@ -765,7 +787,10 @@ def rank_in_play(state, pause=0.0) -> list:
         r = opening_rvol(sym)
         if r and tradable(sym):
             r["news"] = sym in (state.get("news_symbols") or []) or sym in radar
-            r["score"] = round(r["rvol"] + (1 if r["news"] else 0), 2)
+            r["scanner"] = "strict" if sym in strict else "near" if sym in near else None
+            # news counts as 1 extra x; the daily scanner's strict picks 1x, its near-misses 0.5x
+            r["score"] = round(r["rvol"] + (1 if r["news"] else 0)
+                               + {"strict": 1.0, "near": 0.5}.get(r["scanner"], 0), 2)
             ranked.append(r)
     ranked.sort(key=lambda r: -r["score"])
     if not ranked:
@@ -1065,6 +1090,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
                   f" | mood {mood or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"
                   f" | mode {'auto' if auto else 'human'}"
                   f" | source {'news' if is_news_pick(state, symbol) else 'watchlist'}"
+                  f" | scanner {brief.scanner_status(state.get('plan'), symbol)}"
                   f" | sector {sectors.SECTOR_OF.get(symbol, 'Other')} |"))
     base = {"proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
             "suggestion": f"{advice['verdict']} {yes}%"}

@@ -9,13 +9,14 @@ locals {
   }
 
   guards = {
-    squareoff    = "cron(12 15 ? * MON-FRI *)"
-    park         = "cron(14 15 ? * MON-FRI *)"
-    report       = "cron(40 15 ? * MON-FRI *)"
-    export       = "cron(45 15 ? * MON-FRI *)"
-    swing_shadow = "cron(50 15 ? * MON-FRI *)" # swing pool's shadow test: news breakouts on paper vs NIFTYBEES
-    late         = "cron(30 23 ? * MON-FRI *)" # second export, so evening ratings reach the lakehouse overnight
-    weekly       = "cron(55 17 ? * FRI *)"
+    scanner_confirm = "cron(45 9 ? * MON-FRI *)" # the morning's technical-scanner picks after the first half hour
+    squareoff       = "cron(12 15 ? * MON-FRI *)"
+    park            = "cron(14 15 ? * MON-FRI *)"
+    report          = "cron(40 15 ? * MON-FRI *)"
+    export          = "cron(45 15 ? * MON-FRI *)"
+    swing_shadow    = "cron(50 15 ? * MON-FRI *)" # swing pool's shadow tests (news breakouts, technical scanner) vs NIFTYBEES
+    late            = "cron(30 23 ? * MON-FRI *)" # second export, so evening ratings reach the lakehouse overnight
+    weekly          = "cron(55 17 ? * FRI *)"
   }
 }
 

@@ -205,15 +205,30 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
     else:
         checks.append((WARN, f"Possible gain is only {rr:g}x the possible loss (2x is the aim).", -5))
 
-    # Pre-market bias from the lakehouse brief.
-    bias = ((state.get("plan") or {}).get("bias") or "").lower()
-    if "gap-down" in bias or "gap-up" in bias:
-        favours = "SELL" if "gap-down" in bias else "BUY"
+    # Pre-market bias: the Nifty 50's own trend (and a 2%+ US shock), from the morning plan.
+    plan = state.get("plan") or {}
+    favours = plan.get("bias_side")
+    bias = plan.get("bias") or ""
+    if favours in ("BUY", "SELL"):
         if side == favours:
-            checks.append((OK, f"The morning plan expected a {bias}, which fits a {side}.", 5))
+            checks.append((OK, f"The morning plan's bias ({bias}) fits a {side}.", 5))
         else:
-            checks.append((WARN, f"The morning plan expected a {bias}, which goes against a {side}.", -5))
-        short.append(f"plan expected a {'rise' if favours == 'BUY' else 'fall'} {checks[-1][0]}")
+            checks.append((WARN, f"The morning plan's bias ({bias}) goes against a {side}.", -5))
+        short.append(f"plan bias {'up' if favours == 'BUY' else 'down'} {checks[-1][0]}")
+
+    # The technical scanner (Nifty 200, daily): a strict pick favours a BUY; shorting one goes against it.
+    import brief
+
+    on_scan = brief.scanner_status(plan, symbol)
+    if on_scan == "strict":
+        if side == "BUY":
+            checks.append((OK, "On this morning's technical scanner as a strict pick (daily trend up).", 5))
+            short.append(f"scanner pick {OK}")
+        else:
+            checks.append((WARN, "Shorting a strict pick of this morning's technical scanner (daily trend up).", -10))
+            short.append(f"against scanner pick {WARN}")
+    elif on_scan == "near" and side == "BUY":
+        checks.append((OK, "A near-miss on this morning's technical scanner (most daily filters pass).", 2))
 
     checks.append(news_check(symbol))
 

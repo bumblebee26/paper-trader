@@ -17,8 +17,8 @@ PHASES = {
         "end": "12:25",
         "task": (
             "Morning session. 1) Call premarket_context. 2) Pick a focus list of at most 15 NSE symbols from "
-            "default_watchlist spread across at least 6 sectors (no more than 3 from one sector), add up to 3 unusual_volume_nse names with clear volume (>=2x) and "
-            "price >= 100, and prefer names whose ADR moved strongly. 3) Call start_day(focus, plan) with the "
+            "default_watchlist spread across at least 6 sectors (no more than 3 from one sector), add up to 3 scanner.strict picks and up to 3 unusual_volume_nse names "
+            "with clear volume (>=2x) and price >= 100, and prefer names whose ADR moved strongly. 3) Call start_day(focus, plan) with the "
             "plan from step 1. 4) Call wait_for_next_candle(session_end='{end}') until 09:20 has passed. "
             "If run_cycle shows no Nifty candle dated today by 09:30, it is a holiday: notify 'No market "
             "today' and stop. 5) Loop: run_cycle, handle candidates per the rules, "

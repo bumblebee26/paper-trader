@@ -161,6 +161,12 @@ def swing_view(symbol):
     near_high = _pct(last, hi20) > -1.5
     lines.append("- " + ("Near its 20-day high: a breakout is the swing shadow's setup when it comes with news and 2x volume."
                          if near_high else "Not near a breakout level; the swing rules would wait."))
+    try:
+        import screen
+
+        lines += screen.analyze_lines(symbol)
+    except Exception as err:  # noqa: BLE001 - the scanner line is extra
+        log.info("scanner line for %s unavailable: %s", symbol, err)
     return lines
 
 
@@ -311,6 +317,13 @@ def preview(state, order):
             if funding:
                 lines.append(f"Paid for by selling {funding['qty']} NIFTYBEES (~{engine.inr(funding['value'])}); "
                              "the rest of the pool stays in NIFTYBEES")
+            if order.get("source") == "scanner":
+                if order["sl"] and price <= order["sl"]:
+                    tg.send(f"[MOCK] {sym} is at Rs {price:,.2f}, already at or below the scanner's stop "
+                            f"(Rs {order['sl']:,.2f}): the setup has failed, so no order.")
+                    return None
+                lines.append("From the technical scanner's Swing buy button: its stop and T2 (indicative levels, "
+                             "never a guaranteed return)")
             if order["sl"] or order["tgt"]:
                 if pool != "swing":
                     warnings.append("stops and targets are checked for the swing pool only; ignored here")
@@ -440,7 +453,9 @@ def _pool(state, o, price):
             tg.edit(o["message_id"], o["text"] + f"\n\n-> Not placed: {out['reason']}.")
             return out
         pools.save(p)
-        _journal_pool(o["pool"], "BUY", o["symbol"], out)
+        _journal_pool(o["pool"], "BUY", o["symbol"], out,
+                      note="your own order from the scanner's Swing buy button | scanner strict"
+                      if o.get("source") == "scanner" else "your own order from Telegram")
         done = f"Bought {out['qty']} {o['symbol']} @ {out['fill']:,.2f} in the {label.lower()} pool"
     else:
         out = pools.sell(p, o["symbol"], qty=o["qty"], price=price, reason="your own trade")

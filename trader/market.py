@@ -75,6 +75,12 @@ def daily(symbol: str, rng: str = "1y"):
     return _parse(get_json(url))
 
 
+def daily_raw(yahoo_symbol: str, rng: str = "1mo"):
+    """Daily candles for a Yahoo symbol as Yahoo writes it (US tickers, ^GSPC, ^INDIAVIX, BZ=F, INR=X)."""
+    url = CHART_URL.format(symbol=urllib.parse.quote(yahoo_symbol), interval="1d", range=rng)
+    return _parse(get_json(url))
+
+
 def last_price(symbol: str):
     rows = candles(symbol, "1m", 1)
     if not rows:

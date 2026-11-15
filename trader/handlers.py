@@ -10,7 +10,9 @@ guardian Backstop that needs no Claude. Event {"action": "squareoff"} at 15:12 I
          IST copies the day's journal to the lakehouse (add "date", or "start"/"end", to
          re-export past days); {"action": "park"} at 15:14 IST puts the swing pool's idle
          cash into NIFTYBEES (does nothing once invested); {"action": "weekly"} on Fridays at 17:55 IST sends the weekly report;
-         {"action": "swing_shadow"} at 15:50 IST runs the swing pool's shadow test (news breakouts).
+         {"action": "swing_shadow"} at 15:50 IST runs the swing pool's shadow tests (news breakouts,
+         and the technical scanner's strict picks); {"action": "scanner_confirm"} at 09:45 IST checks the morning's
+         strict picks against the first half hour (no Claude).
 """
 import json
 import os
@@ -91,9 +93,20 @@ def guardian(event, context):
         import swing_shadow
 
         out = swing_shadow.run(send=True)
+        try:
+            import swing_tech
+
+            out = {**out, "technical_scanner": swing_tech.run(send=True)}
+        except Exception as err:  # noqa: BLE001 - one shadow test failing mustn't stop the other
+            log.warning("scanner shadow failed: %s", err)
+            out = {**out, "technical_scanner_error": str(err)}
         if market_open_today():
             out = {**out, "your_swing_exits": custom.check_swing_stops()}
         return out
+    if action == "scanner_confirm":
+        import screen
+
+        return screen.confirm(send=True)
     if action == "weekly":
         import weekly
 

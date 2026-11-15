@@ -22,7 +22,7 @@ class NewsOnProposalsTest(unittest.TestCase):
             engine.propose(st, "HDFCBANK", "BUY", "ORB long", 800.0, 797.0, 806.0, ["a"], "x")
             msg = env.full()
             self.assertIn("Recent filing to read first: 09 Nov 10:05, credit rating:", msg)
-            self.assertIn("News (NSE filings):", msg)
+            self.assertIn("News (NSE filings and named headlines):", msg)
             self.assertIn("https://x/y.pdf", msg)
             self.assertNotIn("Infosys", msg)
 
