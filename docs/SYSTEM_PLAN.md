@@ -4,7 +4,7 @@
 > is in [paper-trader](https://github.com/bumblebee26/paper-trader/blob/main/docs/SYSTEM_PLAN.md) and
 > [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse/blob/main/docs/SYSTEM_PLAN.md); change
 > both together. For how the running system fits together, see [PLATFORM.md](PLATFORM.md).
-> As of 13 Nov 2026. Each section says what is **built** and what is still **planned**.
+> As of 16 Nov 2026. Each section says what is **built** and what is still **planned**.
 
 Everything is dummy money. Nothing here is investment advice; it is a system for learning how these
 strategies behave.
@@ -14,11 +14,11 @@ strategies behave.
 The paper trader is growing from one intraday strategy into a three-pool dummy portfolio of Rs 2,00,000,
 driven by live market data, company news and company financials, with you approving trades on Telegram.
 
-| Phase | Status (13 Nov 2026) | Next gate |
+| Phase | Status (16 Nov 2026) | Next gate |
 |---|---|---|
 | 1 Intraday upgrades | Built, live from 10 Nov | Track-record review, 23 Nov |
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
-| 3 Swing pool | Rs 60,000 held in NIFTYBEES; news-breakout rules in shadow mode from 16 Nov | Shadow review vs NIFTYBEES, mid-Dec |
+| 3 Swing pool | Rs 60,000 held in NIFTYBEES; two rule sets in shadow mode: news breakouts (from 16 Nov) and the technical scanner (from 17 Nov) | Scanner signal review ~8 Dec; shadow review vs NIFTYBEES, mid-Dec |
 | 4 Long-term pool | Selection, backtest and shadow mode built | Go/no-go 18 Dec, buying from 21 Dec |
 | 5 Track record and auto mode | Live from 12 Nov: auto mode, 👍/👎 feedback, track record fed back every session | Review 23 Nov |
 
@@ -70,10 +70,11 @@ more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follow
 
 | Part | What it does |
 |---|---|
-| Company news | NSE announcements, results, board meetings and corporate actions into the lakehouse every minute in market hours (every 30 min otherwise); every proposal lists the company's filings with links and flags regulatory, rating, pledge filings and board meetings within 2 days |
-| Market mood | Each proposal says trending up, trending down, jumpy or choppy (Nifty since the open and VIX) |
+| Company news | NSE announcements, results, board meetings and corporate actions into the lakehouse every minute in market hours (every 30 min otherwise); from 17 Nov also Business Standard markets headlines (every 4 min; only headlines naming a tradable company reach the trader) and RBI and SEBI press releases (every 5 min; market-wide context, never a stock signal). BSE announcements are built but off (no verified public feed). Every proposal lists the company's filings with links and flags regulatory, rating, pledge filings and board meetings within 2 days |
+| Morning plan, India first (from 17 Nov) | Risk per trade from India VIX (1%; 0.75% at 20+; 0.5% at 30+); bias from the Nifty 50's trend; the US (S&P 500, Nasdaq, Brent, USD/INR, live from Yahoo) only as support, plus a "global shock" line at a 2%+ S&P move; the five ADRs as evidence for those stocks only. **Freshness rule:** each source must have the session it should (from the market's own calendar); one that doesn't is left out and named, never replaced by an older day; holidays are stated. Massive's US history now lands at 11:00 IST, after its free plan releases the day |
+| Market mood | Each proposal says trending up, trending down, jumpy or choppy (Nifty since the open and India VIX) |
 | Shadow rule variants | Each proposal records which alternative rules would have blocked it (Nifty against the trade by 0.3%, against the mood, after 14:00), for the 23 Nov review |
-| Commands | `/news SYMBOL`, `/portfolio`, `/stop` (kill switch) plus `/ledger`, `/plan`, `/pause`, `/resume`, `/exit`, `/help`, answered any time |
+| Commands | `/news SYMBOL`, `/portfolio`, `/screen` (`/screen SYMBOL`), `/stop` (kill switch) plus `/ledger`, `/plan`, `/pause`, `/resume`, `/exit`, `/help`, answered any time |
 | Data alerts | Stale prices pause proposals with one alert and an all-clear; a news feed more than 90 minutes behind alerts once a day |
 | Pool ledgers and circuit breaker | Separate ledgers for swing and long-term with delivery costs; all pools 12% below their peak stops new buys until `/resume` |
 | Weekly report | Fridays 17:55: results, setups, your calls vs the suggestion and reviewer, background rules, all pools |
@@ -108,6 +109,29 @@ The rules, kept for a retry (`backtest/swing.py`):
 - **Runs** in the guardian Lambda at 15:50 on trading days (no Claude). Results: `/shadow`, the weekly report and
   `stocks.gold.shadow_pools_daily`. It moves the real Rs 60,000 only if it beats NIFTYBEES at a review after
   enough trades (about mid-December), with your OK.
+
+**Second shadow test (from 17 Nov): the technical scanner.** A daily Nifty 200 scan in the lakehouse
+(`stocks.gold.technical_screen`), traded on paper in its own `swing_tech_shadow` pool, so the two ideas are
+compared on the same days with the same costs:
+
+- **Filters (all six for a strict pick):** close above its 20, 50 and 200-day averages; RSI(14) 50–65; MACD
+  above its signal line (or just crossed); ADX(14) above 20 and rising; volume at least 1.5x the 20-day
+  average; reward at least 2x the risk. Near-misses (4–5 filters, above all three averages) are listed with the
+  filter each missed. Up to 10 strict picks a day, never forced. No chasing: RSI above 70, MFI above 80 or more
+  than 8% above the 20-day average is "wait/avoid".
+- **Levels (indicative, never a guaranteed return):** from swing points and ATR: entry zone, trigger, stop, T1,
+  T2, R:R; a level that can't be grounded is left out. Stance: buy-on-dip, breakout-only or wait/avoid.
+  Prices are adjusted for splits and bonuses from NSE's own previous close.
+- **Trade:** the next trading day only, at the scanner's level (a breakout-only pick when the day trades through
+  its trigger; a buy-on-dip pick when it dips into its entry zone); nothing is chased. Exit at the stop, T2 or
+  after 15 trading days. 1% risk per trade, at most 20% of the pool in one stock, 5 holdings.
+- **Reports:** 08:45 Telegram (with delivery %, F&O status, NSE/Groww links and a Swing buy button that asks you
+  to Confirm), 09:45 check against the first half hour, `/screen`, `/screen SYMBOL`, the scanner line in
+  `/analyze`. `stocks.gold.signal_performance` shows how each signal did 5, 10 and 20 days later against
+  NIFTYBEES. **Review after about 15 trading days (~8 Dec):** keep, tighten or drop each filter.
+- **Intraday use:** strict picks are a daily uptrend, so they get +1 in the 09:25 stocks-in-play ranking, a BUY
+  on one gets +5 in the live checks and a short against one −10; the track record judges them separately
+  (dimension `scanner`).
 
 Why not single favourites or penny stocks: a stock like MRF costs over Rs 1 lakh a share (more than the whole
 pool), a hunch can't be tested, and penny stocks can't be simulated honestly (trade-to-trade segment, price
@@ -281,6 +305,8 @@ Cost review: Sun 15 Nov.
 | One-tap reasons | Planned |
 | Idle cash earns interest | Planned |
 | Real-money readiness checklist | After phase 5 |
+| Technical scanner (Nifty 200) | Built 17 Nov; review ~8 Dec |
+| Bloomberg news | Not feasible (paid terminal licence; no free feed); free sources used instead |
 
 ## Roadmap
 
@@ -291,7 +317,9 @@ Cost review: Sun 15 Nov.
 | 14 Nov | First long-term shadow week |
 | 15 Nov | Cost review: is Claude usage sustainable? |
 | 16 Nov | News radar (Nifty 200 beyond the watchlist) and the swing shadow pool start; your own trades from Telegram (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`) |
+| 17 Nov | Technical scanner (08:45 report, 09:45 check, `/screen`, second swing shadow pool); India-first plan with the freshness rule; more news sources |
 | 23 Nov | Track-record review (phase 5), including news vs watchlist picks |
+| ~8 Dec | Scanner signal review (about 15 trading days): `gold.signal_performance` and the scanner shadow pool vs NIFTYBEES |
 | 18 Dec | Long-term go/no-go (backtest + 5 shadow weeks) |
 | 21 Dec | Long-term buying starts, if approved |
 

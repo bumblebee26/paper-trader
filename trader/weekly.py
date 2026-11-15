@@ -191,8 +191,10 @@ def message(w, intraday_state):
                      f"{_inr(w['reviewer_no_pnl'], sign=True)}"
                      + (" (the reviewer was right)." if w["reviewer_no_pnl"] < 0 else "."))
     import swing_shadow
+    import swing_tech
 
-    paper = paper_lines(w) + [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
+    paper = (paper_lines(w) + [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
+             + [f"- {x}" for x in swing_tech.lines(swing_tech.summary())])
     lines += ["", "Tested on paper (not used for real trades yet; /shadow any time):", *paper]
     if w["cooloffs"] or w["loss_limit_days"] or w.get("weekly_brake"):
         lines.append(f"Brakes used: {w['cooloffs']} cool-off(s), loss limit on {w['loss_limit_days']} day(s)"

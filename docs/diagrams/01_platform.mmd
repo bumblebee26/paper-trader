@@ -21,7 +21,7 @@ flowchart TB
         direction LR
         subgraph LHA["stocks_lakehouse"]
             direction TB
-            FET["<b>Fetcher Lambdas</b><br/>NSE 19:30 · Massive 04:30 · FRED 06:00"]
+            FET["<b>Fetcher Lambdas</b><br/>NSE 19:30 · Massive 11:00 · FRED 06:00 · F&amp;O Mon 08:00"]
             S3L[("<b>S3 landing bucket</b><br/>raw archive")]
             PM["<b>Pre-market Lambda</b><br/>08:45 brief"]
             NEWS["<b>News Lambda</b><br/>NSE filings every minute 09:00–15:59<br/>(every 30 min otherwise)"]

@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 
+import brief
 import config
 import market
 import news
@@ -63,8 +64,9 @@ def facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines
         f"Trade: {side} {qty} {symbol} at ~{entry} | stop-loss {stop} | target {target} | gain/loss ratio {rr}",
         f"Setup: {setup}",
         f"Stop distance: {abs(entry - stop) / entry * 100:.2f}% of price",
-        f"Day plan: bias {plan.get('bias', 'n/a')}, VIX {plan.get('vix', 'n/a')}, "
-        f"S&P 500 overnight {plan.get('spy_return_pct', 'n/a')}%",
+        f"Day plan: bias {plan.get('bias', 'n/a')}, India VIX {plan.get('india_vix', 'n/a')}, "
+        f"S&P 500 overnight {(plan.get('global_supporting') or {}).get('sp500_pct', 'n/a')}% (supporting only)",
+        f"Technical scanner: {brief.scanner_status(plan, symbol)}",
         *[ln for ln in market_lines if ln != "Market check:"],
     ]
     try:

@@ -101,7 +101,7 @@ IN_PLAY_AT = os.environ.get("IN_PLAY_AT", "09:25")
 IN_PLAY_BARS = _i("IN_PLAY_BARS", 2)                      # 5-minute bars from 09:15 = the first 10 minutes
 MIN_STOCK_PRICE = _f("MIN_STOCK_PRICE", 50.0)          # no penny stocks
 NEWS_RADAR_CATEGORIES = ("results", "order", "mna", "management", "rating", "regulatory", "pledge", "insider",
-                         "dividend_split_bonus", "board_meeting")
+                         "dividend_split_bonus", "board_meeting", "media")
 MIN_RR = _f("MIN_RR", 1.5)
 INTRADAY_LEVERAGE = _f("INTRADAY_LEVERAGE", 5.0)
 SLIPPAGE_PCT = _f("SLIPPAGE_PCT", 0.05)

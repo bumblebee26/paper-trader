@@ -18,14 +18,15 @@ life of one trade).
 
 | Time | What happens |
 |---|---|
-| 08:45 | Lakehouse pre-market brief arrives on Telegram (unchanged) |
-| 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data, sends the day plan and focus list |
+| 08:45 | Lakehouse pre-market brief (India first: India VIX, the Nifty 50's trend; the US only as support) and the **technical scanner** (Nifty 200 strict picks with indicative levels and a Swing buy button) arrive on Telegram |
+| 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data (any source missing the day it should have is left out, never replaced by an older day), sends the day plan and focus list |
+| 09:45 | Scanner check: each strict pick against the first half hour (triggered, in its entry zone, waiting, extended or invalidated) |
 | 09:20–12:25 | Every 5 minutes: check positions, scan the focus list (up to 15 names: the 36-stock watchlist plus news-radar picks from the Nifty 200), and any stock with a fresh NSE filing; propose setups |
 | 12:27 | Afternoon session. New entries stop at 14:30 |
 | 15:10 | Everything squared off, then the day report |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | The day's journal and a portfolio snapshot (all pools and holdings) are copied to the lakehouse; its pipeline builds the trading and portfolio tables and dashboard pages |
-| 15:50 | Swing shadow test: news breakouts bought and sold on paper, compared with NIFTYBEES (`/shadow`); stops and targets on your own swing trades checked |
+| 15:50 | Swing shadow tests: news breakouts, and the technical scanner's strict picks (entry at its level the next day, stop, T2 or 15 days), bought and sold on paper, compared with NIFTYBEES (`/shadow`); stops and targets on your own swing trades checked |
 | 23:30 | The last 4 days' journals are copied again, so ratings you give in the evening reach the lakehouse |
 
 Money is split into three dummy pools (Rs 2,00,000 in total): **intraday** Rs 40,000 (trading now), **swing**

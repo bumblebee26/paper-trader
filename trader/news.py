@@ -24,7 +24,9 @@ CATEGORY_WORDS = {
     "pledge": "share pledge", "insider": "insider or major-holder trade", "dividend_split_bonus":
     "dividend, split or bonus", "mna": "acquisition or merger", "meeting": "analyst or investor meeting",
     "corporate_action": "corporate action", "other": "announcement",
+    "media": "news report (headline names the company)", "market": "market-wide (RBI / SEBI)",
 }
+FEED_NAMES = {"bs_markets": "Business Standard", "rbi": "RBI", "sebi": "SEBI", "bse": "BSE"}
 WORRYING = {"regulatory", "pledge", "rating"}
 
 
@@ -87,6 +89,19 @@ def for_symbol(symbol, limit=5):
     return [i for i in all_items if (i.get("symbol") or "").upper() == symbol.upper()][:limit]
 
 
+def market_items(limit=5):
+    """Today's market-wide items (RBI and SEBI press releases), newest first; [] if none or unavailable."""
+    today = market.now_ist().strftime("%Y-%m-%d")
+    return [i for i in (items() or []) if i.get("category") == "market"
+            and (i.get("published_ist") or i.get("fetched_at_ist") or "").startswith(today)][:limit]
+
+
+def market_line(item):
+    title = " ".join((item.get("title") or "").split())
+    title = title if len(title) <= 120 else title[:117] + "..."
+    return f"{FEED_NAMES.get(item.get('feed'), 'Official')} {when(item)}: {title}"
+
+
 def when(item):
     t = item.get("published_ist") or item.get("fetched_at_ist") or ""
     try:
@@ -125,7 +140,7 @@ def lines_for(symbol, limit=3):
         return ["News: unavailable right now (NSE feed not reachable)."]
     if not found:
         return ["News: no NSE filings for this company today or yesterday."]
-    return ["News (NSE filings):"] + [f"- {describe(i)} {i.get('link', '')}".rstrip() for i in found]
+    return ["News (NSE filings and named headlines):"] + [f"- {describe(i)} {i.get('link', '')}".rstrip() for i in found]
 
 
 def compact(symbol) -> str:

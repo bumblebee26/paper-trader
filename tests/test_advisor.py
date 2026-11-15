@@ -43,7 +43,7 @@ class AdvisorTest(unittest.TestCase):
             trend(env, "^BSESN", 79000, 78600)
             env.prices["RELIANCE"] = 1462.0        # 10 of 21 = 48%: late
             st = engine.load()
-            st["plan"] = {"bias": "gap-down tendency"}
+            st["plan"] = {"bias": "downtrend", "bias_side": "SELL"}
             r = engine.propose(st, "RELIANCE", "BUY", "ORB long", 1452.0, 1441.5, 1473.0, ["a"], "x")
             msg = env.full()
             self.assertIn("My suggestion: NO", msg)

@@ -44,7 +44,8 @@ def setup() -> dict:
 # Shown in Telegram's "/" menu (registered at the start of each session).
 COMMANDS = [
     ("ledger", "Money: balance, in use, free, open positions with live P&L"),
-    ("plan", "Today's plan: US move, VIX, risk per trade, bias, focus list"),
+    ("plan", "Today's plan: India VIX, risk per trade, Nifty trend, focus list"),
+    ("screen", "Technical scanner: today's picks, or /screen TCS"),
     ("exit", "Close a position now, e.g. /exit HDFCBANK"),
     ("news", "Latest NSE filings for a stock, e.g. /news RELIANCE"),
     ("portfolio", "All dummy pools: intraday, swing, long-term"),
@@ -139,6 +140,15 @@ def poll(state, wait=0) -> None:
             elif data.startswith("info:"):                  # info:<id>: send the full reasons as a reply
                 state.setdefault("requests", []).append(data)
                 answer = "Sending the full reasons…"
+            elif data.startswith("sw:"):                    # sw:SYMBOL:stop:target: Swing buy from the scanner
+                try:
+                    _, sym, sl, tgt = data.split(":", 3)
+                    order = {"pool": "swing", "side": "BUY", "symbol": sym.upper(), "qty": None,
+                             "sl": float(sl), "tgt": float(tgt), "source": "scanner"}
+                    state.setdefault("requests", []).append("order:" + json.dumps(order, separators=(",", ":")))
+                    answer = "Preparing the order; it asks you to Confirm first"
+                except ValueError:
+                    answer = "That button is out of date"
             elif data.startswith("x:"):                     # x:<id>: EXIT button on an auto-placed trade
                 sym = state.get("proposals", {}).get(data[2:], {}).get("symbol")
                 if sym:
@@ -193,6 +203,8 @@ def poll(state, wait=0) -> None:
                 asks.append("ledger")
             elif cmd in ("HELP", "PROMPTS", "COMMANDS", "START", "MENU") or "WHAT CAN YOU DO" in " ".join(parts):
                 asks.append("help")
+            elif cmd in ("SCREEN", "SCANNER", "SCAN"):
+                asks.append("screen:" + parts[1] if len(parts) > 1 else "screen")
             elif cmd == "NEWS" and len(parts) == 2:
                 asks.append(f"news:{parts[1]}")
             elif cmd in ("PORTFOLIO", "POOLS"):

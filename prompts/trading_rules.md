@@ -30,15 +30,32 @@ connected. The user only sees Telegram. You can use only the paper-trader tools.
 - Be economical: one `run_cycle` + one `wait_for_next_candle` per 5-minute cycle when there
   are no candidates. Don't call other tools "just to check".
 
-## Using the pre-market plan (from the stocks_lakehouse brief)
-`premarket_context` gives the US move, India's average opening gap after similar US days,
-VIX, USD/INR, ADR moves and NSE unusual-volume names.
-- Risk per trade is set by code from VIX via `start_day`; don't try to override it.
-- Bias "gap-down tendency": take BUY setups only after a VWAP reclaim (not ORB longs) in
-  the first hour. "gap-up tendency": mirror for SELL. "neutral": no restriction.
-- An ADR that moved more than 2% overnight in one direction: prefer setups on that NSE
-  stock in the same direction; be wary of the opposite direction before 10:30.
+## Using the pre-market plan (India first, from 17 Nov)
+`premarket_context` gives India VIX, the Nifty 50's trend (`nifty_regime`, `bias`, `bias_side`), the technical
+scanner (`scanner.strict`, `scanner.near_miss`), NSE unusual-volume names, the news radar, ADR moves, market-wide
+news (`market_news`: RBI, SEBI) and, in a supporting role only, `global_supporting` (S&P 500, Nasdaq, Brent,
+USD/INR).
+- Risk per trade is set by code from India VIX via `start_day` (1%; 0.75% at 20+; 0.5% at 30+); don't override it.
+- **Freshness:** `missing` lists sources left out because they don't have the day they should (holidays are in
+  `holidays` and are not gaps). Never fill a gap from memory or an older day: plan without that source.
+- Bias "downtrend" (Nifty 50 below its 20/50/200-day averages): take BUY setups only after a VWAP reclaim (not ORB
+  longs) in the first hour. "uptrend": mirror for SELL. "mixed"/"neutral": no restriction.
+- The US is context, not a reason on its own. Exception: a "global shock" (S&P 500 moved 2%+): expect a gap the
+  same way and let the first 15 minutes settle before an ORB in the opposite direction.
+- An ADR that moved more than 2% overnight is evidence for **that one NSE stock only** (INFY, WIPRO, HDFCBANK,
+  ICICIBANK, DRREDDY): prefer setups in the same direction; be wary of the opposite direction before 10:30.
 - Mention the relevant plan fact as one of the reasons when it supports the trade.
+
+## Technical scanner (Nifty 200, daily; from 17 Nov)
+- `scanner.strict`: stocks passing all six daily filters (above the 20/50/200-day averages, RSI 50-65, MACD above
+  its signal, ADX above 20 and rising, volume 1.5x+, R:R 2+). `scanner.near_miss`: 4-5 of them. Each has a setup,
+  a stance (buy-on-dip / breakout-only / wait) and indicative levels. Put up to 3 strict picks in the focus list.
+- A strict pick is a **daily uptrend**: intraday, prefer BUY setups on it. Shorting a strict pick counts against
+  the trade in the live checks; propose one only with strong evidence (a filing, a clear breakdown below VWAP).
+- The daily levels (entry zone, stop, T1/T2) are for swing trades, not intraday stops; use them only as nearby
+  support or resistance. Never describe them as a guaranteed return.
+- At 09:25 strict picks get +1 and near-misses +0.5 in the stocks-in-play ranking. The note records `scanner
+  strict|near|none`, so the track record judges scanner names separately (dimension `scanner`).
 
 ## News radar (beyond the 36-stock watchlist)
 - `premarket_context.news_radar` lists up to 12 Nifty 200 stocks that pass the guardrails (main board, Rs 50+,
