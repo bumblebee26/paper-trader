@@ -44,9 +44,11 @@ def _typed(row):
 def _snapshot(day):
     """Balance at the end of `day`: today's live ledger, or the saved day report."""
     state = storage.get_json(storage.LEDGER_KEY) or {}
+    context = ""
     if state.get("day") == day:
         bal, realized, start = state["balance"], state.get("realized_today", 0.0), state["starting_capital"]
         when = f"{day} 23:59:59"
+        context = _context(state)
     else:
         rep = storage.get_json(f"reports/{day}.json")
         if not rep:
@@ -56,7 +58,18 @@ def _snapshot(day):
         when = f"{day} 23:59:59"
     return {"event_id": f"snapshot-{day}", "timestamp_ist": when, "event": "ledger_snapshot",
             "balance": round(bal, 2), "starting_capital": round(start, 2),
-            "realized_today": round(realized, 2), "note": "ledger at export time"}
+            "realized_today": round(realized, 2), "note": "ledger at export time" + context}
+
+
+def _context(state):
+    """The day's settings for the dashboard's header (k=v pairs after the note): auto mode, India VIX from the
+    morning plan, and the risk per trade."""
+    plan = state.get("plan") or {}
+    vix = plan.get("india_vix", plan.get("vix"))
+    pairs = {"auto_mode": "on" if state.get("auto_mode", config.AUTO_MODE_DEFAULT) else "off",
+             "vix": f"{float(vix):.1f}" if vix is not None else None,
+             "risk_pct": f"{float(state.get('day_risk_pct', config.RISK_PER_TRADE_PCT)):g}"}
+    return "".join(f";{k}={v}" for k, v in pairs.items() if v is not None)
 
 
 def build(day):

@@ -40,6 +40,9 @@ class ExportTest(unittest.TestCase):
             events = [e["event"] for e in lines]
             self.assertEqual(events[-1], "ledger_snapshot")
             self.assertEqual(lines[-1]["balance"], round(st["balance"], 2))
+            # the dashboard header reads the day's settings from the snapshot note
+            self.assertTrue(lines[-1]["note"].startswith("ledger at export time;auto_mode="))
+            self.assertIn(";risk_pct=", lines[-1]["note"])
             self.assertEqual(len({e["event_id"] for e in lines}), len(lines))  # unique ids
             fill = next(e for e in lines if e["event"] == "filled")
             exit_ = next(e for e in lines if e["event"] == "exited")
