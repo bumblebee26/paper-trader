@@ -150,6 +150,15 @@ def journal(event: str, event_id: str = "", **fields) -> None:
     storage.append_row(f"journal/{_today()}.csv", JOURNAL_COLUMNS, row)
 
 
+def secs_after_candle(t=None, ref=None) -> float:
+    """Seconds between the close of the 5-minute candle `ref` falls in (default: `t`'s) and `t` (default now).
+    The latency marks in the journal (cycle_timing, proposal_timing) are all measured from that candle close."""
+    t = t or market.now_ist()
+    ref = ref or t
+    close = ref.replace(second=0, microsecond=0) - timedelta(minutes=ref.minute % 5)
+    return round((t - close).total_seconds(), 1)
+
+
 # ----------------------------------------------------------------- helpers --
 def _hhmm(s: str):
     h, m = s.split(":")
@@ -1013,10 +1022,13 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         return {"status": "blocked", "reason": why}
 
     pid = uuid.uuid4().hex[:8]
+    t_start = market.now_ist()
     risk_pct = round(risk_rs / state["balance"] * 100, 2)
     need = qty * entry / config.INTRADAY_LEVERAGE
     advice = advisor.assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct)
+    t_checks = market.now_ist()
     review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"])
+    t_review = market.now_ist()
     advice = advisor.combine(advice, ai_yes_pct, review)
     yes = advice["yes_pct"]
     auto = auto_on(state)
@@ -1108,6 +1120,12 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
                   f" | source {'news' if is_news_pick(state, symbol) else 'watchlist'}"
                   f" | scanner {brief.scanner_status(state.get('plan'), symbol)}"
                   f" | sector {sectors.SECTOR_OF.get(symbol, 'Other')} |"))
+    # latency marks (seconds after the candle close the proposal started in): when the agent called propose_trade,
+    # how long the live checks and the independent reviewer took, and when the proposal was ready
+    journal("proposal_timing", proposal_id=pid, symbol=symbol,
+            note=(f"start={secs_after_candle(t_start)};checks_sec={(t_checks - t_start).total_seconds():.1f}"
+                  f";reviewer_sec={(t_review - t_checks).total_seconds():.1f}"
+                  f";ready={secs_after_candle(market.now_ist(), t_start)}"))
     base = {"proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
             "suggestion": f"{advice['verdict']} {yes}%"}
     p = state["proposals"][pid]
