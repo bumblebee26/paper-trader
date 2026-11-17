@@ -40,7 +40,8 @@ company financials for NSE's Nifty 200 list to the lakehouse, which scores them 
 on five quality tests (return on capital, debt, cash flow, growth, price) and names 10 picks, at most 2 per
 industry. Every Saturday at 10:15 the *Long-term shadow* job "buys" the next pick (two when Nifty is 5%+ below
 its 52-week high), sells anything that stops qualifying and trims anything above 18%, in a shadow ledger only,
-and explains each move on Telegram. The rules were backtested first (`backtest/run_longterm.py`). Picking on 1 Jul 2025
+and explains each move on Telegram. A second shadow (from 21 Nov) holds the Nifty 200's top 15 by momentum,
+rebalanced monthly, and a third swing shadow (from 18 Nov) trades momentum + news with 2% risk per trade. The rules were backtested first (`backtest/run_longterm.py`). Picking on 1 Jul 2025
 from the most traded stocks of the time (no hindsight) and holding to 9 Nov 2026 returned +1.9% (+8.4% when
 re-picked a year later) vs +0.3% for NIFTYBEES, with smaller falls (about 9% vs 14%). Picking from today's
 Nifty 200 list showed +19.7%, but most of that gap was hindsight. The swing rules failed the same kind of test, so the swing pool is held in NIFTYBEES.
@@ -83,7 +84,7 @@ trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer,
                    technical scanner (screen.py, swing_tech.py), your own trades (custom.py), Groww/NSE links,
                    weekly report, export, storage (S3/local), Telegram,
                    MCP server, Lambda handlers. Standard library + boto3 only.
-jobs/              fundamentals.py (weekly company financials for the lakehouse), longterm_shadow.py (weekly shadow pool)
+jobs/              fundamentals.py (weekly company financials for the lakehouse), longterm_shadow.py (weekly shadow pools: quality picks, momentum)
 backtest/          Swing and long-term backtests on the lakehouse's NSE daily prices
 prompts/           trading_rules.md: the rules Claude follows in a session
 infra/

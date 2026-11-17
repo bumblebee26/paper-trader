@@ -100,6 +100,13 @@ def guardian(event, context):
         except Exception as err:  # noqa: BLE001 - one shadow test failing mustn't stop the other
             log.warning("scanner shadow failed: %s", err)
             out = {**out, "technical_scanner_error": str(err)}
+        try:
+            import swing_momentum
+
+            out = {**out, "momentum": swing_momentum.run(send=True)}
+        except Exception as err:  # noqa: BLE001
+            log.warning("momentum shadow failed: %s", err)
+            out = {**out, "momentum_error": str(err)}
         if market_open_today():
             out = {**out, "your_swing_exits": custom.check_swing_stops()}
         return out

@@ -295,6 +295,9 @@ def shadow_text(state) -> str:
 
     lines += [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
     lines += [f"- {x}" for x in swing_tech.lines(swing_tech.summary())]
+    import swing_momentum
+
+    lines += [f"- {x}" for x in swing_momentum.lines(swing_momentum.summary())]
     import model_report
 
     lines += [f"- {x}" for x in model_report.lines()]
@@ -304,6 +307,12 @@ def shadow_text(state) -> str:
                      f"({lt['return_pct']:+.2f}%)"
                      + (f" vs NIFTYBEES {lt['nifty_return_pct']:+.2f}%" if lt.get("nifty_return_pct") is not None else "")
                      + "; review on 18 Dec.")
+    lm = storage.get_json("shadow/longterm_mom/latest.json") or {}
+    if lm:
+        lines.append(f"- Long-term (momentum, top 15) since {lm.get('start_date')}: "
+                     f"{inr(lm['equity'] - config.LONG_TERM_CAPITAL, sign=True)} ({lm['return_pct']:+.2f}%)"
+                     + (f" vs NIFTYBEES {lm['nifty_return_pct']:+.2f}%" if lm.get("nifty_return_pct") is not None else "")
+                     + "; rebalanced monthly.")
     lines += ["", "In Databricks: gold.shadow_pools_daily (pools vs NIFTYBEES), gold.track_record "
               "(dimension 'source': news vs watchlist; 'decision': skipped trades), gold.swing_signals."]
     return "\n".join(lines)

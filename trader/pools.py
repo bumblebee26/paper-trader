@@ -19,7 +19,7 @@ import sectors
 import storage
 
 POOLS = ("swing", "long_term")
-SHADOW_POOLS = ("long_term_shadow", "swing_shadow", "swing_tech_shadow")  # paper copies of a pool's rules: tracked, never in the portfolio totals
+SHADOW_POOLS = ("long_term_shadow", "swing_shadow", "swing_tech_shadow", "swing_mom_shadow", "long_term_mom_shadow")  # paper copies of a pool's rules: tracked, never in the portfolio totals
 LIMITS = {
     # max holdings, max % of the pool in one stock, max holdings per sector, max % of the pool per sector
     "swing": {"max_holdings": 5, "max_position_pct": 25.0, "max_per_sector": 2, "max_sector_pct": 100.0},
@@ -27,6 +27,9 @@ LIMITS = {
     "long_term_shadow": {"max_holdings": 12, "max_position_pct": 15.0, "max_per_sector": 99, "max_sector_pct": 25.0},
     "swing_shadow": {"max_holdings": 5, "max_position_pct": 20.5, "max_per_sector": 2, "max_sector_pct": 100.0},
     "swing_tech_shadow": {"max_holdings": 5, "max_position_pct": 20.5, "max_per_sector": 2, "max_sector_pct": 100.0},
+    # momentum shadows (from 18 Nov): more risk on purpose, as asked (2% risk per swing trade); 6 swing, 15 long-term
+    "swing_mom_shadow": {"max_holdings": 6, "max_position_pct": 17.0, "max_per_sector": 2, "max_sector_pct": 100.0},
+    "long_term_mom_shadow": {"max_holdings": 15, "max_position_pct": 10.5, "max_per_sector": 99, "max_sector_pct": 35.0},
 }
 JOURNAL_COLUMNS = ["timestamp_ist", "pool", "event", "symbol", "qty", "price", "fees_rs", "value_rs",
                    "pnl_rs", "cash_after", "reason", "note"]
@@ -38,7 +41,8 @@ PARK_BUFFER_PCT = 0.5        # cash left over when parking, so costs never overd
 def capital(pool):
     return {"swing": config.SWING_CAPITAL, "long_term": config.LONG_TERM_CAPITAL,
             "long_term_shadow": config.LONG_TERM_CAPITAL, "swing_shadow": config.SWING_CAPITAL,
-            "swing_tech_shadow": config.SWING_CAPITAL}[pool]
+            "swing_tech_shadow": config.SWING_CAPITAL, "swing_mom_shadow": config.SWING_CAPITAL,
+            "long_term_mom_shadow": config.LONG_TERM_CAPITAL}[pool]
 
 
 def _key(pool):
