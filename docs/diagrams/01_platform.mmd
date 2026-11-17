@@ -39,7 +39,8 @@ flowchart TB
         direction TB
         SESS["<b>Trading session</b><br/>Claude Code + paper-trader MCP<br/>09:08–12:25 · 12:27–15:25"]
         FUND["<b>Company fundamentals</b><br/>Sat 07:15 · no Claude"]
-        SHAD["<b>Long-term shadow</b><br/>Sat 10:15 · no Claude"]
+        SHAD["<b>Long-term shadow</b><br/>Sat 10:15 · no Claude<br/>quality picks · momentum"]
+        MODL["<b>Shadow models</b><br/>Mon–Fri 16:10 · no Claude"]
     end
 
     subgraph DBX["Databricks Free Edition · catalog stocks"]
@@ -49,7 +50,7 @@ flowchart TB
         PIPE["<b>3 pipelines, one at a time</b><br/>market → research · trading<br/>bronze → silver → gold"]
         GOLD["<b>Gold tables</b><br/>markets · scanner · trading · portfolio · long-term"]
         WH["<b>SQL warehouse</b>"]
-        DASH["<b>Dashboard</b><br/>Overview · Portfolio · Intraday trading<br/>Company quality"]
+        DASH["<b>Dashboard</b><br/>Portfolio · Intraday trading · Swing<br/>Long term · Your ratings · Overview"]
         VOL --> PIPE --> GOLD --> WH --> DASH
         NVOL --> PIPE
     end
@@ -69,7 +70,10 @@ flowchart TB
     NVOL -- "company news (Files API)" --> SESS
     YF -- "financials" --> FUND
     FUND -- "Sat: fundamentals + Nifty 200" --> VOL
-    WH -- "Sat: long-term picks" --> SHAD
+    WH -- "Sat: long-term picks + momentum" --> SHAD
+    WH -- "16:10 tradable list (SQL)" --> MODL
+    YF -- "5-min candles" --> MODL
+    MODL -- "results · journal" --> S3T
     SHAD -- "shadow ledger" --> S3T
     SHAD -- "weekly shadow report" --> TG
     SESS <-- "ledger" --> S3T
@@ -90,7 +94,7 @@ flowchart TB
     class NSE,MAS,FRED,YF ext
     class FET,PM,NEWS aws
     class S3L store
-    class KICK,GUARD,S3T,SESS,RESP,FUND,SHAD trader
+    class KICK,GUARD,S3T,SESS,RESP,FUND,SHAD,MODL trader
     class VOL,NVOL,PIPE,WH dbx
     class GOLD gold
     class DASH,TG out

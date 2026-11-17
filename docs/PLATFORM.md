@@ -3,7 +3,7 @@
 > The shared overview of both repositories. The same file is in
 > [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse/blob/main/docs/PLATFORM.md) and
 > [paper-trader](https://github.com/bumblebee26/paper-trader/blob/main/docs/PLATFORM.md); change both together
-> (only the diagram path differs). As of 13 Nov 2026.
+> (only the diagram path differs). As of 17 Nov 2026.
 
 ## Overview
 
@@ -26,8 +26,8 @@ trade approved by you on Telegram.
 
 ![Platform at a glance: AWS Sydney, GitHub Actions and Databricks, meeting at the morning SQL read and the 15:45 journal export](diagrams/platform_overview.png)
 
-No servers anywhere: scheduled Lambdas in AWS, a GitHub Actions job for the trading session, and a Databricks
-pipeline. The systems meet at fixed points: the session reads the gold tables before the open and the news
+No servers anywhere: scheduled Lambdas in AWS, GitHub Actions jobs for the trading session and the shadow
+tests, and three Databricks pipelines. The systems meet at fixed points: the session reads the gold tables before the open and the news
 file during the day, the guardian exports the journal and portfolio snapshot to the landing volume at 15:45,
 and the Saturday fundamentals job pushes company financials.
 
@@ -50,21 +50,22 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 08:45 | Mon–Fri | Lakehouse | Pre-market brief (India first; global as support, live from Yahoo; sources missing their day left out) and the technical scanner to Telegram |
 | 09:08 | Mon–Fri | Trader | Kicker Lambda starts the morning session; plan + focus list to Telegram |
 | 09:16 | Mon–Fri | Trader | GitHub cron backup start (skips if already running) |
+| 09:20–12:25 | Mon–Fri | Trader | Every 5 min: check positions, scan focus list, propose; you tap YES/NO |
 | 09:45 | Mon–Fri | Trader | Guardian: the scanner's strict picks checked against the first half hour |
 | 11:00 | Tue–Sat | Lakehouse | Massive: previous US session, all US stocks (history only; the free plan releases it ~10:30 IST) |
-| 09:20–12:25 | Mon–Fri | Trader | Every 5 min: check positions, scan focus list, propose; you tap YES/NO |
 | 12:27 | Mon–Fri | Trader | Afternoon session; new entries stop at 14:30 |
 | 15:10 | Mon–Fri | Trader | Square-off, then day report to Telegram |
 | 15:12 / 15:40 | Mon–Fri | Trader | Guardian backstops: square-off and report if the session didn't |
 | 15:14 | Mon–Fri | Trader | Guardian puts the swing pool's idle cash into NIFTYBEES |
-| 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` and portfolio snapshot to `landing/portfolio/`; pipeline builds the trading and portfolio tables |
-| 15:50 | Mon–Fri | Trader | Swing shadow tests: news breakouts from `gold.swing_signals`, the scanner's strict picks from `gold.technical_indicators` and momentum + news from `gold.momentum_ranks`, bought and sold on paper, vs NIFTYBEES; stops and targets on your own swing trades checked |
-| 16:10 | Mon–Fri | Trader (GitHub job) | Shadow models: volatility stop, trade filter, early cut and let winners run, plus stop variants, trained walk-forward on every tradable stock's 5-minute setups; today's real trades replayed under each (paper only) |
+| 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` and portfolio snapshot to `landing/portfolio/`; job `stocks-trading` builds the trading and portfolio tables |
+| 15:50 | Mon–Fri | Trader | Swing shadow tests: news breakouts from `gold.swing_signals`, the scanner's strict picks from `gold.technical_indicators`, and momentum + news from `gold.momentum_ranks` with its concentrated copy (top 3), bought and sold on paper, vs NIFTYBEES; stops and targets on your own swing trades checked |
+| 16:10 | Mon–Fri | Trader (GitHub job) | Shadow models: volatility stop, trade filter, early cut and let winners run, plus stop variants, trained walk-forward on the 5-minute setups of every stock in `gold.intraday_universe`; today's real trades replayed under each (paper only) |
 | 17:55 | Fri | Trader | Weekly report to Telegram |
-| 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy and delivery file for the day; pipeline refresh (including the technical scanner), then the dashboard's plain-words summaries |
+| 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy and delivery file for the day; job `stocks-market-close` runs the market then research pipelines (including the technical scanner and momentum ranks), then the dashboard's plain-words summaries |
 | 23:30 | Mon–Fri | Trader → Lakehouse | Late export: the last 4 days' journals again, so late events reach the track record overnight |
 | 07:15 | Sat | Trader → Lakehouse | Company fundamentals job: Nifty 200 financials to `landing/fundamentals/`, the list to `landing/index_members/` |
-| 10:15 | Sat | Lakehouse → Trader | Long-term shadow job: reads this week's picks, "buys"/sells in the shadow ledger; the momentum shadow rebalances on the first Saturday of the month; reports to Telegram |
+| 08:00, 12:00 | Sat | Lakehouse | Job `stocks-market-weekend`: market and research pipelines (fundamentals, Nifty 200 list, Friday's US file) |
+| 10:15 | Sat | Lakehouse → Trader | Long-term shadow job: reads this week's picks, "buys"/sells in the shadow ledger; the momentum shadows (top 15, and top 5 concentrated, from `gold.momentum_ranks`) rebalance on the first Saturday of the month; reports to Telegram |
 | every 2 min | all week | Trader | Responder answers Telegram commands (and your own orders) when no session is live |
 
 ## Components
@@ -87,11 +88,14 @@ there are no servers.
 | Trader engine and MCP tools | paper-trader | inside the session | Ledger, risk gate, Telegram approvals, simulated fills, exits, report; your own orders (`/buy`, `/short`, `/swing`, `/longterm`) while a session is live |
 | Trader state bucket | paper-trader | AWS S3 | Ledger, journal, plans, reports, exports |
 | Kicker Lambda | paper-trader | AWS Lambda | Starts each session on time via the GitHub API |
-| Guardian Lambda | paper-trader | AWS Lambda | No Claude: 09:45 scanner check, 15:12 square-off, 15:14 swing pool into NIFTYBEES, 15:40 report, 15:45 journal + portfolio export to the lakehouse, 15:50 swing shadow tests (news breakouts, technical scanner) and your swing stops/targets, 23:30 late export, Fri 17:55 weekly report |
+| Guardian Lambda | paper-trader | AWS Lambda | No Claude: 09:45 scanner check, 15:12 square-off, 15:14 swing pool into NIFTYBEES, 15:40 report, 15:45 journal + portfolio export to the lakehouse, 15:50 swing shadow tests (news breakouts, technical scanner, momentum + news and its concentrated copy) and your swing stops/targets, 23:30 late export, Fri 17:55 weekly report |
 | Responder Lambda | paper-trader | AWS Lambda | Answers every Telegram command outside sessions within ~2 min, including `/analyze` (reads company figures over the SQL warehouse) and your own orders |
 | Company fundamentals job | paper-trader | GitHub Actions | Saturdays 07:15, no Claude: Nifty 200 list + Yahoo financials to the landing volume |
-| Long-term shadow job | paper-trader | GitHub Actions | Saturdays 10:15, no Claude: acts on `longterm_candidates` in a shadow ledger (nothing real bought), report to Telegram |
+| Long-term shadow job | paper-trader | GitHub Actions | Saturdays 10:15, no Claude: acts on `longterm_candidates` in a shadow ledger, and on `momentum_ranks` in the two momentum shadow ledgers (nothing real bought), report to Telegram |
+| Shadow models job | paper-trader | GitHub Actions | Weekdays 16:10, no Claude, scikit-learn: trains and judges the intraday shadow models walk-forward, replays today's real trades; results to S3, the journal (`model_shadow`, `model_backtest`) and Telegram. Changes no trade |
 | Backtests (swing, long-term) | paper-trader | GitHub Actions | Manual, no Claude: test pool rules on the lakehouse's NSE prices and company figures, summary to Telegram |
+| Ledger reset | paper-trader | GitHub Actions | Manual (type `RESET`): every pool and shadow pool back to its starting cash; history kept. Used once, 17 Nov 2026 (Day 1 = 18 Nov) |
+| Run Databricks jobs | lakehouse | GitHub Actions | Manual: runs named jobs one after another and waits for each (e.g. to rebuild every table after a pipeline change) |
 
 ## Data flows and contracts
 
@@ -109,8 +113,9 @@ portfolio), and two per week on Saturdays (fundamentals and the Nifty 200 list).
 | Ledger | Trader ↔ S3 `state/ledger.json` | Read, change, write back on every tool call; versioned 30 days | all session |
 | Journal export | Trader → `landing/trades/date=YYYY-MM-DD/events.jsonl` | One line per event with unique `event_id` + `proposal_id`; last line `ledger_snapshot` | 15:45 |
 | Portfolio snapshot | Trader → `landing/portfolio/date=YYYY-MM-DD/portfolio.jsonl` | One `pool` row per pool (capital, cash, holdings value, equity) and one `holding` row per holding; newest file per day wins | 15:45 |
-| Long-term picks | `gold.longterm_candidates` → shadow job | Read-only SQL: rank, `is_pick`, `target_weight_pct`, `reasons`, last close | Sat 10:15 |
-| Swing signals | `gold.swing_signals`, `gold.technical_indicators` → guardian | Read-only SQL: yesterday's news breakouts with their stop; yesterday's scanner strict picks with entry zone, trigger, stop and T2 | 15:50 |
+| Long-term picks | `gold.longterm_candidates`, `gold.momentum_ranks` → shadow job | Read-only SQL: rank, `is_pick`, `target_weight_pct`, `reasons`, last close; long-term momentum rank (`lt_rank`) with 6- and 12-month returns | Sat 10:15 |
+| Swing signals | `gold.swing_signals`, `gold.technical_indicators`, `gold.momentum_ranks` → guardian | Read-only SQL: yesterday's news breakouts with their stop; yesterday's scanner strict picks with entry zone, trigger, stop and T2; the top 12 swing momentum ranks with ATR | 15:50 |
+| Model universe | `gold.intraday_universe` → shadow models job | Read-only SQL: the tradable stocks (`eligible`) | 16:10 |
 | Technical scanner | `gold.technical_screen` → guardian, responder | Read-only SQL: today's strict picks and near-misses (`/screen`, `/analyze`, the 09:45 check) | 09:45, any time |
 | Fundamentals | Trader job → `landing/fundamentals/date=YYYY-MM-DD/fundamentals.jsonl`, `landing/index_members/date=YYYY-MM-DD/nifty200.jsonl` | One line per company × metric × period; one line per Nifty 200 company (symbol, company, industry, ISIN) | Sat 07:15 |
 | Trading analysis | `trades_raw` → `trade_events` → `gold.trad*` | Newest copy per `event_id`; net P&L = exit `pnl_rs` − entry `fees_rs` | after 15:45 |
@@ -126,11 +131,15 @@ margin), free = balance − in use.
 **Gold tables for trading:** `trades` (each trade, R multiple), `trading_daily`, `trading_by_setup`,
 `trading_by_hour`, `trading_decisions` (what skipped proposals would have made), `proposal_outcomes` and
 `track_record` (how every proposal turned out by setup, hour, mood, sector, direction and more; read back every
-session), `custom_trades` (your own Telegram trades). **For the portfolio:**
-`portfolio_daily` (value of all pools vs NIFTYBEES), `holdings_latest`, `shadow_pools_daily` (rules tested on paper).
-**For the news radar:** `intraday_universe` (what the trader may trade), `swing_signals`. **For the long-term pool:**
-`company_fundamentals` (quality tests), `longterm_candidates` (this week's picks and weights; shadow mode, nothing
-is bought yet).
+session; real outcomes only), `rating_review` (your 👍/👎 vs what happened, for your own review), `custom_trades`
+(your own Telegram trades). **For the tests on paper:** `shadow_rules_trades` and `shadow_rules_summary` (exit
+rules and shadow models on your real trades), `orb_test` (opening-range test), `model_backtest` (the models' daily
+walk-forward backtest). **For the portfolio:** `portfolio_daily` (value of all pools vs NIFTYBEES),
+`holdings_latest`, `shadow_pools_daily` (every shadow pool vs NIFTYBEES). Money tables start at the 18 Nov ledger
+reset (`ledger_start`); the track record, ratings and rule tests keep all history. **For the news radar:**
+`intraday_universe` (what the trader may trade), `swing_signals`. **For the momentum shadows:** `momentum_ranks`
+(swing and long-term ranks over the Nifty 200). **For the long-term pool:** `company_fundamentals` (quality
+tests), `longterm_candidates` (this week's picks and weights; shadow mode, nothing is bought yet).
 
 ## Status and roadmap
 
@@ -141,8 +150,8 @@ Where each phase of the system plan stands. The full plan (pools, rules, backtes
 |---|---|---|---|
 | 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, realistic costs (STT, fees, GST, stamp), stocks-in-play focus at 09:25, VWAP and sector-strength checks, opening-range test on paper, auto mode (places a trade only if the suggestion is over 55%, raised by 5 for a losing setup, mood, hour, sector or direction and to 60% for flips, the trading agent over 50% and the reviewer answered; 6 trades a day; off at the weekly brake) with a lakehouse track record (real outcomes only from 17 Nov) read every session, 36 stocks in 11 sectors plus a news radar over the Nifty 200 (liquidity guardrails, news-labelled track record), sector and position caps | Track-record review 23 Nov |
 | 2 Foundations | Live | Company news on proposals, market mood, shadow rule variants, `/news` `/portfolio` `/stop`, data alerts, pool ledgers, circuit breaker, weekly report | One-tap reasons, idle-cash interest (later) |
-| 3 Swing pool | Shadow test | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14); three rule sets on paper: news breakouts (16 Nov), technical scanner (17 Nov), momentum + news (18 Nov) (`/shadow`) | Shadow review vs NIFTYBEES, mid-Dec |
-| 4 Long-term pool | Shadow mode | Weekly figures for the Nifty 200, quality tests, 10 picks a week, backtest, Saturday shadow report; momentum shadow (top 15, monthly) from 21 Nov | Go/no-go 18 Dec, live buying from 21 Dec |
+| 3 Swing pool | Shadow test | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14); three rule sets on paper: news breakouts (16 Nov), technical scanner (17 Nov), momentum + news (18 Nov) and its concentrated copy (top 3) (`/shadow`) | Shadow review vs NIFTYBEES, mid-Dec |
+| 4 Long-term pool | Shadow mode | Weekly figures for the Nifty 200, quality tests, 10 picks a week, backtest, Saturday shadow report; momentum shadows (top 15, and a concentrated top 5, monthly) from 21 Nov | Go/no-go 18 Dec, live buying from 21 Dec |
 | 5 Track record and auto mode | Live from 12 Nov | Auto mode, `gold.track_record` (real outcomes only; your 👍/👎 kept for your review, not training) (by setup, hour, mood, sector, direction, suggestion band, reviewer, mode, news or watchlist) shown in every proposal and read every session; your own trades from Telegram from 16 Nov (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`, marked custom) | Review 23 Nov |
 | 6 Shadow models (intraday) | Paper from 17 Nov | Four models (volatility stop, trade filter, early cut, let winners run) and stop variants, judged walk-forward daily (`models/results/`, `/shadow`, weekly report) | Review with you before December go-live |
 
@@ -155,7 +164,9 @@ Where each phase of the system plan stands. The full plan (pools, rules, backtes
 
 The honest long-term edge is the no-hindsight row: modest, with smaller falls. The shadow weeks decide.
 
-Reviews on the calendar: cost review Sun 15 Nov, track record Mon 23 Nov, long-term go/no-go Fri 18 Dec.
+Every pool and shadow pool restarted from its starting cash on Wed 18 Nov (ledger reset of 17 Nov), so all
+strategies are compared from the same day. Reviews on the calendar: cost review Sun 15 Nov, track record
+Mon 23 Nov, long-term go/no-go Fri 18 Dec.
 
 ## Platform constraints and design decisions
 
@@ -184,7 +195,7 @@ Each identity can do one job; no secret lives in code, and the only person with 
 | You (`AccountFullAccessRole` via `aws login`) | Local Terraform, setup | Everything in the project |
 | `stocks-gha-plan` | Both repos: plan on PR | Read-only (no state lock) |
 | `stocks-gha-apply` | Both repos: apply on merge | Manage project services; IAM only for `stocks-*` roles and `stocks-gha-*` users |
-| `stocks-gha-trader` | Trading session, fundamentals, shadow and backtest jobs | Read/write the trader state bucket (no delete); read Telegram + Databricks parameters |
+| `stocks-gha-trader` | Trading session, fundamentals, shadow, shadow-model, backtest and ledger-reset jobs | Read/write the trader state bucket (no delete); read Telegram + Databricks parameters |
 | Lakehouse Lambda roles | Fetchers (incl. news), sync, pre-market | Their own bucket, parameters and the pusher token |
 | `stocks-trader-guardian-role` | Guardian and responder Lambdas | Trader state bucket; Telegram + Databricks parameters (push token, SQL warehouse) |
 | `stocks-trader-kicker-role` | Kicker Lambda | Read the GitHub dispatch token only |
@@ -217,7 +228,7 @@ comment, merge to apply.
 | State | S3 bucket `stocks-lakehouse-tfstate-<account>` | Same bucket, key `paper-trader/aws/` |
 | Required checks on `main` | `terraform fmt`, `terraform validate (aws)`, `terraform validate (databricks)` | `Python tests and MCP server`, `terraform fmt`, `terraform validate (aws)` |
 | Ruleset `protect-main` | PR required, no force push, no deletion | same |
-| Extra workflows | — | `trading-session.yml`, `fundamentals.yml` and `longterm-shadow.yml` (Saturdays), `swing-backtest.yml` and `longterm-backtest.yml` (manual); environment `trading` |
+| Extra workflows | `run-job.yml` (manual: run Databricks jobs in order) | `trading-session.yml`, `model-shadow.yml` (weekdays 16:10), `fundamentals.yml` and `longterm-shadow.yml` (Saturdays), `swing-backtest.yml`, `longterm-backtest.yml` and `reset-ledger.yml` (manual); environment `trading` |
 
 Shared conventions: LF line endings (`.gitattributes`), committed `project.auto.tfvars` for non-secret
 settings, committed `.terraform.lock.hcl`, docs in `docs/` (ARCHITECTURE, SETUP, OPERATIONS, TROUBLESHOOTING,
@@ -231,7 +242,7 @@ Sunday 15 Nov 2026, after a full trading week.
 | Cost item | Expected | Watch |
 |---|---|---|
 | AWS (Lambda, S3, Scheduler, SSM) | Near zero, inside free-plan credits | AWS Settings → project credits |
-| Databricks | Free Edition quota (pipeline, SQL warehouse, `ai_summarize` after each refresh) | Pipeline runs per day |
+| Databricks | Free Edition quota (three pipelines, SQL warehouse, `ai_summarize` after each refresh) | Pipeline runs per day |
 | GitHub Actions | Free (public repos) | Session run time, ~6 h per trading day |
 | Claude | Your Pro/Max plan | Sessions ending early on usage limits |
 | Data (Massive, FRED, NSE, Yahoo) | Free tiers | Fetch failures in Lambda logs |
@@ -245,7 +256,8 @@ Sunday 15 Nov 2026, after a full trading week.
 | Journal, reports | S3 `stocks-trader-state-538498973473` (`journal/`, `reports/`) |
 | Trading results | Databricks dashboard → Intraday trading page (after 15:45) |
 | All pools and holdings | Send `/portfolio` on Telegram, or Databricks dashboard → Portfolio page (after 15:45) |
-| Long-term picks | Databricks dashboard → Company quality page (after the Saturday fundamentals run); Saturday shadow report on Telegram |
+| Long-term picks | Databricks dashboard → Long term page (company quality, real vs shadow pools; after the Saturday fundamentals run); Saturday shadow report on Telegram |
+| Swing and intraday tests on paper | `/shadow` on Telegram, or Databricks dashboard → Swing and Intraday trading pages |
 | Backtest results | S3 `stocks-trader-state-538498973473/backtests/` (`swing/`, `longterm/`) |
 | Kicker problems | `aws logs tail /aws/lambda/stocks-trader-kicker --since 3h --region ap-southeast-2` |
 | Pause trading | Disable the Trading session workflow; set `dispatch_enabled = false` via PR |

@@ -18,10 +18,13 @@ driven by live market data, company news and company financials, with you approv
 |---|---|---|
 | 1 Intraday upgrades | Built, live from 10 Nov | Track-record review, 23 Nov |
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
-| 3 Swing pool | Rs 60,000 held in NIFTYBEES; three rule sets in shadow mode: news breakouts (from 16 Nov), the technical scanner (from 17 Nov) and momentum + news (from 18 Nov) | Scanner signal review ~8 Dec; shadow review vs NIFTYBEES, mid-Dec |
-| 4 Long-term pool | Selection, backtest and shadow mode built; a second shadow, momentum (top 15, monthly), from 21 Nov | Go/no-go 18 Dec, buying from 21 Dec |
+| 3 Swing pool | Rs 60,000 held in NIFTYBEES; three rule sets in shadow mode: news breakouts (from 16 Nov), the technical scanner (from 17 Nov) and momentum + news (from 18 Nov, with a concentrated top-3 copy) | Scanner signal review ~8 Dec; shadow review vs NIFTYBEES, mid-Dec |
+| 4 Long-term pool | Selection, backtest and shadow mode built; a second shadow, momentum (top 15, monthly, with a concentrated top-5 copy), from 21 Nov | Go/no-go 18 Dec, buying from 21 Dec |
 | 5 Track record and auto mode | Live from 12 Nov: auto mode, track record (real outcomes only from 17 Nov) fed back every session | Review 23 Nov |
 | 6 Shadow models (intraday) | From 17 Nov, paper only: volatility stop, trade filter, early cut, let winners run, plus stop variants, judged walk-forward every day | Review with you before December go-live |
+
+Every pool and shadow pool restarted from its starting cash on Wed 18 Nov (ledger reset of 17 Nov), so all
+strategies are compared from the same day; the trade history, track record and ratings were kept.
 
 ## Principles
 
@@ -79,7 +82,7 @@ more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follow
 | Data alerts | Stale prices pause proposals with one alert and an all-clear; a news feed more than 90 minutes behind alerts once a day |
 | Pool ledgers and circuit breaker | Separate ledgers for swing and long-term with delivery costs; all pools 12% below their peak stops new buys until `/resume` |
 | Weekly report | Fridays 17:55: results, setups, your calls vs the suggestion and reviewer, background rules, all pools |
-| Dashboard | Databricks pages Portfolio, Intraday trading, Company quality and Details, KPI tiles, charts, captions, and an AI "In plain words" summary per page |
+| Dashboard | Databricks pages Portfolio, Intraday trading (with the shadow tests), Swing, Long term (with company quality), Your ratings, Overview and Details: KPI tiles, charts, captions, and an AI "In plain words" summary |
 
 Planned later: one-tap reason buttons on YES/NO, modelled interest on idle cash, business headlines from
 publishers, a macro event calendar (RBI, Budget, Fed).
@@ -304,12 +307,16 @@ Rs 16 per sell plus slippage.
 | During sessions | Proposals (suggestion, reviewer, plain words, market check, news), fills, exits, alerts |
 | ~15:20 | Day report |
 | Fri 17:55 | Weekly report |
-| Sat 10:15 | Long-term shadow report |
+| 15:50 (when something moves) | Swing shadow tests: what each paper pool bought or sold |
+| After 16:10 | Shadow models: a short note on the day's results when the job finishes |
+| Sat 10:15 | Long-term shadow reports (quality picks, momentum top 15, momentum top 5) |
 | Any time | Answers to commands |
 
-Databricks dashboard: Portfolio (value vs NIFTYBEES, fall from peak, allocation, holdings), Intraday trading
-(net P&L, win rate, profit factor, expectancy, equity curve, daily P&L, by setup and hour), Company quality
-(quality vs price, this week's picks), Details; each page starts with an AI summary. Ask Genie on the
+Databricks dashboard: Portfolio (value vs NIFTYBEES, fall from peak, allocation, holdings, every real and shadow
+strategy), Intraday trading (net P&L, win rate, profit factor, expectancy, equity curve, daily P&L, by setup and
+hour; real vs other exit rules and the shadow models, added up since 18 Nov), Swing and Long term (each real pool
+vs its shadow pools and NIFTYBEES; Long term also shows company quality and this week's picks), Your ratings,
+Overview, Details; the main pages start with an AI summary. Money pages start at the 18 Nov ledger reset. Ask Genie on the
 dashboard answers questions in plain words.
 
 ## Infrastructure and cost
@@ -322,8 +329,8 @@ Same three platforms: AWS free plan (Sydney), public GitHub Actions, Databricks 
 | Intraday sessions | GitHub Actions + Claude | Your Claude plan (the main cost) |
 | Kicker, guardian, responder | AWS Lambda | Free tier |
 | News fetcher | AWS Lambda (lakehouse) | Free tier |
-| Fundamentals, shadow, backtests | GitHub Actions, no Claude | Free (public repo) |
-| Pipeline, dashboard, AI summaries | Databricks Free Edition | Daily compute quota |
+| Fundamentals, shadow pools, shadow models, backtests | GitHub Actions, no Claude | Free (public repo) |
+| Three pipelines (market, research, trading), dashboard, AI summaries | Databricks Free Edition | Daily compute quota |
 
 Cost review: Sun 15 Nov.
 
@@ -341,6 +348,9 @@ Cost review: Sun 15 Nov.
 | Idle cash earns interest | Planned |
 | Real-money readiness checklist | After phase 5 |
 | Technical scanner (Nifty 200) | Built 17 Nov; review ~8 Dec |
+| Shadow models (intraday) | Built 17 Nov, paper only; review before December |
+| Momentum shadows (swing and long-term) and concentrated copies | Built 17 Nov, on paper from 18 / 21 Nov; December review |
+| Ratings as training data | Retired 17 Nov: your 👍/👎 is kept for your own review only |
 | Bloomberg news | Not feasible (paid terminal licence; no free feed); free sources used instead |
 
 ## Roadmap
@@ -352,7 +362,9 @@ Cost review: Sun 15 Nov.
 | 14 Nov | First long-term shadow week |
 | 15 Nov | Cost review: is Claude usage sustainable? |
 | 16 Nov | News radar (Nifty 200 beyond the watchlist) and the swing shadow pool start; your own trades from Telegram (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`) |
-| 17 Nov | Technical scanner (08:45 report, 09:45 check, `/screen`, second swing shadow pool); India-first plan with the freshness rule; more news sources |
+| 17 Nov | Technical scanner (08:45 report, 09:45 check, `/screen`, second swing shadow pool); India-first plan with the freshness rule; more news sources; shadow models (16:10 daily); ratings no longer train the system; ledger reset; lakehouse pipeline split in three |
+| 18 Nov | Day 1 after the reset: every pool from its starting cash; momentum + news swing shadow and its concentrated copy start |
+| 21 Nov | First long-term momentum shadows (top 15, top 5) |
 | 23 Nov | Track-record review (phase 5), including news vs watchlist picks |
 | ~8 Dec | Scanner signal review (about 15 trading days): `gold.signal_performance` and the scanner shadow pool vs NIFTYBEES |
 | 18 Dec | Long-term go/no-go (backtest + 5 shadow weeks) |

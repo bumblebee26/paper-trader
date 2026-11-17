@@ -25,9 +25,9 @@ life of one trade).
 | 12:27 | Afternoon session. New entries stop at 14:30 |
 | 15:10 | Everything squared off, then the day report |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
-| 15:45 | The day's journal and a portfolio snapshot (all pools and holdings) are copied to the lakehouse; its pipeline builds the trading and portfolio tables and dashboard pages |
+| 15:45 | The day's journal and a portfolio snapshot (all pools and holdings) are copied to the lakehouse; its `stocks-trading` job builds the trading and portfolio tables and dashboard pages |
+| 15:50 | Swing shadow tests: news breakouts, the technical scanner's strict picks (entry at its level the next day, stop, T2 or 15 days), and momentum + news (from 18 Nov: 6 holdings, 2% risk, trailing stop) with its concentrated copy (top 3, 3% risk), bought and sold on paper, compared with NIFTYBEES (`/shadow`); stops and targets on your own swing trades checked |
 | 16:10 | **Shadow models** (GitHub job): the volatility stop, trade filter, early cut and let-winners-run models, plus stop variants (no stop, wider stops, stop on a 5-minute close), trained on 60+ days of every tradable stock's setups and judged walk-forward; today's real trades replayed under each. Paper only, reviewed with you before December |
-| 15:50 | Swing shadow tests: news breakouts, and the technical scanner's strict picks (entry at its level the next day, stop, T2 or 15 days), bought and sold on paper, compared with NIFTYBEES (`/shadow`); stops and targets on your own swing trades checked |
 | 23:30 | The last 4 days' journals are copied again, so late events reach the lakehouse |
 
 Money is split into three dummy pools (Rs 2,00,000 in total): **intraday** Rs 40,000 (trading now), **swing**
@@ -35,13 +35,17 @@ Rs 60,000 (held in NIFTYBEES: the swing rules failed their backtest) and **long-
 mode, below). If all pools together fall 12% below their peak, a circuit breaker stops new buys until you send `/resume`. Every Friday
 evening a **weekly report** explains the week in plain words. Every Saturday a GitHub Actions job sends
 company financials for NSE's Nifty 200 list to the lakehouse, which scores them for the long-term pool.
+The ledger was reset on 17 Nov: every pool, shadow pools included, started again with its starting cash on
+Wed 18 Nov (trade history, track record and ratings kept), so all strategies are compared from the same day.
 
 **Long-term pool (shadow mode until the 18 Dec go/no-go).** Each week the lakehouse ranks Nifty 200 companies
 on five quality tests (return on capital, debt, cash flow, growth, price) and names 10 picks, at most 2 per
 industry. Every Saturday at 10:15 the *Long-term shadow* job "buys" the next pick (two when Nifty is 5%+ below
 its 52-week high), sells anything that stops qualifying and trims anything above 18%, in a shadow ledger only,
 and explains each move on Telegram. A second shadow (from 21 Nov) holds the Nifty 200's top 15 by momentum,
-rebalanced monthly, and a third swing shadow (from 18 Nov) trades momentum + news with 2% risk per trade. The rules were backtested first (`backtest/run_longterm.py`). Picking on 1 Jul 2025
+rebalanced monthly, and a third swing shadow (from 18 Nov) trades momentum + news with 2% risk per trade. Each
+momentum shadow has a concentrated copy (long-term top 5, swing top 3 with 3% risk, no sector cap) to see whether
+fewer, bigger holdings pay more. The rules were backtested first (`backtest/run_longterm.py`). Picking on 1 Jul 2025
 from the most traded stocks of the time (no hindsight) and holding to 9 Nov 2026 returned +1.9% (+8.4% when
 re-picked a year later) vs +0.3% for NIFTYBEES, with smaller falls (about 9% vs 14%). Picking from today's
 Nifty 200 list showed +19.7%, but most of that gap was hindsight. The swing rules failed the same kind of test, so the swing pool is held in NIFTYBEES.
@@ -80,11 +84,14 @@ money in use, money free, and open positions with live P&L. Every fill and exit 
 ## Repository layout
 
 ```
-trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, track record, exit rules on trial, swing shadows,
-                   technical scanner (screen.py, swing_tech.py), your own trades (custom.py), Groww/NSE links,
-                   weekly report, export, storage (S3/local), Telegram,
-                   MCP server, Lambda handlers. Standard library + boto3 only.
-jobs/              fundamentals.py (weekly company financials for the lakehouse), longterm_shadow.py (weekly shadow pools: quality picks, momentum)
+trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, track record, exit rules on trial, swing shadows
+                   (swing_shadow.py, swing_tech.py, swing_momentum.py), technical scanner (screen.py), your own trades
+                   (custom.py), Groww/NSE links, weekly report, shadow-model summary (model_report.py), export,
+                   storage (S3/local), Telegram, MCP server, Lambda handlers. Standard library + boto3 only.
+models/            Shadow models for the intraday pool (intraday.py, walkforward.py; scikit-learn, GitHub job only)
+jobs/              fundamentals.py (weekly company financials for the lakehouse), longterm_shadow.py (weekly shadow pools:
+                   quality picks, momentum top 15 and top 5), model_shadow.py (daily shadow models), reset_ledger.py
+                   (puts every pool back to its starting cash; manual)
 backtest/          Swing and long-term backtests on the lakehouse's NSE daily prices
 prompts/           trading_rules.md: the rules Claude follows in a session
 infra/
@@ -93,7 +100,8 @@ infra/
 tests/             Unit tests (no network or AWS needed)
 scripts/           render_diagrams.sh (re-render docs/diagrams)
 .github/           CI (tests, fmt, validate), security checks, Terraform CD (plan on PR, apply on merge),
-                   trading session, Saturday jobs (fundamentals, long-term shadow), backtests (manual)
+                   trading session, shadow models (weekdays 16:10), Saturday jobs (fundamentals, long-term shadow),
+                   backtests and ledger reset (manual)
 docs/              The documents below; docs/diagrams/ holds diagram sources and images
 ```
 
