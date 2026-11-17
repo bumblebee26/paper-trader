@@ -72,7 +72,7 @@ proposed that day. Otherwise it's skipped, and the day report lists what each sk
 the weekly brake turns it off. Only real outcomes teach the system: each trade's final result (and what skipped trades
 would have made) reaches `stocks.gold.track_record`, which every session reads with the last days' results to calibrate
 its suggestions. Rate any proposal with 👍/👎 (buttons or a reaction, for 7 days): ratings are for **your** review on
-the dashboard's "Your ratings" page and never train the system. The lakehouse table `stocks.gold.trading_decisions` shows later how
+the dashboard's "Your calls" page and never train the system. The lakehouse table `stocks.gold.trading_decisions` shows later how
 your YES and NO calls worked out.
 
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,
