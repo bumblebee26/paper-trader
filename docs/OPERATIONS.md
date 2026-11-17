@@ -128,7 +128,8 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Kill switch | Send `/stop`: no new proposals on any day until `/resume`; open positions are still managed |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session, ~2 min otherwise |
-| Reset the intraday pool to Rs 40,000 | Delete `state/ledger.json` from the state bucket |
+| Reset every pool (done 17 Nov 2026; Day 1 = 18 Nov) | Actions → **Reset ledger** → type `RESET` (anything else is a dry run). Every pool, shadow pools included, back to its starting cash with nothing held; portfolio peak, history and circuit breaker cleared; the old state copied to `archive/ledger-reset-<date>/`. Keeps the journals (track record), ratings, test results, Telegram offset, settings and rules. Then set `LEDGER_START` in `trader/config.py` (weekly report and weekly brake) and `ledger_start` in the lakehouse (dashboard money pages) to the next trading day. Not while the guardian is exporting (15:40–15:55, 23:25–23:40) |
+| Reset the intraday pool only | Delete `state/ledger.json` from the state bucket (also forgets the Telegram offset and settings) |
 | Pool ledgers | Swing, long-term and the shadow pools (`long_term_shadow`, `long_term_mom_shadow`, `swing_shadow`, `swing_tech_shadow`, `swing_mom_shadow`): `state/pools/<pool>.json` and `journal/pools/<pool>/<date>.csv` |
 | Resize a pool | Change `STARTING_CAPITAL` (intraday), `SWING_CAPITAL` or `LONG_TERM_CAPITAL` in `trader/config.py`; the next day the balance moves by the same amount, keeping the P&L so far |
 | Fetch company fundamentals now | Actions → Company fundamentals → Run workflow (tick *dry run* to only print) |

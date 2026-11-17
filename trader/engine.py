@@ -96,7 +96,8 @@ def _roll_week(state: dict) -> None:
 def _week_days_before_today(monday: str):
     start = datetime.strptime(monday, "%Y-%m-%d")
     today = _today()
-    return [d for d in ((start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)) if d < today]
+    return [d for d in ((start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7))
+            if config.LEDGER_START <= d < today]   # days before the ledger reset don't count
 
 
 def _journal_realized(day: str) -> float:
