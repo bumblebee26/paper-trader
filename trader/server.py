@@ -7,6 +7,7 @@
 import json
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 try:  # mcp 1.x
@@ -113,17 +114,24 @@ def market_snapshot(symbols: list[str]) -> list[dict]:
     return out
 
 
+def _analyse(symbol):
+    try:
+        return scanner.analyse(symbol), None
+    except Exception as e:  # noqa: BLE001
+        return None, str(e)
+
+
 def _scan(symbols):
+    """Candidates on the last completed 5-minute candle. Stocks are fetched SCAN_WORKERS at a time (was one by one);
+    results keep the list's order."""
     found, moves = [], {}
-    for i, s in enumerate(symbols):
-        if i and i % 5 == 0:
-            time.sleep(SCAN_PAUSE_SEC)  # small batches, gentle on Yahoo's rate limits
-        try:
-            info = scanner.analyse(s)
-            if info.get("signals"):
-                found.append(_with_market(info, moves))
-        except Exception as e:  # noqa: BLE001
-            found.append({"symbol": s, "error": str(e)})
+    with ThreadPoolExecutor(max_workers=config.SCAN_WORKERS) as ex:
+        results = list(ex.map(_analyse, symbols))
+    for s, (info, err) in zip(symbols, results):
+        if err:
+            found.append({"symbol": s, "error": err})
+        elif info.get("signals"):
+            found.append(_with_market(info, moves))
     return found
 
 
@@ -147,6 +155,7 @@ def run_cycle() -> dict:
     state = engine.load()
     try:
         mon = engine.monitor(state)
+        waited_events = state.pop("pending_events", [])
         in_play = engine.rank_in_play(state, pause=SCAN_PAUSE_SEC) if engine.in_session_hours() else []
         alerts = engine.news_alerts(state) if mon["account"]["entry_window_open"] else []
         market_news = engine.market_news(state) if mon["account"]["entry_window_open"] else []
@@ -160,7 +169,7 @@ def run_cycle() -> dict:
     acct = mon["account"]
     out = {
         "time_ist": engine._now(),
-        "events": mon["events"],
+        "events": waited_events + mon["events"],   # closures found while waiting come first
         "balance": acct["dummy_balance"],
         "realized_today": acct["realized_today"],
         "open_positions": list(acct["open_positions"].keys()),
@@ -267,27 +276,76 @@ def notify(text: str) -> dict:
 
 @mcp.tool()
 def wait_for_next_candle(session_end: str = "15:45") -> dict:
-    """Sleep until just after the next 5-minute candle closes (max ~5 min), listening on Telegram
-    so EXIT messages are picked up. Returns whether the session is over (time >= session_end IST)."""
+    """Wait for the next 5-minute candle to close (max ~5 min), listening on Telegram so EXIT messages are picked up.
+    Returns a few seconds after the close, as soon as the new candle shows, so the closed one is final.
+    While waiting, every minute: stops, targets and EXIT messages are checked on 1-minute candles (anything closed
+    is reported in the next run_cycle's events), and a fresh NSE filing on a tradable stock ends the wait early:
+    woke_for "news" means call run_cycle now (its news_alerts and candidates include that stock).
+    session_over: time >= session_end IST."""
+    global _LAST_WAKE
     now = market.now_ist()
-    nxt = now.replace(second=20, microsecond=0) + timedelta(minutes=5 - now.minute % 5)
+    close = now.replace(second=0, microsecond=0) + timedelta(minutes=5 - now.minute % 5)
     h, m = map(int, session_end.split(":"))
     end = now.replace(hour=h, minute=m, second=0, microsecond=0)
-    target = min(nxt, end) if now < end else now
-    while market.now_ist() < target:
-        left = int((target - market.now_ist()).total_seconds())
+    target = min(close + timedelta(seconds=config.WAKE_AFTER_CLOSE_SEC), end) if now < end else now
+    woke_for, news_symbols = "candle", []
+    next_check = now + timedelta(seconds=config.MONITOR_EVERY_SEC)
+    while market.now_ist() < target and woke_for == "candle":
+        left = (target - market.now_ist()).total_seconds()
         state = engine.load()
         try:
-            tg.poll(state, wait=max(1, min(25, left)))
+            tg.poll(state, wait=max(1, min(10, int(left))))
             engine.answer_requests(state)
+            if market.now_ist() >= next_check:
+                next_check = market.now_ist() + timedelta(seconds=config.MONITOR_EVERY_SEC)
+                news_symbols = _between_candles(state)
+                if news_symbols:
+                    woke_for = "news"
         except Exception:  # noqa: BLE001 - network blip: just sleep
-            time.sleep(max(1, min(25, left)))
+            time.sleep(max(1, min(10, left)))
         finally:
             engine.save(state)
         engine.heartbeat()
-    global _LAST_WAKE
+    if woke_for == "candle" and now < end <= close:
+        pass                                     # the session ends before this candle: nothing to wait for
+    elif woke_for == "candle" and now < end:
+        _await_new_candle(close)
     t = _LAST_WAKE = market.now_ist()
-    return {"time_ist": t.strftime("%H:%M:%S"), "session_over": t >= end}
+    out = {"time_ist": t.strftime("%H:%M:%S"), "session_over": t >= end, "woke_for": woke_for}
+    if news_symbols:
+        out["news_on"] = news_symbols
+    return out
+
+
+def _between_candles(state):
+    """Once a minute while waiting: stops/targets/EXIT on 1-minute candles (closures are queued for run_cycle's
+    events), then whether a fresh filing on a tradable stock should wake the agent (only while entries are open)."""
+    if state.get("positions") or state.get("exit_requests"):
+        events = engine.monitor(state)["events"]
+        if events:
+            state.setdefault("pending_events", []).extend(events)
+    if engine.in_entry_window():
+        try:
+            return engine.fresh_news(state)
+        except Exception as err:  # noqa: BLE001 - the news feed being down never stops the wait
+            log.warning("news check skipped: %s", err)
+    return []
+
+
+def _await_new_candle(close):
+    """Until Yahoo shows the Nifty candle that starts at `close` (so the one before it is final), at most
+    CANDLE_WAIT_MAX_SEC after the close. Returns whether it showed."""
+    want = close.strftime("%Y-%m-%d %H:%M")
+    deadline = close + timedelta(seconds=config.CANDLE_WAIT_MAX_SEC)
+    while market.now_ist() < deadline:
+        try:
+            bars = market.candles("^NSEI", "5m", 1)
+            if bars and bars[-1]["time"] >= want:
+                return True
+        except Exception:  # noqa: BLE001 - try again until the deadline
+            pass
+        time.sleep(2)
+    return False
 
 
 @mcp.tool()

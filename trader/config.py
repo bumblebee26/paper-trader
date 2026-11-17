@@ -102,6 +102,14 @@ NEWS_FOCUS_MAX = _i("NEWS_FOCUS_MAX", 5)
 # volume vs the same 10 minutes on the last ~14 days), so the day's most active names are the ones scanned.
 IN_PLAY_AT = os.environ.get("IN_PLAY_AT", "09:25")
 IN_PLAY_BARS = _i("IN_PLAY_BARS", 2)                      # 5-minute bars from 09:15 = the first 10 minutes
+# Cycle speed (from 19 Nov): wake a few seconds after each 5-minute candle closes and go as soon as Yahoo shows the
+# next candle (so the closed one is final; at most CANDLE_WAIT_MAX_SEC after the close; was a fixed 20 seconds).
+# While waiting, every MONITOR_EVERY_SEC: stops/targets/EXIT on 1-minute candles, and a fresh filing on a tradable
+# stock ends the wait at once. Scans fetch SCAN_WORKERS stocks at a time.
+WAKE_AFTER_CLOSE_SEC = _i("WAKE_AFTER_CLOSE_SEC", 3)
+CANDLE_WAIT_MAX_SEC = _i("CANDLE_WAIT_MAX_SEC", 25)
+MONITOR_EVERY_SEC = _i("MONITOR_EVERY_SEC", 60)
+SCAN_WORKERS = _i("SCAN_WORKERS", 4)
 MIN_STOCK_PRICE = _f("MIN_STOCK_PRICE", 50.0)          # no penny stocks
 NEWS_RADAR_CATEGORIES = ("results", "order", "mna", "management", "rating", "regulatory", "pledge", "insider",
                          "dividend_split_bonus", "board_meeting", "media")
