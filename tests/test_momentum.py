@@ -60,6 +60,23 @@ class SwingMomentum(unittest.TestCase):
             self.assertEqual(held, names[:6])
             self.assertEqual(sum(m.startswith("BUY") for m in snap["moves"]), 6)
 
+    def test_concentrated_copy_holds_top3_bigger(self):
+        with Env(datetime(2026, 11, 18, 15, 50)) as env:
+            env.bars[("NIFTYBEES", "1d")] = bar("2026-11-18", 270, 271, 269, 270)
+            names = [f"S{i}" for i in range(1, 9)]
+            for n in names:
+                env.bars[(n, "1d")] = bar("2026-11-18", 100, 103, 99, 102)
+            sigs = [sig(n, i, atr=2.0) for i, n in enumerate(names, 1)]
+            sm.daily("2026-11-18", sigs)
+            snap = sm.daily("2026-11-18", sigs, sm.CONC_POOL)
+            conc = pools.load(sm.CONC_POOL)["holdings"]
+            self.assertEqual(list(conc), ["S1", "S2", "S3"])
+            # 3% of Rs 60,000 at risk over a Rs 4 stop = 450 shares; the one-third cap (32.5%) = 195 shares at Rs 100
+            self.assertEqual(conc["S1"]["qty"], 195)
+            self.assertEqual(len(pools.load(sm.POOL)["holdings"]), 6)               # the diversified copy is unchanged
+            self.assertIn("concentrated", sm.lines(snap)[0])
+            self.assertEqual(len(sm.all_lines()), 2)
+
     def test_old_ranks_are_not_traded(self):
         with Env(datetime(2026, 11, 18, 15, 50)) as env:
             env.bars[("AAA", "1d")] = bar("2026-11-18", 500, 512, 498, 510)
@@ -93,6 +110,24 @@ class LongTermMomentum(unittest.TestCase):
             self.assertEqual(sold, {f"M{i}" for i in range(6, 16)})  # ranks 31-40 sold; 26-30 kept
             self.assertEqual(pools.load("long_term")["holdings"], {})
             self.assertIn("rebalanced this month", ls.momentum_message(s3))
+
+    def test_concentrated_top5_keep_top10(self):
+        with Env(datetime(2026, 11, 21, 10, 15), capital=40_000):
+            ranks = [rank(i, f"M{i}") for i in range(1, 41)]
+            nifty = [{"d": "2026-11-20", "close": 270.0}]
+            s1 = ls.momentum_month("2026-11-21", ranks, nifty, ls.MOM_CONC_POOL)
+            p = pools.load(ls.MOM_CONC_POOL)
+            self.assertEqual(sorted(p["holdings"], key=lambda s: int(s[1:])), [f"M{i}" for i in range(1, 6)])
+            self.assertEqual(p["holdings"]["M1"]["qty"], 19)         # ~Rs 19,600 each of Rs 1 lakh, Rs 1,000 a share
+            self.assertIn("top 5, concentrated", ls.momentum_message(s1))
+            # next month M1-M5 are ranked 8-12: 8-10 kept, 11-12 sold, the two freed places go to the new top ranks
+            order = [f"N{i}" for i in range(1, 8)] + [f"M{i}" for i in range(1, 6)] + [f"N{i}" for i in range(8, 30)]
+            moved = [rank(n, sym) for n, sym in enumerate(order, 1)]
+            s2 = ls.momentum_month("2026-12-05", moved, nifty, ls.MOM_CONC_POOL)
+            sold = {m.split()[1].rstrip(":") for m in s2["moves"] if m.startswith("SELL")}
+            self.assertEqual(sold, {"M4", "M5"})
+            self.assertEqual(set(pools.load(ls.MOM_CONC_POOL)["holdings"]), {"M1", "M2", "M3", "N1", "N2"})
+            self.assertEqual(pools.load(ls.MOM_POOL)["holdings"], {})   # the top-15 copy wasn't run here
 
 
 if __name__ == "__main__":
