@@ -54,10 +54,11 @@ only when the combined suggestion is over `AUTO_MIN_YES_PCT` (55%), the trading 
 or direction (BUY or SHORT) has a judged, losing track record, and to `AUTO_FLIP_MIN_YES_PCT` (60%) for the
 opposite side of a stock already proposed today; the rest are skipped (journal
 `rejected` with `AUTO-NO`, and `passed_outcome` with `auto_skipped`). `AUTO_MAX_TRADES_PER_DAY` (6) replaces the
-10-trade cap; the weekly brake switches auto mode off. While a placed trade is open its message has EXIT, plus
-the Groww/NSE/Full reasons links. The 👍/👎 ratings were retired on 17 Nov: only real outcomes count (an old
-rating button answers "Ratings are off"; reactions are ignored). A midday summary arrives at `MIDDAY_SUMMARY_AT`
-(12:30) and the day report counts placed and skipped decisions.
+10-trade cap; the weekly brake switches auto mode off. Each message has 👍/👎 buttons (journal `user_feedback`)
+and, while a placed trade is open, EXIT; the chosen 👍/👎 gets a ✅, and a 👍 or 👎 *reaction* counts too, for 7 days.
+From 17 Nov ratings are for your own review only (dashboard page "Your ratings": how liked and disliked trades
+really did) and never train the system: the track record and Claude's context use real outcomes only. A midday
+summary arrives at `MIDDAY_SUMMARY_AT` (12:30) and the day report counts placed, skipped and rated decisions.
 
 **Track record** (`trader/track.py`): read once per session from `stocks.gold.track_record` and shown in every
 proposal with its counts by setup, suggestion band, mood, hour, the stock's sector and the direction (rows under 8 outcomes are marked "too few to judge"); `premarket_context` gives it to

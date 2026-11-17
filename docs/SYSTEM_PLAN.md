@@ -195,7 +195,8 @@ Approximations; check with a chartered accountant before real money.
   one gets a ✅, also when you rate with a reaction), EXIT while the trade is open, Groww (any tradable stock: the
   address is made from the company name) and NSE quote links, and ℹ️ Full reasons, which replies with the long version (kept
   7 days). Reasons must agree with the live Nifty and sector moves.
-- **EXIT** closes a position. The 👍/👎 ratings were retired on 17 Nov at your request: only real outcomes count.
+- **Your 👍/👎** is recorded (`user_feedback`) for your own review: the dashboard's "Your ratings" page shows how
+  liked and disliked trades really did. From 17 Nov ratings never train the system. EXIT closes a position.
 - **The feedback loop:** the lakehouse builds `gold.proposal_outcomes` (every proposal: scores, decision,
   real outcome) and `gold.track_record` (by setup, hour, mood, sector, direction, suggestion band,
   reviewer, mode, decision, news or watchlist and scanner status, last 90 days). Each session reads it, plus

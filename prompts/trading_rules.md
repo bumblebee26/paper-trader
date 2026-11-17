@@ -124,8 +124,8 @@ data the user sees in the same message is a mistake.
 ## Learning from the track record
 `premarket_context` returns `track_record`: how past proposals turned out (taken ones by their real result,
 skipped ones by what they would have made), by setup, hour, market mood, sector, direction (BUY or SELL),
-suggestion band, reviewer verdict, mode, news or watchlist and scanner status. Only real outcomes count (the
-user's 👍/👎 ratings were retired on 17 Nov). Use it to calibrate, not to gamble:
+suggestion band, reviewer verdict, mode, news or watchlist and scanner status. Only real outcomes count: the
+user's 👍/👎 ratings are for their own review and are never used here (from 17 Nov). Use it to calibrate, not to gamble:
 - Only rows with `judged: true` (8+ outcomes) count. Ignore the others; small samples are noise.
 - A setup, hour, mood, sector or direction with a judged win rate under 35% or a negative average: lower ai_yes_pct by 10-20
   and say so in ai_reason ("ORB longs before 10:00 won 2 of 11"). Above 55% with a positive average: you may

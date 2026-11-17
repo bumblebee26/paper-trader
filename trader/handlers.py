@@ -122,7 +122,7 @@ def guardian(event, context):
         if ev.get("start"):
             return {"exports": export.export_range(ev["start"], ev.get("end", ev["start"]))}
         day = ev.get("date") or engine._today()
-        # The last 4 days, not just today: late events (evening exits, corrections) land in that day's
+        # The last 4 days, not just today: a 👍/👎 given in the evening or at the weekend lands in that day's
         # journal after its export ran (Monday's run reaches back to Friday). Re-sending a day is harmless:
         # the lakehouse keeps the newest copy of each event.
         start = (date.fromisoformat(day) - timedelta(days=3)).isoformat()

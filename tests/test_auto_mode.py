@@ -1,9 +1,9 @@
-"""Auto mode: the suggestion decides, every limit still applies (ratings retired 17 Nov)."""
+"""Auto mode: the suggestion decides, the user rates with 👍/👎, every limit still applies."""
 import unittest
 from datetime import datetime
 from unittest import mock
 
-from helpers import Env, minute_bars
+from helpers import USER_ID, Env, minute_bars
 
 import config
 import engine
@@ -93,48 +93,85 @@ class AutoModeTest(unittest.TestCase):
         r = self.propose(env, st, symbol="RELIANCE", yes=80, price=1500.0)
         self.assertEqual(r["status"], "approved")
 
-    def test_placed_message_keeps_exit_and_links_no_ratings(self):
+    def test_buttons_survive_the_placed_update_and_reactions_count(self):
         env = self.env()
         st = engine.load()
         r = self.propose(env, st, yes=95)
         engine.execute(st, r["proposal_id"])
         self.assertIn("-> Placed @", env.edits[-1])
         rows = [[b[0] for b in row] for row in env.edit_buttons[-1]]
-        self.assertEqual(rows, [["EXIT"], ["📈 Groww", "NSE quote", "ℹ️ Full reasons"]])
-
-    def test_ratings_are_retired(self):
-        # 17 Nov: only real outcomes count. Old 👍/👎 buttons and reactions are acknowledged and ignored.
-        env = self.env()
-        st = engine.load()
-        r = self.propose(env, st, yes=95)
-        engine.execute(st, r["proposal_id"])
+        self.assertEqual(rows, [["👍 good call", "👎 bad call", "EXIT"], ["📈 Groww", "NSE quote", "ℹ️ Full reasons"]])
         msg_id = st["proposals"][r["proposal_id"]]["message_id"]
-        env.tap("fb:like", r["proposal_id"])
         env.react(msg_id, "👎")
+        env.react(msg_id, "🔥")                                  # other emoji: ignored
+        env.react(msg_id + 999, "👍")                            # not a proposal message: ignored
         tg.poll(st)
         engine.answer_requests(st)
-        self.assertEqual(journal_rows("user_feedback"), [])
-        self.assertNotIn("feedback", st["proposals"][r["proposal_id"]])
-        self.assertEqual(st["decisions"], {})                    # never an approval either
-        self.assertIn("Ratings are off", env.callback_answers[-1])
+        fb = journal_rows("user_feedback")
+        self.assertEqual([(x["proposal_id"], x["user_reply"]) for x in fb], [(r["proposal_id"], "dislike")])
 
-    def test_exit_button_closes_the_trade(self):
+    def test_ratings_on_older_messages_and_removing_a_rating(self):
+        env = self.env()
+        st = engine.load()
+        r = self.propose(env, st, yes=95)
+        msg_id = st["proposals"][r["proposal_id"]]["message_id"]
+        engine.save(st)
+        env.clock = datetime(2026, 11, 16, 20, 0)               # the following Monday evening
+        st = engine.load()
+        self.assertNotIn(r["proposal_id"], st["proposals"])     # yesterday's proposals are gone...
+        env.react(msg_id, "👍")                                  # ...but the message still maps to its trade
+        tg.poll(st)
+        engine.answer_requests(st)
+        mon = [x for x in storage.read_rows("journal/2026-11-16.csv") if x["event"] == "user_feedback"]
+        self.assertEqual((mon[-1]["proposal_id"], mon[-1]["user_reply"], mon[-1]["symbol"]),
+                         (r["proposal_id"], "like", "HDFCBANK"))
+        env.updates.append({"update_id": len(env.updates) + 1, "message_reaction": {
+            "user": {"id": int(USER_ID)}, "message_id": msg_id,
+            "old_reaction": [{"type": "emoji", "emoji": "👍"}], "new_reaction": []}})
+        tg.poll(st)
+        engine.answer_requests(st)
+        mon = [x for x in storage.read_rows("journal/2026-11-16.csv") if x["event"] == "user_feedback"]
+        self.assertEqual(mon[-1]["user_reply"], "none")         # removed: no longer rated
+        env.clock = datetime(2026, 11, 24, 10, 0)               # 12 days later: too old to rate by reaction
+        st = engine.load()
+        self.assertNotIn(str(msg_id), st["msg_index"])
+
+    def test_feedback_and_exit_buttons(self):
         env = self.env()
         st = engine.load()
         r = self.propose(env, st, yes=95)
         engine.execute(st, r["proposal_id"])
+        env.tap("fb:like", r["proposal_id"])
         env.tap("x", r["proposal_id"])
         env.prices["HDFCBANK"] = 1605.0
         engine.monitor(st)
-        self.assertNotIn("HDFCBANK", st["positions"])
+        fb = journal_rows("user_feedback")
+        self.assertEqual((fb[0]["proposal_id"], fb[0]["user_reply"]), (r["proposal_id"], "like"))
+        self.assertEqual(st["proposals"][r["proposal_id"]]["feedback"], "like")
+        self.assertNotIn("HDFCBANK", st["positions"])            # EXIT button closed it
+        self.assertEqual(st["decisions"], {})                    # a like is never an approval
 
-    def test_skipped_proposal_has_only_links(self):
+    def test_the_saved_rating_shows_on_the_message(self):
         env = self.env()
         st = engine.load()
-        self.propose(env, st, yes=5)
-        msg = env.sent_buttons[env.sent.index(next(t for t in env.sent if "HDFCBANK" in t))]
-        self.assertEqual([[b[0] for b in row] for row in msg],
-                         [["📈 Groww", "NSE quote", "ℹ️ Full reasons"]])
+        r = self.propose(env, st, yes=5)                         # skipped: rating buttons only
+        msg_id = st["proposals"][r["proposal_id"]]["message_id"]
+        env.tap("fb:like", r["proposal_id"])
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertEqual(env.button_sets[-1][0], msg_id)
+        self.assertEqual(env.button_sets[-1][1][0], [("✅ 👍 good call", f"fb:like:{r['proposal_id']}"),
+                                                     ("👎 bad call", f"fb:dislike:{r['proposal_id']}")])
+        env.tap("fb:dislike", r["proposal_id"])                  # changing your mind moves the tick
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertEqual([b[0] for b in env.button_sets[-1][1][0]], ["👍 good call", "✅ 👎 bad call"])
+        r2 = self.propose(env, st, symbol="TCS", yes=95, price=3000.0)
+        engine.execute(st, r2["proposal_id"])
+        env.react(st["proposals"][r2["proposal_id"]]["message_id"], "👍")   # a reaction ticks it too
+        tg.poll(st)
+        engine.answer_requests(st)
+        self.assertEqual([b[0] for b in env.button_sets[-1][1][0]], ["✅ 👍 good call", "👎 bad call", "EXIT"])
 
     def test_commands_toggle_auto_mode(self):
         env = self.env()

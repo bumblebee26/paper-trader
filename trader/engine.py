@@ -126,7 +126,7 @@ def _new_day(state: dict) -> None:
         if p["status"] in ("pending", "approved"):
             p["status"] = "expired"
     state["proposals"] = {k: v for k, v in state["proposals"].items() if v.get("day") == _today()}
-    # Proposal messages of the last 7 days, so a button on an older message (EXIT, Full reasons) still finds its trade
+    # Proposal messages of the last 7 days, so a 👍/👎 reaction on an older message still finds its trade
     week_ago = (market.now_ist() - timedelta(days=RATING_DAYS)).strftime("%Y-%m-%d")
     state["msg_index"] = {k: v for k, v in (state.get("msg_index") or {}).items() if v.get("day", "") >= week_ago}
     state["decisions"] = {}
@@ -274,7 +274,7 @@ Commands (with or without the /):
 /stop  kill switch: no new proposals at all until /resume (open positions still managed)
 /pause  no new proposals for the day; open positions are still managed. After 14:30, at weekends or on holidays it applies to the next trading day
 /resume  allow new proposals again (undoes /pause and /stop)
-/auto on | /auto off  auto mode: trades with a suggestion over 55% YES (higher for losing groups) are placed without asking you; off = every trade needs your YES
+/auto on | /auto off  auto mode: trades with a suggestion over 55% YES (higher for losing groups) are placed without asking you (you rate them with 👍/👎); off = every trade needs your YES
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
@@ -407,22 +407,35 @@ RATING_DAYS = 7  # how long a proposal message can still be rated by a reaction
 
 
 def rating_buttons(state, pid, rating=None):
-    """Buttons for an auto-mode proposal: EXIT while its trade is open, plus the links. (The 👍/👎 ratings were
-    retired on 17 Nov: only real outcomes teach the system now; `rating` is ignored.)"""
-    buttons = []
+    """👍/👎 buttons for an auto-mode proposal, the chosen one ticked, plus EXIT while its trade is open."""
+    mark = lambda kind, label: ("✅ " if rating == kind else "") + label  # noqa: E731
+    buttons = [(mark("like", "👍 good call"), f"fb:like:{pid}"), (mark("dislike", "👎 bad call"), f"fb:dislike:{pid}")]
     if any(pos.get("proposal_id") == pid for pos in state.get("positions", {}).values()):
         buttons.append(("EXIT", f"x:{pid}"))
     symbol = (state["proposals"].get(pid) or {}).get("symbol") or next(
         (v.get("symbol") for v in (state.get("msg_index") or {}).values() if v.get("pid") == pid), "")
-    rows = [r for r in (buttons, links.buttons(symbol, pid) if symbol else []) if r]
-    return rows
+    return [buttons, links.buttons(symbol, pid)] if symbol else buttons
 
 
 def record_feedback(state) -> int:
-    """Ratings were retired on 17 Nov: only real outcomes teach the system. A tap on an old message's 👍/👎 is
-    dropped (the bot answers that ratings are off)."""
-    state.pop("feedback", None)
-    return 0
+    """Journal the user's 👍/👎 (buttons or reactions; 'none' when a reaction is removed). Feedback never changes
+    a trade and never trains the system (from 17 Nov): it is for your own review, on the dashboard's "Your ratings"
+    page. Works for proposals of earlier days too (the journal row carries the proposal_id)."""
+    taps = state.pop("feedback", {}) or {}
+    for pid, kind in taps.items():
+        p = state["proposals"].get(pid) or next(
+            (v for v in (state.get("msg_index") or {}).values() if v.get("pid") == pid), {})
+        if pid in state["proposals"]:
+            state["proposals"][pid]["feedback"] = None if kind == "none" else kind
+        journal("user_feedback", event_id=f"fb-{pid}", proposal_id=pid, symbol=p.get("symbol", ""),
+                setup=p.get("setup", ""), side=p.get("side", ""), user_reply=kind,
+                note=f"decision {p.get('user_reply', '?')} at suggestion {p.get('suggested_yes_pct', '?')}%")
+        # Show the saved rating on the message itself: the chosen button gets a ✅ (none after a removal)
+        msg_id = (state["proposals"].get(pid) or {}).get("message_id") or next(
+            (int(k) for k, v in (state.get("msg_index") or {}).items() if v.get("pid") == pid), None)
+        if msg_id:
+            tg.set_buttons(msg_id, rating_buttons(state, pid, None if kind == "none" else kind))
+    return len(taps)
 
 
 def _message_of(state, pid):
@@ -495,7 +508,7 @@ def answer_requests(state) -> int:
             set_auto(state, on)
             tg.send(f"[MOCK] Auto mode ON: proposals with a suggestion of {config.AUTO_MIN_YES_PCT:g}% YES or more are "
                     f"placed straight away (max {config.AUTO_MAX_TRADES_PER_DAY} trades a day); the rest are skipped. "
-                    "Tap EXIT to close one. Every limit still applies. /auto off to approve "
+                    "Rate each with 👍/👎, or tap EXIT to close one. Every limit still applies. /auto off to approve "
                     "each trade yourself." if on else
                     "[MOCK] Auto mode OFF: every trade needs your YES again (3 minutes to answer).")
         elif ask == "auto_status":
@@ -1055,8 +1068,10 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     if not auto:
         first = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
     else:
-        first = [("EXIT", f"x:{pid}")] if place else []
-    msg_id = tg.send(text, buttons=[r for r in (first, links.buttons(symbol, pid)) if r])
+        first = [("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}")]
+        if place:
+            first.append(("EXIT", f"x:{pid}"))
+    msg_id = tg.send(text, buttons=[first, links.buttons(symbol, pid)])
     try:
         storage.backend().put(f"reasons/{_today()}/{pid}.txt", full_text)
     except Exception as err:  # noqa: BLE001 - the full reasons are a convenience; never block a proposal
@@ -1216,8 +1231,8 @@ def execute(state, pid):
         "target": p["target"], "opened_at": _now(), "setup": p["setup"], "proposal_id": pid,
     }
     p["status"] = "filled"
-    keep = (rating_buttons(state, pid) if p.get("mode") == "auto"
-            else [links.buttons(p["symbol"], pid)])  # auto: EXIT button; always the links
+    keep = (rating_buttons(state, pid, p.get("feedback")) if p.get("mode") == "auto"
+            else [links.buttons(p["symbol"], pid)])  # auto: rating and EXIT buttons; always the links
     tg.edit(p["message_id"], p["text"] + f"\n\n-> Placed @ {fill:,.2f}", buttons=keep)
     if p["side"] == "BUY":
         did = f"Bought {p['qty']} {p['symbol']} @ {fill:,.2f}: will sell by 15:10"
@@ -1319,10 +1334,12 @@ def _midday_summary(state) -> None:
     today = [p for p in state["proposals"].values() if p.get("day") == _today()]
     placed = [p for p in today if p.get("user_reply") == "AUTO"]
     skipped = [p for p in today if p.get("user_reply") == "AUTO-NO"]
+    rated = sum(1 for p in today if p.get("feedback"))
     lines = [f"[MOCK] Midday summary (auto mode): {len(placed)} placed, {len(skipped)} skipped, "
              f"{state['trades_today']}/{trade_cap(state)} trades used.",
              f"Realized today {inr(state['realized_today'], sign=True)}; "
-             f"{len(state['positions'])} open position(s): {', '.join(state['positions']) or 'none'}."]
+             f"{len(state['positions'])} open position(s): {', '.join(state['positions']) or 'none'}.",
+             f"You rated {rated} of {len(today)} decisions so far (👍/👎 on each message)."]
     tg.send("\n".join(lines))
 
 
@@ -1542,7 +1559,10 @@ def _auto_lines(state) -> list:
     if not today:
         return []
     placed = sum(1 for p in today if p.get("user_reply") == "AUTO")
-    return [f"Auto mode: {placed} placed, {len(today) - placed} skipped."]
+    likes = sum(1 for p in today if p.get("feedback") == "like")
+    dislikes = sum(1 for p in today if p.get("feedback") == "dislike")
+    return [f"Auto mode: {placed} placed, {len(today) - placed} skipped. Your ratings: {likes} 👍, {dislikes} 👎, "
+            f"{len(today) - likes - dislikes} not rated (you can still rate them on each message)."]
 
 
 def _shadow_exit_lines(summary) -> list:

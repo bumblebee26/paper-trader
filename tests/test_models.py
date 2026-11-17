@@ -192,3 +192,17 @@ class ReportLines(unittest.TestCase):
         self.assertIn("actual -342 Rs", out[1])
         self.assertIn("trade filter +0", out[1])
         self.assertIn("skipped 1", out[1])
+
+
+class RatingsNeverTrain(unittest.TestCase):
+    def test_feedback_rows_dropped_from_the_record(self):
+        import track
+
+        track._cache = None
+        rows = [{"dimension": "feedback", "value": "like", "trades": 20, "avg_outcome_rs": -50},
+                {"dimension": "setup", "value": "ORB long", "trades": 20, "avg_outcome_rs": -50}]
+        try:
+            got = track.rows(lambda q: rows)
+        finally:
+            track._cache = None
+        self.assertEqual([r["dimension"] for r in got], ["setup"])

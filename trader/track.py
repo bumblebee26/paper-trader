@@ -26,7 +26,8 @@ def rows(runner=None):
     global _cache
     if _cache is None:
         try:
-            _cache = (runner or brief.sql)(QUERY)
+            # the user's 👍/👎 never trains the system (17 Nov): drop that dimension even if the table still has it
+            _cache = [r for r in (runner or brief.sql)(QUERY) if r.get("dimension") != "feedback"]
         except Exception as err:  # noqa: BLE001 - the record is advice; never block a proposal on it
             log.warning("track record unavailable: %s", err)
             _cache = []
@@ -107,7 +108,7 @@ def for_claude() -> list:
 
 
 def recent_days(n=10, lookback=21) -> list:
-    """The last `n` trading days' final results from the journal: the daily feedback (ratings retired 17 Nov).
+    """The last `n` trading days' final results from the journal: the daily feedback (the user's ratings never train the system).
     [{date, trades, wins, net_rs}], newest first. Days without a closed trade are left out."""
     from datetime import timedelta
 
