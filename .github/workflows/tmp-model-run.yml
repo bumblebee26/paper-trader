@@ -1,0 +1,23 @@
+# Temporary: one offline run of the shadow models on live Yahoo data (no AWS, no Telegram). Removed after use.
+name: Temporary model run
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+      - run: pip install -q boto3 "scikit-learn>=1.5" "numpy>=2.0"
+      - name: Offline run (Nifty 200, local files only)
+        env:
+          STATE_BUCKET: ""
+          LOCAL_DATA_DIR: /tmp/state
+        run: python jobs/model_shadow.py --no-send --nifty200
