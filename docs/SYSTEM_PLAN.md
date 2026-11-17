@@ -18,8 +18,8 @@ driven by live market data, company news and company financials, with you approv
 |---|---|---|
 | 1 Intraday upgrades | Built, live from 10 Nov | Track-record review, 23 Nov |
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
-| 3 Swing pool | Rs 60,000 held in NIFTYBEES; two rule sets in shadow mode: news breakouts (from 16 Nov) and the technical scanner (from 17 Nov) | Scanner signal review ~8 Dec; shadow review vs NIFTYBEES, mid-Dec |
-| 4 Long-term pool | Selection, backtest and shadow mode built | Go/no-go 18 Dec, buying from 21 Dec |
+| 3 Swing pool | Rs 60,000 held in NIFTYBEES; three rule sets in shadow mode: news breakouts (from 16 Nov), the technical scanner (from 17 Nov) and momentum + news (from 18 Nov) | Scanner signal review ~8 Dec; shadow review vs NIFTYBEES, mid-Dec |
+| 4 Long-term pool | Selection, backtest and shadow mode built; a second shadow, momentum (top 15, monthly), from 21 Nov | Go/no-go 18 Dec, buying from 21 Dec |
 | 5 Track record and auto mode | Live from 12 Nov: auto mode, track record (real outcomes only from 17 Nov) fed back every session | Review 23 Nov |
 | 6 Shadow models (intraday) | From 17 Nov, paper only: volatility stop, trade filter, early cut, let winners run, plus stop variants, judged walk-forward every day | Review with you before December go-live |
 
@@ -110,6 +110,19 @@ The rules, kept for a retry (`backtest/swing.py`):
 - **Runs** in the guardian Lambda at 15:50 on trading days (no Claude). Results: `/shadow`, the weekly report and
   `stocks.gold.shadow_pools_daily`. It moves the real Rs 60,000 only if it beats NIFTYBEES at a review after
   enough trades (about mid-December), with your OK.
+
+**Third shadow test (from 18 Nov): momentum + news, more risk on purpose.** From `stocks.gold.momentum_ranks`
+(Nifty 200): each day the strongest stocks by 1- and 3-month return and closeness to the 52-week high, ranked up
+for a fresh positive filing (results, order, merger, dividend/bonus/buyback) or a strict scanner pick and down for
+a regulatory or pledge filing; only uptrends (close above the 50- and 200-day averages) with RSI under 80. Bought
+at the next open, best-ranked first, up to 6 holdings; stop 2 x ATR under the entry, then trailing 2 x ATR under
+the highest close; out after 20 trading days. **2% of the pool at risk per trade** (double the other shadows),
+at most 1/6 of the pool in one stock. Pool `swing_mom_shadow`.
+
+**Long-term, second shadow (from 21 Nov): momentum.** Every first Saturday of the month, the Nifty 200's top 15 by
+volatility-adjusted 6- and 12-month momentum (the method behind NSE's Momentum 30 index), equal weights, leaving
+out companies with a loss or debt above 1.5x equity (outside banks); a holding is kept while it stays in the top
+30. Pool `long_term_mom_shadow`, next to the weekly quality picks; both compared with NIFTYBEES.
 
 **Second shadow test (from 17 Nov): the technical scanner.** A daily Nifty 200 scan in the lakehouse
 (`stocks.gold.technical_screen`), traded on paper in its own `swing_tech_shadow` pool, so the two ideas are

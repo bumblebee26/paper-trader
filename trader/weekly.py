@@ -195,6 +195,9 @@ def message(w, intraday_state):
 
     paper = (paper_lines(w) + [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
              + [f"- {x}" for x in swing_tech.lines(swing_tech.summary())])
+    import swing_momentum
+
+    paper += [f"- {x}" for x in swing_momentum.lines(swing_momentum.summary())]
     import model_report
 
     paper += [f"- {x}" for x in model_report.lines(days=5)]

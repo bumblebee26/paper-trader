@@ -1,4 +1,6 @@
-"""Long-term pool, shadow mode (system plan, phase 4d): every Saturday, what the pool would do this week.
+"""Long-term pool, shadow mode (system plan, phase 4d): every Saturday, what the pool would do this week, under two
+rule sets: the weekly quality picks (below) and, from 21 Nov, momentum (momentum_month: the Nifty 200's top 15 by
+volatility-adjusted 6- and 12-month momentum, rebalanced monthly).
 
   python jobs/longterm_shadow.py [--no-send]
 
@@ -116,6 +118,80 @@ def week(today, cands, nifty):
     return snap
 
 
+# ------------------------------------------------------------------ momentum (from 21 Nov, paper) --
+MOM_POOL = "long_term_mom_shadow"
+MOM_TOP, MOM_KEEP = 15, 30         # buy the top 15; keep a holding while it stays in the top 30
+MOM_CASH_PCT = 2.0                 # left in cash so costs never overdraw the pool
+MOM_SQL = """
+SELECT symbol, company, industry, CAST(lt_rank AS INT) AS lt_rank, lt_score, close, ret_6m_pct, ret_12m_pct,
+       vol_1y_pct, CAST(trade_date AS STRING) AS d
+FROM stocks.gold.momentum_ranks WHERE lt_rank IS NOT NULL ORDER BY lt_rank
+"""
+
+
+def momentum_month(today, ranks, nifty):
+    """Long-term momentum shadow: rebalanced on the first Saturday run of each month (and on the very first run);
+    other weeks it is only valued. Top 15 by volatility-adjusted 6- and 12-month momentum (the Momentum 30 method),
+    equal weights; a holding is kept while it stays in the top 30. Fills at Friday's close plus slippage and
+    delivery costs."""
+    num = lambda v: float(v) if v not in (None, "") else None  # noqa: E731
+    p = pools.load(MOM_POOL)
+    meta = p.setdefault("meta", {})
+    price = {r["symbol"]: num(r["close"]) for r in ranks if num(r["close"])}
+    rank = {r["symbol"]: int(r["lt_rank"]) for r in ranks}
+    n_close = num(nifty[0]["close"]) if nifty else None
+    if "start_date" not in meta:
+        meta.update(start_date=today, start_nifty=n_close)
+    for sym, h in p["holdings"].items():
+        if price.get(sym):
+            h["last_price"] = price[sym]
+    moves = []
+    rebalance = ranks and (not meta.get("last_rebalance") or meta["last_rebalance"][:7] != today[:7])
+    if rebalance:
+        for sym in list(p["holdings"]):
+            r = rank.get(sym)
+            if r is None or r > MOM_KEEP:
+                px = price.get(sym) or p["holdings"][sym].get("last_price")
+                out = pools.sell(p, sym, price=px, reason="left the momentum top 30")
+                moves.append(f"SELL {sym}: now {'unranked' if r is None else f'rank {r}'}, out of the top {MOM_KEEP} "
+                             f"({inr(out['pnl_rs'], sign=True)} on it).")
+        eq = pools.equity(p)
+        target = eq * (1 - MOM_CASH_PCT / 100) / MOM_TOP
+        for r in [r for r in ranks if int(r["lt_rank"]) <= MOM_TOP and r["symbol"] not in p["holdings"]]:
+            sym, px = r["symbol"], price.get(r["symbol"])
+            if not px or len(p["holdings"]) >= MOM_TOP:
+                continue
+            qty = math.floor(target / (px * (1 + config.SLIPPAGE_PCT / 100) * (1 + config.DELIVERY_COST_PCT / 100)))
+            out = pools.buy(p, sym, qty, px, reason=f"momentum rank {r['lt_rank']}", industry=r.get("industry"))
+            if out["status"] == "bought":
+                moves.append(f"BUY {sym} ({r.get('company') or sym}): rank {r['lt_rank']}, 6m {float(r['ret_6m_pct']):+.0f}%, "
+                             f"12m {float(r['ret_12m_pct']):+.0f}%, {qty} shares for about {inr(qty * out['fill'])}.")
+            else:
+                moves.append(f"SKIP {sym}: {out['reason']}.")
+        meta["last_rebalance"] = today
+    pools.save(p)
+    eq = pools.equity(p)
+    ret = (eq / pools.capital(MOM_POOL) - 1) * 100
+    nret = (n_close / meta["start_nifty"] - 1) * 100 if n_close and meta.get("start_nifty") else None
+    snap = {"date": today, "start_date": meta["start_date"], "rebalanced": bool(rebalance), "equity": round(eq, 2),
+            "return_pct": round(ret, 2), "nifty_return_pct": round(nret, 2) if nret is not None else None,
+            "moves": moves, "holdings": {s: {"qty": h["qty"], "last_price": h.get("last_price"), "rank": rank.get(s)}
+                                         for s, h in p["holdings"].items()}}
+    storage.put_json(f"shadow/longterm_mom/{today}.json", snap)
+    storage.put_json("shadow/longterm_mom/latest.json", snap)
+    return snap
+
+
+def momentum_message(s):
+    head = "rebalanced this month" if s["rebalanced"] else "valued (rebalances on the first Saturday of the month)"
+    lines = [f"[MOCK] Long-term momentum shadow, {head} (nothing real is bought):"]
+    lines += [f"- {m}" for m in s["moves"]]
+    lines.append(f"Pool {inr(s['equity'])} ({s['return_pct']:+.2f}%) since {s['start_date']}"
+                 + (f"; NIFTYBEES {s['nifty_return_pct']:+.2f}%" if s["nifty_return_pct"] is not None else "")
+                 + f"; holding {len(s['holdings'])} stocks.")
+    return "\n".join(lines)
+
+
 def message(s):
     lines = [f"[MOCK] Long-term pool, shadow week {s['week']} (nothing real is bought)", ""]
     lines += ["This week I would:"] + [f"- {m}" for m in s["moves"]] if s["moves"] else ["Nothing to do this week."]
@@ -131,14 +207,23 @@ def message(s):
 
 def main(argv):
     today = market.now_ist().strftime("%Y-%m-%d")
-    s = week(today, sql(CANDIDATES_SQL), sql(NIFTY_SQL))
-    text = message(s)
+    nifty = sql(NIFTY_SQL)
+    s = week(today, sql(CANDIDATES_SQL), nifty)
+    texts = [message(s)]
     print(json.dumps(s, indent=1))
-    print(text)
+    try:
+        m = momentum_month(today, sql(MOM_SQL), nifty)
+        texts.append(momentum_message(m))
+        print(json.dumps(m, indent=1))
+    except Exception as err:  # noqa: BLE001 - the quality shadow still reports
+        print(f"momentum shadow skipped: {err}")
+    for text in texts:
+        print(text)
     if "--no-send" not in argv:
         import telegram_bot as tg
 
-        tg.send(text)
+        for text in texts:
+            tg.send(text)
     return 0
 
 

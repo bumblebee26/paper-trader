@@ -58,13 +58,13 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 15:12 / 15:40 | Mon–Fri | Trader | Guardian backstops: square-off and report if the session didn't |
 | 15:14 | Mon–Fri | Trader | Guardian puts the swing pool's idle cash into NIFTYBEES |
 | 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` and portfolio snapshot to `landing/portfolio/`; pipeline builds the trading and portfolio tables |
-| 15:50 | Mon–Fri | Trader | Swing shadow tests: news breakouts from `gold.swing_signals` and the scanner's strict picks from `gold.technical_indicators`, bought and sold on paper, vs NIFTYBEES; stops and targets on your own swing trades checked |
+| 15:50 | Mon–Fri | Trader | Swing shadow tests: news breakouts from `gold.swing_signals`, the scanner's strict picks from `gold.technical_indicators` and momentum + news from `gold.momentum_ranks`, bought and sold on paper, vs NIFTYBEES; stops and targets on your own swing trades checked |
 | 16:10 | Mon–Fri | Trader (GitHub job) | Shadow models: volatility stop, trade filter, early cut and let winners run, plus stop variants, trained walk-forward on every tradable stock's 5-minute setups; today's real trades replayed under each (paper only) |
 | 17:55 | Fri | Trader | Weekly report to Telegram |
 | 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy and delivery file for the day; pipeline refresh (including the technical scanner), then the dashboard's plain-words summaries |
 | 23:30 | Mon–Fri | Trader → Lakehouse | Late export: the last 4 days' journals again, so late events reach the track record overnight |
 | 07:15 | Sat | Trader → Lakehouse | Company fundamentals job: Nifty 200 financials to `landing/fundamentals/`, the list to `landing/index_members/` |
-| 10:15 | Sat | Lakehouse → Trader | Long-term shadow job: reads this week's picks, "buys"/sells in the shadow ledger, report to Telegram |
+| 10:15 | Sat | Lakehouse → Trader | Long-term shadow job: reads this week's picks, "buys"/sells in the shadow ledger; the momentum shadow rebalances on the first Saturday of the month; reports to Telegram |
 | every 2 min | all week | Trader | Responder answers Telegram commands (and your own orders) when no session is live |
 
 ## Components
@@ -141,8 +141,8 @@ Where each phase of the system plan stands. The full plan (pools, rules, backtes
 |---|---|---|---|
 | 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, realistic costs (STT, fees, GST, stamp), stocks-in-play focus at 09:25, VWAP and sector-strength checks, opening-range test on paper, auto mode (places a trade only if the suggestion is over 55%, raised by 5 for a losing setup, mood, hour, sector or direction and to 60% for flips, the trading agent over 50% and the reviewer answered; 6 trades a day; off at the weekly brake) with a lakehouse track record (real outcomes only from 17 Nov) read every session, 36 stocks in 11 sectors plus a news radar over the Nifty 200 (liquidity guardrails, news-labelled track record), sector and position caps | Track-record review 23 Nov |
 | 2 Foundations | Live | Company news on proposals, market mood, shadow rule variants, `/news` `/portfolio` `/stop`, data alerts, pool ledgers, circuit breaker, weekly report | One-tap reasons, idle-cash interest (later) |
-| 3 Swing pool | Shadow test | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14); news-breakout rules on paper from 16 Nov (`/shadow`) | Shadow review vs NIFTYBEES, mid-Dec |
-| 4 Long-term pool | Shadow mode | Weekly figures for the Nifty 200, quality tests, 10 picks a week, backtest, Saturday shadow report | Go/no-go 18 Dec, live buying from 21 Dec |
+| 3 Swing pool | Shadow test | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14); three rule sets on paper: news breakouts (16 Nov), technical scanner (17 Nov), momentum + news (18 Nov) (`/shadow`) | Shadow review vs NIFTYBEES, mid-Dec |
+| 4 Long-term pool | Shadow mode | Weekly figures for the Nifty 200, quality tests, 10 picks a week, backtest, Saturday shadow report; momentum shadow (top 15, monthly) from 21 Nov | Go/no-go 18 Dec, live buying from 21 Dec |
 | 5 Track record and auto mode | Live from 12 Nov | Auto mode, `gold.track_record` (real outcomes only; your 👍/👎 kept for your review, not training) (by setup, hour, mood, sector, direction, suggestion band, reviewer, mode, news or watchlist) shown in every proposal and read every session; your own trades from Telegram from 16 Nov (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`, marked custom) | Review 23 Nov |
 | 6 Shadow models (intraday) | Paper from 17 Nov | Four models (volatility stop, trade filter, early cut, let winners run) and stop variants, judged walk-forward daily (`models/results/`, `/shadow`, weekly report) | Review with you before December go-live |
 
