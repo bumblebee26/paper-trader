@@ -26,7 +26,8 @@ def rows(runner=None):
     global _cache
     if _cache is None:
         try:
-            _cache = (runner or brief.sql)(QUERY)
+            # the user's 👍/👎 never trains the system (17 Nov): drop that dimension even if the table still has it
+            _cache = [r for r in (runner or brief.sql)(QUERY) if r.get("dimension") != "feedback"]
         except Exception as err:  # noqa: BLE001 - the record is advice; never block a proposal on it
             log.warning("track record unavailable: %s", err)
             _cache = []
@@ -104,6 +105,34 @@ def losing(setup, mood=None, hour=None, sector=None, side=None) -> list:
 def for_claude() -> list:
     """The whole record for the morning context, each row marked judged (enough outcomes) or not."""
     return [{**r, "judged": int(r.get("trades") or 0) >= MIN_TRADES} for r in rows()]
+
+
+def recent_days(n=10, lookback=21) -> list:
+    """The last `n` trading days' final results from the journal: the daily feedback (the user's ratings never train the system).
+    [{date, trades, wins, net_rs}], newest first. Days without a closed trade are left out."""
+    from datetime import timedelta
+
+    import market
+    import storage
+
+    out, d = [], market.now_ist().date()
+    for _ in range(lookback):
+        d -= timedelta(days=1)
+        if not market.is_trading_day(d):
+            continue
+        try:
+            rows = storage.read_rows(f"journal/{d.isoformat()}.csv") or []
+        except Exception:  # noqa: BLE001 - a missing day is just left out
+            continue
+        fees = {r["proposal_id"]: float(r.get("fees_rs") or 0) for r in rows if r["event"] == "filled"}
+        nets = [float(r.get("pnl_rs") or 0) - fees.get(r.get("proposal_id"), 0.0)
+                for r in rows if r["event"] in ("exited", "squared_off")]
+        if nets:
+            out.append({"date": d.isoformat(), "trades": len(nets), "wins": sum(1 for x in nets if x > 0),
+                        "net_rs": round(sum(nets), 2)})
+        if len(out) >= n:
+            break
+    return out
 
 
 def _rs(x) -> str:

@@ -120,7 +120,7 @@ APPROVAL_TIMEOUT_SEC = _i("APPROVAL_TIMEOUT_SEC", 180)
 REVIEWER_MODEL = os.environ.get("REVIEWER_MODEL", "sonnet")
 
 # Auto mode (/auto on|off on Telegram): proposals with a combined suggestion of at least AUTO_MIN_YES_PCT
-# are placed without waiting for a YES; the rest are skipped. The user's 👍/👎 is recorded as feedback.
+# are placed without waiting for a YES; the rest are skipped. The user's 👍/👎 is recorded for their own review, never used for training.
 AUTO_MODE_DEFAULT = os.environ.get("AUTO_MODE_DEFAULT", "on").lower() in ("1", "on", "true", "yes")
 AUTO_MIN_YES_PCT = _f("AUTO_MIN_YES_PCT", 55.0)
 AUTO_MIN_AGENT_PCT = _f("AUTO_MIN_AGENT_PCT", 50.0)     # Claude's own score must also be for the trade

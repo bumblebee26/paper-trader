@@ -46,7 +46,8 @@ def premarket_context() -> dict:
     news_radar: up to 12 Nifty 200 stocks with a fresh NSE filing, a 3%+ move or 2x volume that pass the
     guardrails; tradable_universe: every Nifty 200 name you may trade beyond default_watchlist.
     Also: track_record (how past proposals turned out by setup, hour, mood, suggestion band, reviewer
-    verdict, mode and the user's 👍/👎; rows with judged=false have too few outcomes to act on) and
+    verdict, mode, scanner status; real outcomes only; rows with judged=false have too few outcomes to act on),
+    recent_days (the last trading days' final results: the daily feedback) and
     auto_mode. Call once at the start of the day, then call start_day."""
     data, failed = brief.fetch()
     try:
@@ -60,6 +61,7 @@ def premarket_context() -> dict:
     plan["default_watchlist"] = DEFAULT_WATCHLIST
     plan["market_news"] = [news.market_line(i) for i in news.market_items()]
     plan["track_record"] = track.for_claude()
+    plan["recent_days"] = track.recent_days()
     plan["auto_mode"] = engine.auto_on(engine.load())
     return plan
 

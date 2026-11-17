@@ -1,0 +1,64 @@
+name: Model shadow
+
+# Shadow models for the intraday pool (volatility stop, trade filter, early cut, let winners run) and the stop
+# variants, trained and judged after every trading day. Paper only: nothing here places or changes a trade.
+# Also runnable by hand: Actions -> Model shadow -> Run workflow.
+on:
+  schedule:
+    - cron: "40 10 * * 1-5" # 16:10 IST, after the 15:45 export
+  workflow_dispatch:
+    inputs:
+      send:
+        description: Send the summary to Telegram
+        type: boolean
+        default: true
+      max_symbols:
+        description: Limit the universe (blank = all tradable stocks)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  STATE_BUCKET: ${{ vars.TRADER_STATE_BUCKET }}
+  TELEGRAM_TOKEN_PARAM: /stocks/telegram-bot-token
+  TELEGRAM_CHAT_ID_PARAM: /stocks/telegram-chat-id
+  DATABRICKS_URL_PARAM: /stocks/databricks-workspace-url
+  DATABRICKS_TOKEN_PARAM: /stocks/databricks-pusher-token
+  DATABRICKS_WAREHOUSE_PARAM: /stocks/databricks-warehouse-id
+
+jobs:
+  shadow:
+    runs-on: ubuntu-latest
+    environment: trading
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt "scikit-learn>=1.5" "numpy>=2.0"
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_TRADER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_TRADER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Train, judge and report
+        env:
+          SEND: ${{ inputs.send || 'true' }}
+          MAX_SYMBOLS: ${{ inputs.max_symbols }}
+        run: |
+          args=""
+          if [ "$SEND" != "true" ]; then args="$args --no-send"; fi
+          if [ -n "$MAX_SYMBOLS" ]; then args="$args --max-symbols $MAX_SYMBOLS"; fi
+          python jobs/model_shadow.py $args

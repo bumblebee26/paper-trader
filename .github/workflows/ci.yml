@@ -28,7 +28,10 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Unit tests (engine, brief, scanner, Lambdas; no network)
+      - name: Test libraries (scikit-learn for the shadow models)
+        run: python -m pip install --quiet "scikit-learn>=1.5" "numpy>=2.0"
+
+      - name: Unit tests (engine, brief, scanner, Lambdas, shadow models; no network)
         run: python -m unittest discover -s tests -v
 
       - name: MCP server lists its tools

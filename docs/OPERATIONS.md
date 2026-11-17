@@ -14,9 +14,9 @@
 | 15:12 | Guardian: square-off if no live session | — |
 | 15:14 | Guardian: puts the swing pool's idle cash into NIFTYBEES (once; nothing to do afterwards) | `state/pools/swing.json` |
 | 15:40 | Guardian: report if none was sent; daily portfolio snapshot (circuit breaker at 12% below the peak) | `state/portfolio.json` |
-| 15:45 | Guardian: export the last 4 days' journals (so late ratings get through) and a portfolio snapshot (every pool and holding, swing and long-term prices refreshed; shadow pools as `shadow_pool` rows) | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/`; `exports/portfolio/date=<date>/portfolio.jsonl` + volume `portfolio/` |
+| 15:45 | Guardian: export the last 4 days' journals (so late events get through) and a portfolio snapshot (every pool and holding, swing and long-term prices refreshed; shadow pools as `shadow_pool` rows) | `exports/date=<date>/events.jsonl` + lakehouse volume `trades/`; `exports/portfolio/date=<date>/portfolio.jsonl` + volume `portfolio/` |
 | 15:50 | Guardian: swing shadow test (`swing_shadow.py`): yesterday's `gold.swing_signals` bought at today's open, exits on today's candle; then the technical-scanner shadow (`swing_tech.py`): yesterday's strict picks from `gold.technical_indicators`, entered only if today reaches the scanner's level, exits at its stop, T2 or after 15 trading days. Telegram note when something moves. Also sells your own swing holdings whose stop or target was hit today | `state/pools/swing_shadow.json`, `state/pools/swing_tech_shadow.json`, `state/pools/swing.json`, `shadow/swing/<date>.json`, `shadow/swing_tech/<date>.json`, `journal/pools/swing_shadow/`, `journal/pools/swing_tech_shadow/` |
-| 23:30 | Guardian: export the last 4 days' journals again, so 👍/👎 given in the evening reach the lakehouse overnight | same journal files |
+| 23:30 | Guardian: export the last 4 days' journals again, so late events reach the lakehouse overnight | same journal files |
 | Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools) | `reports/weekly/<date>.json` |
 | Sat 07:15 | GitHub Actions *Company fundamentals*: NSE's Nifty 200 list (the 250 most traded NSE stocks if the list can't be read) plus the watchlist; financials → lakehouse `landing/fundamentals/` (feeds `stocks.gold.company_fundamentals`), the list → `landing/index_members/` | `fundamentals/date=<date>/fundamentals.jsonl`, `index_members/date=<date>/nifty200.jsonl` |
 | Sat 10:15 | GitHub Actions *Long-term shadow*: what the long-term pool would buy or sell this week (shadow ledger `state/pools/long_term_shadow.json`, never in the real portfolio); Telegram report | `shadow/longterm/<date>.json` |
@@ -54,21 +54,21 @@ only when the combined suggestion is over `AUTO_MIN_YES_PCT` (55%), the trading 
 or direction (BUY or SHORT) has a judged, losing track record, and to `AUTO_FLIP_MIN_YES_PCT` (60%) for the
 opposite side of a stock already proposed today; the rest are skipped (journal
 `rejected` with `AUTO-NO`, and `passed_outcome` with `auto_skipped`). `AUTO_MAX_TRADES_PER_DAY` (6) replaces the
-10-trade cap; the weekly brake switches auto mode off. Each message has 👍/👎 buttons (journal `user_feedback`;
-feedback never changes a trade) and, while a placed trade is open, EXIT; the buttons stay after the "Placed"
-update, the chosen 👍/👎 gets a ✅ (and Telegram says "Saved"), and a 👍 or 👎 *reaction* on the message counts
-as a rating too. Ratings can be given or changed for 7 days (the newest
-wins; removing the reaction records "none", i.e. not rated). They reach the lakehouse with the next export
-(15:45 or 23:30 on weekdays; weekend ratings on Monday). A midday summary arrives at `MIDDAY_SUMMARY_AT`
-(12:30) and the day report counts placed, skipped and rated decisions.
+10-trade cap; the weekly brake switches auto mode off. Each message has 👍/👎 buttons (journal `user_feedback`)
+and, while a placed trade is open, EXIT; the chosen 👍/👎 gets a ✅, and a 👍 or 👎 *reaction* counts too, for 7 days.
+From 17 Nov ratings are for your own review only (dashboard page "Your ratings": how liked and disliked trades
+really did) and never train the system: the track record and Claude's context use real outcomes only. A midday
+summary arrives at `MIDDAY_SUMMARY_AT` (12:30) and the day report counts placed, skipped and rated decisions.
 
 **Track record** (`trader/track.py`): read once per session from `stocks.gold.track_record` and shown in every
 proposal with its counts by setup, suggestion band, mood, hour, the stock's sector and the direction (rows under 8 outcomes are marked "too few to judge"); `premarket_context` gives it to
 Claude, whose rules allow adjusting its own score only on judged rows.
 
 **Exit rules on trial** (`trader/exits.py`, from 11 Nov; nothing changes real trades): after the close each
-trade is replayed on its 1-minute candles under the current exits and four alternatives (stop to entry at
-+1R, sell half at +1R, a trailing stop, a 60-minute time stop), plus a day profit lock (once the day is +3R, no
+trade is replayed on its 1-minute candles under the current exits and eight alternatives (stop to entry at
++1R, sell half at +1R, a trailing stop, a 60-minute time stop; from 17 Nov also no stop, the stop 1.5x and 2x
+wider with fewer shares for the same rupee risk, and a stop that counts only on a 5-minute close with a hard
+stop at 2x), plus a day profit lock (once the day is +3R, no
 new trades if it falls back to half). The day report and the weekly report show how each would have done;
 journal events `exit_variants` and `profit_lock_shadow`. Adopt one only at a review, after 15+ trades.
 

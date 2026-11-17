@@ -295,6 +295,9 @@ def shadow_text(state) -> str:
 
     lines += [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
     lines += [f"- {x}" for x in swing_tech.lines(swing_tech.summary())]
+    import model_report
+
+    lines += [f"- {x}" for x in model_report.lines()]
     lt = storage.get_json("shadow/longterm/latest.json") or {}
     if lt:
         lines.append(f"- Long-term (weekly quality picks), week {lt.get('week')}: {inr(lt['equity'] - config.LONG_TERM_CAPITAL, sign=True)} "
@@ -416,7 +419,8 @@ def rating_buttons(state, pid, rating=None):
 
 def record_feedback(state) -> int:
     """Journal the user's 👍/👎 (buttons or reactions; 'none' when a reaction is removed). Feedback never changes
-    a trade. Works for proposals of earlier days too (the journal row carries the proposal_id)."""
+    a trade and never trains the system (from 17 Nov): it is for your own review, on the dashboard's "Your ratings"
+    page. Works for proposals of earlier days too (the journal row carries the proposal_id)."""
     taps = state.pop("feedback", {}) or {}
     for pid, kind in taps.items():
         p = state["proposals"].get(pid) or next(
