@@ -117,12 +117,16 @@ for a fresh positive filing (results, order, merger, dividend/bonus/buyback) or 
 a regulatory or pledge filing; only uptrends (close above the 50- and 200-day averages) with RSI under 80. Bought
 at the next open, best-ranked first, up to 6 holdings; stop 2 x ATR under the entry, then trailing 2 x ATR under
 the highest close; out after 20 trading days. **2% of the pool at risk per trade** (double the other shadows),
-at most 1/6 of the pool in one stock. Pool `swing_mom_shadow`.
+at most 1/6 of the pool in one stock. Pool `swing_mom_shadow`. A **concentrated copy** (`swing_mom_conc_shadow`,
+from 18 Nov) trades the same signals with 3 holdings, up to a third of the pool each, 3% at risk per trade and no
+sector cap, to see whether concentrating on the top ranks pays more than spreading (compared at the December review).
 
 **Long-term, second shadow (from 21 Nov): momentum.** Every first Saturday of the month, the Nifty 200's top 15 by
 volatility-adjusted 6- and 12-month momentum (the method behind NSE's Momentum 30 index), equal weights, leaving
 out companies with a loss or debt above 1.5x equity (outside banks); a holding is kept while it stays in the top
-30. Pool `long_term_mom_shadow`, next to the weekly quality picks; both compared with NIFTYBEES.
+30. Pool `long_term_mom_shadow`, next to the weekly quality picks; both compared with NIFTYBEES. A **concentrated
+copy** (`long_term_mom_conc_shadow`) holds the top 5 (about a fifth of the pool each, no sector cap), kept while in
+the top 10.
 
 **Second shadow test (from 17 Nov): the technical scanner.** A daily Nifty 200 scan in the lakehouse
 (`stocks.gold.technical_screen`), traded on paper in its own `swing_tech_shadow` pool, so the two ideas are
@@ -373,6 +377,7 @@ Cost review: Sun 15 Nov.
 | Long-term universe | Nifty 200 |
 | Phase 2 timing | Started 9 Nov |
 | Ledger reset (17 Nov) | Every pool and shadow pool restarted with its starting cash on Wed 18 Nov, so all strategies are compared from the same day before the December review. Trade history, track record, ratings and test results kept; dashboard money pages start on 18 Nov |
+| Concentration (17 Nov) | Pushing the limits is tested on paper, not applied: concentrated copies of both momentum shadows (swing top 3, ~33% each, 3% risk; long-term top 5, ~20% each; no sector caps) run beside the diversified ones until the December review |
 | Pipelines (17 Nov) | The lakehouse pipeline split into market, research and trading (one runs at a time on Databricks Free Edition) |
 
 ## Sources

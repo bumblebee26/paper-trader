@@ -10,6 +10,10 @@ news-breakout and scanner shadows so all three can be compared on the same days 
   stop    2 x ATR(14) under the entry, then a trailing stop 2 x ATR under the highest close since entry
   exit    the trailing stop, or the close after 20 trading days
   size    2% of the pool at risk per trade (double the other shadows), at most 1/6 of the pool in one stock
+
+A concentrated copy (state/pools/swing_mom_conc_shadow.json, from 18 Nov) runs the same signals, entries and exits
+with 3 holdings, up to a third of the pool in one stock, 3% at risk per trade and no sector cap, so the December
+review can see whether concentrating on the top ranks pays more than spreading across six.
 Daily candles decide exits. Delivery costs and slippage as in the real pools. Runs with the other swing shadows in
 the guardian at 15:50 IST (action "swing_shadow"); no Claude.
 """
@@ -23,6 +27,12 @@ from http_client import log
 from swing_shadow import _previous_trading_day, _rs, _today_bar, _trading_days_between
 
 POOL = "swing_mom_shadow"
+CONC_POOL = "swing_mom_conc_shadow"
+# pool -> (label, % of the pool at risk per trade, most of the pool in one stock, snapshot folder)
+VARIANTS = {
+    POOL: ("momentum + news", 2.0, 16.5, "swing_mom"),          # 6 holdings must fit in one pool
+    CONC_POOL: ("momentum + news, concentrated (top 3)", 3.0, 32.5, "swing_mom_conc"),
+}
 SIGNALS_SQL = """
 SELECT CAST(trade_date AS STRING) AS d, symbol, company, swing_rank, swing_score, atr14, close, ret_1m_pct,
        ret_3m_pct, pct_of_52w_high, news_pos_5d, latest_good_news, scanner_strict
@@ -30,14 +40,14 @@ FROM stocks.gold.momentum_ranks
 WHERE swing_eligible AND swing_rank <= 12
 ORDER BY swing_rank
 """
-RISK_PCT = 2.0
-MAX_POSITION_PCT = 16.5   # 6 holdings must fit in one pool
+RISK_PCT, MAX_POSITION_PCT = VARIANTS[POOL][1], VARIANTS[POOL][2]
 ATR_X = 2.0
 HOLD_DAYS = 20
 
 
-def daily(today, signals):
-    p = pools.load(POOL)
+def daily(today, signals, pool=POOL):
+    _, risk_pct, max_position_pct, folder = VARIANTS[pool]
+    p = pools.load(pool)
     meta = p.setdefault("meta", {})
     moves = []
     bench = _today_bar("NIFTYBEES", today)
@@ -67,7 +77,7 @@ def daily(today, signals):
     prev = _previous_trading_day(today)
     recent = set(meta.get("recent", {}))
     for s in sorted([s for s in signals if s["d"] == prev], key=lambda s: int(s["swing_rank"])):
-        if len(p["holdings"]) >= pools.LIMITS[POOL]["max_holdings"]:
+        if len(p["holdings"]) >= pools.LIMITS[pool]["max_holdings"]:
             break
         sym = s["symbol"]
         if sym in p["holdings"] or sym in recent or not s.get("atr14"):
@@ -78,7 +88,7 @@ def daily(today, signals):
         entry, atr = float(bar["open"]), float(s["atr14"])
         stop = entry - ATR_X * atr
         eq = pools.equity(p)
-        qty = math.floor(min(eq * RISK_PCT / 100 / (entry - stop), eq * MAX_POSITION_PCT / 100 / entry))
+        qty = math.floor(min(eq * risk_pct / 100 / (entry - stop), eq * max_position_pct / 100 / entry))
         if qty < 1:
             moves.append(f"SKIP {sym}: one share (Rs {entry:,.0f}) is too big for the pool's limits")
             continue
@@ -111,21 +121,22 @@ def daily(today, signals):
     import swing_shadow
 
     snap = swing_shadow.summary(p, bench)
-    snap.update(date=today, moves=moves)
-    storage.put_json(f"shadow/swing_mom/{today}.json", snap)
+    snap.update(date=today, moves=moves, pool=pool)
+    storage.put_json(f"shadow/{folder}/{today}.json", snap)
     return snap
 
 
-def summary():
+def summary(pool=POOL):
     import swing_shadow
 
-    return swing_shadow.summary(pools.load(POOL))
+    return {**swing_shadow.summary(pools.load(pool)), "pool": pool}
 
 
 def lines(s):
+    label = VARIANTS[s.get("pool") or POOL][0]
     if not s.get("start_date"):
-        return ["Swing (momentum + news): starts with the next NSE day's ranks; nothing yet."]
-    return [f"Swing (momentum + news) since {s['start_date']}: {_rs(s['equity'] - config.SWING_CAPITAL)} "
+        return [f"Swing ({label}): starts with the next NSE day's ranks; nothing yet."]
+    return [f"Swing ({label}) since {s['start_date']}: {_rs(s['equity'] - config.SWING_CAPITAL)} "
             f"({s['return_pct']:+.2f}%)"
             + (f" vs NIFTYBEES {s['nifty_return_pct']:+.2f}%" if s.get("nifty_return_pct") is not None else "")
             + f"; holding {', '.join(s['holdings']) or 'nothing'}."]
@@ -143,8 +154,16 @@ def run(send=True):
     except Exception as err:  # noqa: BLE001 - exits still run without new ranks
         log.warning("momentum ranks unavailable: %s", err)
         signals = []
-    snap = daily(today, signals)
-    if send and snap["moves"]:
-        tg.send("\n".join(["[MOCK] Swing shadow, momentum + news (nothing real is bought):",
-                           *[f"- {m}" for m in snap["moves"]], *lines(snap)]))
-    return snap
+    out = {}
+    for pool, (label, *_rest) in VARIANTS.items():
+        snap = daily(today, signals, pool)
+        out[pool] = snap
+        if send and snap["moves"]:
+            tg.send("\n".join([f"[MOCK] Swing shadow, {label} (nothing real is bought):",
+                               *[f"- {m}" for m in snap["moves"]], *lines(snap)]))
+    return out
+
+
+def all_lines():
+    """One line per momentum variant, for the reports."""
+    return [x for pool in VARIANTS for x in lines(summary(pool))]

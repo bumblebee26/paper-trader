@@ -120,7 +120,14 @@ def week(today, cands, nifty):
 
 # ------------------------------------------------------------------ momentum (from 21 Nov, paper) --
 MOM_POOL = "long_term_mom_shadow"
+MOM_CONC_POOL = "long_term_mom_conc_shadow"
 MOM_TOP, MOM_KEEP = 15, 30         # buy the top 15; keep a holding while it stays in the top 30
+# pool -> (label, buy the top N, keep while in the top M, snapshot folder). The concentrated copy (from 18 Nov) holds 5,
+# about a fifth of the pool each, no sector cap, to see whether concentrating pays more than spreading across 15.
+MOM_VARIANTS = {
+    MOM_POOL: ("top 15", MOM_TOP, MOM_KEEP, "longterm_mom"),
+    MOM_CONC_POOL: ("top 5, concentrated", 5, 10, "longterm_mom_conc"),
+}
 MOM_CASH_PCT = 2.0                 # left in cash so costs never overdraw the pool
 MOM_SQL = """
 SELECT symbol, company, industry, CAST(lt_rank AS INT) AS lt_rank, lt_score, close, ret_6m_pct, ret_12m_pct,
@@ -129,13 +136,14 @@ FROM stocks.gold.momentum_ranks WHERE lt_rank IS NOT NULL ORDER BY lt_rank
 """
 
 
-def momentum_month(today, ranks, nifty):
+def momentum_month(today, ranks, nifty, pool=MOM_POOL):
     """Long-term momentum shadow: rebalanced on the first Saturday run of each month (and on the very first run);
     other weeks it is only valued. Top 15 by volatility-adjusted 6- and 12-month momentum (the Momentum 30 method),
     equal weights; a holding is kept while it stays in the top 30. Fills at Friday's close plus slippage and
     delivery costs."""
+    label, top, keep, folder = MOM_VARIANTS[pool]
     num = lambda v: float(v) if v not in (None, "") else None  # noqa: E731
-    p = pools.load(MOM_POOL)
+    p = pools.load(pool)
     meta = p.setdefault("meta", {})
     price = {r["symbol"]: num(r["close"]) for r in ranks if num(r["close"])}
     rank = {r["symbol"]: int(r["lt_rank"]) for r in ranks}
@@ -150,16 +158,16 @@ def momentum_month(today, ranks, nifty):
     if rebalance:
         for sym in list(p["holdings"]):
             r = rank.get(sym)
-            if r is None or r > MOM_KEEP:
+            if r is None or r > keep:
                 px = price.get(sym) or p["holdings"][sym].get("last_price")
-                out = pools.sell(p, sym, price=px, reason="left the momentum top 30")
-                moves.append(f"SELL {sym}: now {'unranked' if r is None else f'rank {r}'}, out of the top {MOM_KEEP} "
+                out = pools.sell(p, sym, price=px, reason=f"left the momentum top {keep}")
+                moves.append(f"SELL {sym}: now {'unranked' if r is None else f'rank {r}'}, out of the top {keep} "
                              f"({inr(out['pnl_rs'], sign=True)} on it).")
         eq = pools.equity(p)
-        target = eq * (1 - MOM_CASH_PCT / 100) / MOM_TOP
-        for r in [r for r in ranks if int(r["lt_rank"]) <= MOM_TOP and r["symbol"] not in p["holdings"]]:
+        target = eq * (1 - MOM_CASH_PCT / 100) / top
+        for r in [r for r in ranks if int(r["lt_rank"]) <= top and r["symbol"] not in p["holdings"]]:
             sym, px = r["symbol"], price.get(r["symbol"])
-            if not px or len(p["holdings"]) >= MOM_TOP:
+            if not px or len(p["holdings"]) >= top:
                 continue
             qty = math.floor(target / (px * (1 + config.SLIPPAGE_PCT / 100) * (1 + config.DELIVERY_COST_PCT / 100)))
             out = pools.buy(p, sym, qty, px, reason=f"momentum rank {r['lt_rank']}", industry=r.get("industry"))
@@ -171,20 +179,21 @@ def momentum_month(today, ranks, nifty):
         meta["last_rebalance"] = today
     pools.save(p)
     eq = pools.equity(p)
-    ret = (eq / pools.capital(MOM_POOL) - 1) * 100
+    ret = (eq / pools.capital(pool) - 1) * 100
     nret = (n_close / meta["start_nifty"] - 1) * 100 if n_close and meta.get("start_nifty") else None
-    snap = {"date": today, "start_date": meta["start_date"], "rebalanced": bool(rebalance), "equity": round(eq, 2),
+    snap = {"date": today, "pool": pool, "label": label, "start_date": meta["start_date"],
+            "rebalanced": bool(rebalance), "equity": round(eq, 2),
             "return_pct": round(ret, 2), "nifty_return_pct": round(nret, 2) if nret is not None else None,
             "moves": moves, "holdings": {s: {"qty": h["qty"], "last_price": h.get("last_price"), "rank": rank.get(s)}
                                          for s, h in p["holdings"].items()}}
-    storage.put_json(f"shadow/longterm_mom/{today}.json", snap)
-    storage.put_json("shadow/longterm_mom/latest.json", snap)
+    storage.put_json(f"shadow/{folder}/{today}.json", snap)
+    storage.put_json(f"shadow/{folder}/latest.json", snap)
     return snap
 
 
 def momentum_message(s):
     head = "rebalanced this month" if s["rebalanced"] else "valued (rebalances on the first Saturday of the month)"
-    lines = [f"[MOCK] Long-term momentum shadow, {head} (nothing real is bought):"]
+    lines = [f"[MOCK] Long-term momentum shadow ({s.get('label') or 'top 15'}), {head} (nothing real is bought):"]
     lines += [f"- {m}" for m in s["moves"]]
     lines.append(f"Pool {inr(s['equity'])} ({s['return_pct']:+.2f}%) since {s['start_date']}"
                  + (f"; NIFTYBEES {s['nifty_return_pct']:+.2f}%" if s["nifty_return_pct"] is not None else "")
@@ -212,9 +221,11 @@ def main(argv):
     texts = [message(s)]
     print(json.dumps(s, indent=1))
     try:
-        m = momentum_month(today, sql(MOM_SQL), nifty)
-        texts.append(momentum_message(m))
-        print(json.dumps(m, indent=1))
+        ranks = sql(MOM_SQL)
+        for pool in MOM_VARIANTS:
+            m = momentum_month(today, ranks, nifty, pool)
+            texts.append(momentum_message(m))
+            print(json.dumps(m, indent=1))
     except Exception as err:  # noqa: BLE001 - the quality shadow still reports
         print(f"momentum shadow skipped: {err}")
     for text in texts:

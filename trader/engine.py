@@ -298,7 +298,7 @@ def shadow_text(state) -> str:
     lines += [f"- {x}" for x in swing_tech.lines(swing_tech.summary())]
     import swing_momentum
 
-    lines += [f"- {x}" for x in swing_momentum.lines(swing_momentum.summary())]
+    lines += [f"- {x}" for x in swing_momentum.all_lines()]
     import model_report
 
     lines += [f"- {x}" for x in model_report.lines()]
@@ -308,9 +308,11 @@ def shadow_text(state) -> str:
                      f"({lt['return_pct']:+.2f}%)"
                      + (f" vs NIFTYBEES {lt['nifty_return_pct']:+.2f}%" if lt.get("nifty_return_pct") is not None else "")
                      + "; review on 18 Dec.")
-    lm = storage.get_json("shadow/longterm_mom/latest.json") or {}
-    if lm:
-        lines.append(f"- Long-term (momentum, top 15) since {lm.get('start_date')}: "
+    for folder, label in (("longterm_mom", "top 15"), ("longterm_mom_conc", "top 5, concentrated")):
+        lm = storage.get_json(f"shadow/{folder}/latest.json") or {}
+        if not lm:
+            continue
+        lines.append(f"- Long-term (momentum, {label}) since {lm.get('start_date')}: "
                      f"{inr(lm['equity'] - config.LONG_TERM_CAPITAL, sign=True)} ({lm['return_pct']:+.2f}%)"
                      + (f" vs NIFTYBEES {lm['nifty_return_pct']:+.2f}%" if lm.get("nifty_return_pct") is not None else "")
                      + "; rebalanced monthly.")
