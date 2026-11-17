@@ -73,20 +73,20 @@ there are no servers.
 
 | Component | Repo | Runs on | What it does |
 |---|---|---|---|
-| Fetcher Lambdas (NSE, Massive, FRED) | lakehouse | AWS Lambda | Download a day of data, archive it in S3, push the same file to the Databricks volume |
-| News Lambda | lakehouse | AWS Lambda | Every minute 09:00–15:59, every 30 min otherwise (08:00–19:30): NSE announcements, results, board meetings and corporate actions to the news volume (`/Volumes/stocks/bronze/news/`), kept out of the landing volume so it doesn't trigger a refresh |
+| Fetcher Lambdas (NSE bhavcopy + delivery, NSE F&O list, Massive, FRED) | lakehouse | AWS Lambda | Download a day of data, archive it in S3, push the same file to the Databricks volume |
+| News Lambda | lakehouse | AWS Lambda | Every minute 09:00–15:59, every 30 min otherwise (08:00–19:30): NSE announcements, results, board meetings and corporate actions (plus Business Standard markets, RBI and SEBI every few minutes) to the news volume (`/Volumes/stocks/bronze/news/`), kept out of the landing volume so it doesn't trigger a refresh |
 | S3 landing bucket | lakehouse | AWS S3 | Permanent, untouched raw archive (private, encrypted, versioned) |
 | Sync Lambda | lakehouse | AWS Lambda | Copies anything missing from S3 to the volume (backfills, repairs) |
 | Landing volume | lakehouse | Databricks | `/Volumes/stocks/bronze/landing/<source>/date=…/`, what the pipeline reads |
 | `stocks-medallion` pipeline | lakehouse | Databricks | Bronze streaming tables, silver and gold materialized views |
 | `stocks-refresh` job | lakehouse | Databricks | Runs the pipeline when files land (waits 5 min, at most every 15 min), then `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`) |
 | Dashboard | lakehouse | Databricks | Pages Overview, Portfolio, Intraday trading, Company quality and Details, each with an "In plain words" summary |
-| Pre-market Lambda | lakehouse | AWS Lambda | 08:45 brief: queries gold, sends Telegram |
+| Pre-market Lambda | lakehouse | AWS Lambda | 08:45: queries gold and a few live Yahoo figures, sends two Telegram messages (the brief, India first, and the technical scanner) |
 | Trading session | paper-trader | GitHub Actions | Claude Code + paper-trader MCP tools; morning and afternoon runs |
 | Trader engine and MCP tools | paper-trader | inside the session | Ledger, risk gate, Telegram approvals, simulated fills, exits, report; your own orders (`/buy`, `/short`, `/swing`, `/longterm`) while a session is live |
 | Trader state bucket | paper-trader | AWS S3 | Ledger, journal, plans, reports, exports |
 | Kicker Lambda | paper-trader | AWS Lambda | Starts each session on time via the GitHub API |
-| Guardian Lambda | paper-trader | AWS Lambda | No Claude: 15:12 square-off, 15:14 swing pool into NIFTYBEES, 15:40 report, 15:45 journal + portfolio export to the lakehouse, 15:50 swing shadow test and your swing stops/targets, 23:30 late export, Fri 17:55 weekly report |
+| Guardian Lambda | paper-trader | AWS Lambda | No Claude: 09:45 scanner check, 15:12 square-off, 15:14 swing pool into NIFTYBEES, 15:40 report, 15:45 journal + portfolio export to the lakehouse, 15:50 swing shadow tests (news breakouts, technical scanner) and your swing stops/targets, 23:30 late export, Fri 17:55 weekly report |
 | Responder Lambda | paper-trader | AWS Lambda | Answers every Telegram command outside sessions within ~2 min, including `/analyze` (reads company figures over the SQL warehouse) and your own orders |
 | Company fundamentals job | paper-trader | GitHub Actions | Saturdays 07:15, no Claude: Nifty 200 list + Yahoo financials to the landing volume |
 | Long-term shadow job | paper-trader | GitHub Actions | Saturdays 10:15, no Claude: acts on `longterm_candidates` in a shadow ledger (nothing real bought), report to Telegram |

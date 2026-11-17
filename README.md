@@ -5,8 +5,8 @@ proposes trades with reasons on **Telegram**, and nothing happens unless you tap
 or bank account is involved.
 
 It builds on [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse): the lakehouse's
-pre-market data (US move, India's usual opening gap after such days, VIX, unusual volume, ADRs) sets each
-day's risk level and focus list.
+pre-market data (India VIX, the Nifty 50's trend, the technical scanner's picks, unusual volume, ADRs; the US
+only as support) sets each day's risk level and focus list.
 
 ![Platform at a glance: AWS Sydney, GitHub Actions and Databricks, meeting at the morning SQL read and the 15:45 journal export](docs/diagrams/platform_overview.png)
 
@@ -20,8 +20,8 @@ life of one trade).
 |---|---|
 | 08:45 | Lakehouse pre-market brief (India first: India VIX, the Nifty 50's trend; the US only as support) and the **technical scanner** (Nifty 200 strict picks with indicative levels and a Swing buy button) arrive on Telegram |
 | 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data (any source missing the day it should have is left out, never replaced by an older day), sends the day plan and focus list |
-| 09:45 | Scanner check: each strict pick against the first half hour (triggered, in its entry zone, waiting, extended or invalidated) |
 | 09:20–12:25 | Every 5 minutes: check positions, scan the focus list (up to 15 names: the 36-stock watchlist plus news-radar picks from the Nifty 200), and any stock with a fresh NSE filing; propose setups |
+| 09:45 | Scanner check: each strict pick against the first half hour (triggered, in its entry zone, waiting, extended or invalidated) |
 | 12:27 | Afternoon session. New entries stop at 14:30 |
 | 15:10 | Everything squared off, then the day report |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
@@ -68,7 +68,7 @@ the weekly brake turns it off. Rate any proposal with the 👍/👎 buttons or a
 your YES and NO calls worked out.
 
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,
-`/exit SYMBOL`, `/news SYMBOL`, `/portfolio`, `/shadow` (everything tested on paper), `/analyze SYMBOL`, your own trades with `/buy`, `/short`, `/swing buy|sell`, `/longterm buy|sell` (each order shows its numbers and costs and runs only when you tap Confirm within 3 minutes; marked custom and kept out of the trader's own track record), `/auto on|off`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
+`/exit SYMBOL`, `/news SYMBOL`, `/screen` (the technical scanner's picks, or `/screen SYMBOL`), `/portfolio`, `/shadow` (everything tested on paper), `/analyze SYMBOL`, your own trades with `/buy`, `/short`, `/swing buy|sell`, `/longterm buy|sell` (each order shows its numbers and costs and runs only when you tap Confirm within 3 minutes; marked custom and kept out of the trader's own track record), `/auto on|off`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
 within seconds during sessions, within ~2 minutes otherwise (evenings, weekends). A `/pause` sent in the evening
 skips the next trading day. `EXIT RELIANCE` closes that position; `LEDGER` gives a statement: balance,
 money in use, money free, and open positions with live P&L. Every fill and exit also ends with a one-line ledger.
@@ -76,8 +76,9 @@ money in use, money free, and open positions with live P&L. Every fill and exit 
 ## Repository layout
 
 ```
-trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, track record, exit rules on trial, swing shadow,
-                   your own trades (custom.py), Groww/NSE links, weekly report, export, storage (S3/local), Telegram,
+trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, track record, exit rules on trial, swing shadows,
+                   technical scanner (screen.py, swing_tech.py), your own trades (custom.py), Groww/NSE links,
+                   weekly report, export, storage (S3/local), Telegram,
                    MCP server, Lambda handlers. Standard library + boto3 only.
 jobs/              fundamentals.py (weekly company financials for the lakehouse), longterm_shadow.py (weekly shadow pool)
 backtest/          Swing and long-term backtests on the lakehouse's NSE daily prices
