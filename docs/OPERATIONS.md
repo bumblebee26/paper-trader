@@ -7,8 +7,8 @@
 | 08:45 | Lakehouse pre-market brief | Telegram |
 | 09:08 | Kicker → morning session | Telegram plan, `plans/<date>.json`, journal |
 | 09:16 | GitHub cron backup (skips if already claimed) | — |
-| 09:45 | Guardian: scanner check (`screen.py`): the morning's strict picks from `gold.technical_screen` against the live price and opening volume; Telegram note with a Swing buy button for triggered or in-zone picks | journal `scanner_check` |
 | 09:20–12:25 | Morning cycles every 5 minutes | proposals, fills, exits |
+| 09:45 | Guardian: scanner check (`screen.py`): the morning's strict picks from `gold.technical_screen` against the live price and opening volume; Telegram note with a Swing buy button for triggered or in-zone picks | journal `scanner_check` |
 | 12:27 / 12:36 | Afternoon session (kicker / backup) | — |
 | 15:10 | Square-off, then end-of-day report | `reports/<date>.json` |
 | 15:12 | Guardian: square-off if no live session | — |
@@ -99,6 +99,7 @@ counts, but their profit or loss counts toward the daily loss limit. Journal: se
 | Risk limits, capital, costs, times | defaults in `trader/config.py` (or `env:` in the workflow) |
 | VIX → risk scaling, bias thresholds | `risk_for_vix` / `build_plan` in `trader/brief.py` |
 | Setups (ORB, VWAP, PDH/PDL) | `trader/scanner.py` |
+| Technical scanner: `/screen`, the 09:45 check, its shadow pool (risk, 15-day limit) | `trader/screen.py`, `trader/swing_tech.py` (the filters themselves are in the lakehouse) |
 | Your own trades (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`) | `trader/custom.py` (defaults at the top) |
 | Groww and NSE buttons | `trader/links.py` (hand-checked Groww addresses for the watchlist) |
 | Session times | `trader/session_ctl.py`, `infra/aws/schedules.tf`, cron in `trading-session.yml` |
@@ -119,6 +120,7 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | All commands | Send `/help` (or `/prompts`, or "what can you do?") on Telegram; they're also in the bot's `/` menu |
 | Stop new proposals for a day | Send `/pause`: before 14:30 on a trading day it applies to today, otherwise to the next trading day. Open positions are still managed; `/resume` undoes it |
 | See today's plan again | Send `/plan` |
+| The technical scanner | Send `/screen` for today's strict picks and near-misses with their levels, or `/screen TCS` for one stock against the six filters |
 | A company's latest filings | Send `/news SYMBOL` (NSE announcements, results, board meetings; from the lakehouse news feed) |
 | All pools | Send `/portfolio`: intraday (live), swing Rs 60,000 (held in NIFTYBEES) and long-term Rs 1,00,000 (shadow mode until the 18 Dec review) |
 | Analyse any stock | Send `/analyze TCS` (add `intraday`, `swing` or `longterm` for one view) |
@@ -127,7 +129,7 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session, ~2 min otherwise |
 | Reset the intraday pool to Rs 40,000 | Delete `state/ledger.json` from the state bucket |
-| Pool ledgers | Swing, long-term and the long-term shadow: `state/pools/<pool>.json` and `journal/pools/<pool>/<date>.csv` |
+| Pool ledgers | Swing, long-term and the shadow pools (`long_term_shadow`, `swing_shadow`, `swing_tech_shadow`): `state/pools/<pool>.json` and `journal/pools/<pool>/<date>.csv` |
 | Resize a pool | Change `STARTING_CAPITAL` (intraday), `SWING_CAPITAL` or `LONG_TERM_CAPITAL` in `trader/config.py`; the next day the balance moves by the same amount, keeping the P&L so far |
 | Fetch company fundamentals now | Actions → Company fundamentals → Run workflow (tick *dry run* to only print) |
 | Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`). A single `date` also writes a portfolio snapshot under that date, taken from the pools as they are now; a range re-sends journals only |

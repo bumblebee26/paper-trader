@@ -8,14 +8,14 @@ config:
 flowchart TB
     subgraph EXT["Outside this repo"]
         direction LR
-        YF["<b>Yahoo Finance</b><br/>chart API · NSE 1-min / 5-min"]
+        YF["<b>Yahoo Finance</b><br/>chart API · NSE 1-min / 5-min<br/>India VIX · Nifty 50 · world figures"]
         GOLD[("<b>stocks_lakehouse gold</b><br/>via SQL warehouse")]
         VOL[("<b>Lakehouse volume</b><br/>landing/trades/ · portfolio/")]
     end
 
     subgraph AWS["AWS account · free plan · ap-southeast-2 (Sydney)"]
         direction TB
-        SCH["<b>EventBridge Scheduler</b> (Asia/Kolkata)<br/>kicks 09:08 · 12:27 · guards 15:12 · 15:14 · 15:40 · 15:45 · 15:50 · 23:30<br/>weekly report Fri 17:55 · responder every 2 min"]
+        SCH["<b>EventBridge Scheduler</b> (Asia/Kolkata)<br/>kicks 09:08 · 12:27 · guards 09:45 · 15:12 · 15:14 · 15:40 · 15:45 · 15:50 · 23:30<br/>weekly report Fri 17:55 · responder every 2 min"]
         subgraph LAMBDAS["Lambda functions (Python 3.13, arm64)"]
             direction LR
             KICK["stocks-trader-kicker"]
