@@ -82,7 +82,7 @@ there are no servers.
 | Landing volume | lakehouse | Databricks | `/Volumes/stocks/bronze/landing/<source>/date=…/`, what the pipeline reads |
 | Pipelines `stocks-market`, `stocks-research`, `stocks-trading` | lakehouse | Databricks | Market data in and cleaned (33 tables); the heavy daily research: scanner, momentum ranks (5); paper-trader's journal, portfolio and shadows (23). Bronze streaming tables, silver and gold materialized views. One runs at a time (Free Edition) |
 | Jobs `stocks-market-close`, `stocks-market-weekend`, `stocks-trading` | lakehouse | Databricks | When the NSE file lands: market → research; Saturday 08:00 and 12:00: the same; when paper-trader's export lands: trading. Each then runs `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`). Pipeline tasks retry every 15 min if another pipeline is running |
-| Dashboard | lakehouse | Databricks | Pages Portfolio, Intraday trading (with shadow tests), Swing, Long term (each real pool vs its shadow pools), Your ratings, Overview and Details |
+| Dashboard | lakehouse | Databricks | Pages Desk, Intraday, Swing, Long term (each real pool vs its shadows, with a Show filter), Your calls and Global markets |
 | Pre-market Lambda | lakehouse | AWS Lambda | 08:45: queries gold and a few live Yahoo figures, sends two Telegram messages (the brief, India first, and the technical scanner) |
 | Trading session | paper-trader | GitHub Actions | Claude Code + paper-trader MCP tools; morning and afternoon runs |
 | Trader engine and MCP tools | paper-trader | inside the session | Ledger, risk gate, Telegram approvals, simulated fills, exits, report; your own orders (`/buy`, `/short`, `/swing`, `/longterm`) while a session is live |
@@ -254,10 +254,10 @@ Sunday 15 Nov 2026, after a full trading week.
 | Live money (balance, in use, free, open positions) | Send `LEDGER` on Telegram during a session, or S3 `stocks-trader-state-538498973473/state/ledger.json` |
 | Session logs | paper-trader → Actions → Trading session |
 | Journal, reports | S3 `stocks-trader-state-538498973473` (`journal/`, `reports/`) |
-| Trading results | Databricks dashboard → Intraday trading page (after 15:45) |
-| All pools and holdings | Send `/portfolio` on Telegram, or Databricks dashboard → Portfolio page (after 15:45) |
+| Trading results | Databricks dashboard → Desk and Intraday pages (after 15:45) |
+| All pools and holdings | Send `/portfolio` on Telegram, or Databricks dashboard → Desk page (after 15:45) |
 | Long-term picks | Databricks dashboard → Long term page (company quality, real vs shadow pools; after the Saturday fundamentals run); Saturday shadow report on Telegram |
-| Swing and intraday tests on paper | `/shadow` on Telegram, or Databricks dashboard → Swing and Intraday trading pages |
+| Swing and intraday tests on paper | `/shadow` on Telegram, or Databricks dashboard → Swing and Intraday pages (Show filter: real, shadow or both) |
 | Backtest results | S3 `stocks-trader-state-538498973473/backtests/` (`swing/`, `longterm/`) |
 | Kicker problems | `aws logs tail /aws/lambda/stocks-trader-kicker --since 3h --region ap-southeast-2` |
 | Pause trading | Disable the Trading session workflow; set `dispatch_enabled = false` via PR |

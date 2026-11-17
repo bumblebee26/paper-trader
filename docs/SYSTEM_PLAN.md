@@ -82,7 +82,7 @@ more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follow
 | Data alerts | Stale prices pause proposals with one alert and an all-clear; a news feed more than 90 minutes behind alerts once a day |
 | Pool ledgers and circuit breaker | Separate ledgers for swing and long-term with delivery costs; all pools 12% below their peak stops new buys until `/resume` |
 | Weekly report | Fridays 17:55: results, setups, your calls vs the suggestion and reviewer, background rules, all pools |
-| Dashboard | Databricks pages Portfolio, Intraday trading (with the shadow tests), Swing, Long term (with company quality), Your ratings, Overview and Details: KPI tiles, charts, captions, and an AI "In plain words" summary |
+| Dashboard | Databricks pages Desk, Intraday, Swing, Long term, Your calls and Global markets (redesigned 18 Nov): headline tiles, one main chart, breakdowns, then tables; a Show filter (real / shadow / benchmark) on Intraday, Swing and Long term |
 
 Planned later: one-tap reason buttons on YES/NO, modelled interest on idle cash, business headlines from
 publishers, a macro event calendar (RBI, Budget, Fed).
@@ -215,7 +215,7 @@ Approximations; check with a chartered accountant before real money.
   one gets a ✅, also when you rate with a reaction), EXIT while the trade is open, Groww (any tradable stock: the
   address is made from the company name) and NSE quote links, and ℹ️ Full reasons, which replies with the long version (kept
   7 days). Reasons must agree with the live Nifty and sector moves.
-- **Your 👍/👎** is recorded (`user_feedback`) for your own review: the dashboard's "Your ratings" page shows how
+- **Your 👍/👎** is recorded (`user_feedback`) for your own review: the dashboard's "Your calls" page shows how
   liked and disliked trades really did. From 17 Nov ratings never train the system. EXIT closes a position.
 - **The feedback loop:** the lakehouse builds `gold.proposal_outcomes` (every proposal: scores, decision,
   real outcome) and `gold.track_record` (by setup, hour, mood, sector, direction, suggestion band,
@@ -312,11 +312,13 @@ Rs 16 per sell plus slippage.
 | Sat 10:15 | Long-term shadow reports (quality picks, momentum top 15, momentum top 5) |
 | Any time | Answers to commands |
 
-Databricks dashboard: Portfolio (value vs NIFTYBEES, fall from peak, allocation, holdings, every real and shadow
-strategy), Intraday trading (net P&L, win rate, profit factor, expectancy, equity curve, daily P&L, by setup and
-hour; real vs other exit rules and the shadow models, added up since 18 Nov), Swing and Long term (each real pool
-vs its shadow pools and NIFTYBEES; Long term also shows company quality and this week's picks), Your ratings,
-Overview, Details; the main pages start with an AI summary. Money pages start at the 18 Nov ledger reset. Ask Genie on the
+Databricks dashboard (redesigned 18 Nov, same order on every page: tiles, main chart, breakdowns, tables):
+Desk (auto mode, VIX, mood; portfolio vs NIFTYBEES, track record by setup, today's decisions, real and shadow
+leaderboard, holdings), Intraday (real vs every exit rule, model and the opening-range test in one chart, with a
+Show filter; daily P&L, by setup and hour, model tests on ~200 stocks), Swing and Long term (real pool vs shadow pools
+vs NIFTYBEES with a Show filter; scanner, momentum ranks, company quality), Your calls (your 👍/👎 vs what happened:
+right %, liked vs disliked results, you vs the trader, by week and setup) and Global markets (today's read written
+from the data with fixed rules, world moves, who India's open follows, after-US-moves table, NSE breadth, ADRs). Money pages start at the 18 Nov ledger reset. Ask Genie on the
 dashboard answers questions in plain words.
 
 ## Infrastructure and cost

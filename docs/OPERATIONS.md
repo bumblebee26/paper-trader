@@ -57,7 +57,7 @@ opposite side of a stock already proposed today; the rest are skipped (journal
 `rejected` with `AUTO-NO`, and `passed_outcome` with `auto_skipped`). `AUTO_MAX_TRADES_PER_DAY` (6) replaces the
 10-trade cap; the weekly brake switches auto mode off. Each message has 👍/👎 buttons (journal `user_feedback`)
 and, while a placed trade is open, EXIT; the chosen 👍/👎 gets a ✅, and a 👍 or 👎 *reaction* counts too, for 7 days.
-From 17 Nov ratings are for your own review only (dashboard page "Your ratings": how liked and disliked trades
+From 17 Nov ratings are for your own review only (dashboard page "Your calls": how liked and disliked trades
 really did) and never train the system: the track record and Claude's context use real outcomes only. A midday
 summary arrives at `MIDDAY_SUMMARY_AT` (12:30) and the day report counts placed, skipped and rated decisions.
 

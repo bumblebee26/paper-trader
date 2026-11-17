@@ -50,7 +50,7 @@ flowchart TB
         PIPE["<b>3 pipelines, one at a time</b><br/>market → research · trading<br/>bronze → silver → gold"]
         GOLD["<b>Gold tables</b><br/>markets · scanner · trading · portfolio · long-term"]
         WH["<b>SQL warehouse</b>"]
-        DASH["<b>Dashboard</b><br/>Portfolio · Intraday trading · Swing<br/>Long term · Your ratings · Overview"]
+        DASH["<b>Dashboard</b><br/>Desk · Intraday · Swing<br/>Long term · Your calls · Global markets"]
         VOL --> PIPE --> GOLD --> WH --> DASH
         NVOL --> PIPE
     end
