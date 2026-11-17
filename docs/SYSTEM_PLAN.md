@@ -372,6 +372,8 @@ Cost review: Sun 15 Nov.
 | Swing after failed backtests | Hold the Rs 60,000 in NIFTYBEES |
 | Long-term universe | Nifty 200 |
 | Phase 2 timing | Started 9 Nov |
+| Ledger reset (17 Nov) | Every pool and shadow pool restarted with its starting cash on Wed 18 Nov, so all strategies are compared from the same day before the December review. Trade history, track record, ratings and test results kept; dashboard money pages start on 18 Nov |
+| Pipelines (17 Nov) | The lakehouse pipeline split into market, research and trading (one runs at a time on Databricks Free Edition) |
 
 ## Sources
 

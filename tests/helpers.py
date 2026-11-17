@@ -65,6 +65,8 @@ class Env:
             return len(self.sent)
 
         self._patches = [
+            # tests date their journals before the 18 Nov 2026 ledger reset: count every day unless a test sets it
+            mock.patch.object(config, "LEDGER_START", "2000-01-01"),
             mock.patch.object(market, "now_ist", lambda: self.clock),
             mock.patch.object(tg, "_api", fake_api),
             mock.patch.object(tg, "send", fake_send),

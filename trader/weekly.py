@@ -9,6 +9,7 @@ import re
 from collections import defaultdict
 from datetime import date, timedelta
 
+import config
 import exits
 import market
 import pools
@@ -39,8 +40,10 @@ def _times(n):
 
 
 def week_days(today: date):
+    """This week's weekdays up to today, from the ledger start (the 17 Nov 2026 reset) at the earliest."""
     monday = today - timedelta(days=today.weekday())
-    return [monday + timedelta(days=i) for i in range(5) if monday + timedelta(days=i) <= today]
+    start = date.fromisoformat(config.LEDGER_START)
+    return [d for d in (monday + timedelta(days=i) for i in range(5)) if start <= d <= today]
 
 
 def build(today: date):
@@ -131,7 +134,7 @@ def build(today: date):
         "orb_trial": {"stocks": orb["stocks"], "trades": dict(orb["trades"]),
                       "rs": {k: round(v, 2) for k, v in orb["rs"].items()}},
         "weekly_brake": any(r["event"] == "weekly_brake" for r in rows),
-        "week_start": week_days(today)[0].isoformat(), "week_end": today.isoformat(),
+        "week_start": (week_days(today) or [today])[0].isoformat(), "week_end": today.isoformat(),
         "trades": len(closed), "net_pnl": round(sum(pnl_of(r) for r in closed), 2), "fees": round(fees, 2),
         "wins": len(wins), "win_rate": round(len(wins) / len(closed) * 100) if closed else None,
         "avg_win": round(sum(wins) / len(wins), 2) if wins else None,
