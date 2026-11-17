@@ -81,7 +81,7 @@ there are no servers.
 | Landing volume | lakehouse | Databricks | `/Volumes/stocks/bronze/landing/<source>/date=…/`, what the pipeline reads |
 | `stocks-medallion` pipeline | lakehouse | Databricks | Bronze streaming tables, silver and gold materialized views |
 | `stocks-refresh` job | lakehouse | Databricks | Runs the pipeline when files land (waits 5 min, at most every 15 min), then `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`) |
-| Dashboard | lakehouse | Databricks | Pages Overview, Portfolio, Intraday trading, Company quality and Details, each with an "In plain words" summary |
+| Dashboard | lakehouse | Databricks | Pages Portfolio, Intraday trading (with shadow tests), Swing, Long term (each real pool vs its shadow pools), Your ratings, Overview and Details |
 | Pre-market Lambda | lakehouse | AWS Lambda | 08:45 brief: queries gold, sends Telegram |
 | Trading session | paper-trader | GitHub Actions | Claude Code + paper-trader MCP tools; morning and afternoon runs |
 | Trader engine and MCP tools | paper-trader | inside the session | Ledger, risk gate, Telegram approvals, simulated fills, exits, report; your own orders (`/buy`, `/short`, `/swing`, `/longterm`) while a session is live |
