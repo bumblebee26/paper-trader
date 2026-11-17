@@ -206,3 +206,28 @@ class RatingsNeverTrain(unittest.TestCase):
         finally:
             track._cache = None
         self.assertEqual([r["dimension"] for r in got], ["setup"])
+
+
+class JobEndToEnd(unittest.TestCase):
+    def test_job_journals_backtest_and_saves_results(self):
+        from helpers import Env
+
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "jobs"))
+        import model_shadow
+        import storage
+
+        fake = {f"S{i}": make_bars(i, days=22, start=300 + 20 * i) for i in range(8)}
+        fake["^NSEI"] = make_bars(99, days=22, start=24000)
+        with Env(datetime(2026, 11, 7, 16, 10)), \
+             mock.patch.object(model_shadow, "universe", lambda: [f"S{i}" for i in range(8)]), \
+             mock.patch.object(model_shadow, "load_bars", lambda s, today: fake.get(s, [])), \
+             mock.patch.object(walkforward, "MIN_TRAIN_DAYS", 12), mock.patch.object(walkforward, "REFIT_DAYS", 5):
+            out = model_shadow.main(send=False)
+            rows = storage.read_rows("journal/2026-11-07.csv")
+            hist = storage.get_json("models/results/history.json")
+        bt = {r["setup"]: r for r in rows if r["event"] == "model_backtest"}
+        self.assertIn("current", bt)
+        self.assertIn("filter", bt)
+        self.assertEqual(float(bt["current"]["pnl_rs"]), out["summary"]["current"]["total_r"])
+        self.assertIn("days_up_pct=", bt["current"]["note"])
+        self.assertEqual(hist[-1]["date"], "2026-11-07")

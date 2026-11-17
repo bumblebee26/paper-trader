@@ -11,7 +11,8 @@ places, changes or closes a trade.
    wider with the same rupee risk; stop on a 5-minute close; trailing/breakeven/half-and-run/time stop; and the
    four models (volatility stop, trade filter, early cut, let winners run) plus all of them combined.
 3. Today's real trades: each is scored by models trained on all earlier days, and replayed under every rule.
-4. Results: journal event "model_shadow" per real trade, models/results/<date>.json and models/results/history.json
+4. Results: journal events "model_shadow" per real trade and "model_backtest" per rule (pnl_rs = total R; both
+   reach the lakehouse with the 23:30 export, for the dashboard), models/results/<date>.json and models/results/history.json
    in S3, a short Telegram note, and the full report in the job log. Reviewed with you before any goes live.
 """
 import argparse
@@ -229,9 +230,16 @@ def main(send=True, max_syms=None, use_nifty200=False):
     for t in real:
         if t.get("scored"):
             engine.journal("model_shadow", event_id=f"model-{t['proposal_id']}", proposal_id=t["proposal_id"],
-                           symbol=t["symbol"], side=t["side"], pnl_rs=t["actual_rs"],
-                           note=" ".join(f"{k}={v:+.2f}" for k, v in t["rs"].items() if v is not None)
-                           + f" p_win={t['p_win']:.2f}")
+                           symbol=t["symbol"], setup=t["setup"], side=t["side"], pnl_rs=t["actual_rs"],
+                           note=";".join(f"{k}={v:.2f}" for k, v in t["rs"].items() if v is not None)
+                           + f";p_win={t['p_win']:.3f};filter_takes={int(bool(t['filter_takes']))}")
+    # the backtest summary per rule, for the lakehouse dashboard (one row per rule per day)
+    for rule, s in summary.items():
+        if rule in RULE_WORDS:
+            engine.journal("model_backtest", event_id=f"modelbt-{today}-{rule}", setup=rule, qty=s["traded"],
+                           pnl_rs=s["total_r"], note=";".join(f"{k}={s[k]}" for k in (
+                               "signals", "traded", "total_r", "avg_r", "win_pct", "days", "days_up_pct",
+                               "worst_day_r")))
     if send:
         msg = telegram_lines(summary, real, today)
         if msg:
