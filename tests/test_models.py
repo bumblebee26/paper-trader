@@ -171,3 +171,24 @@ class WalkForward(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReportLines(unittest.TestCase):
+    def test_lines_from_history(self):
+        from helpers import Env
+
+        import model_report
+        import storage
+
+        with Env():
+            self.assertIn("no results yet", model_report.lines()[0])
+            s = {"current": {"total_r": -12.0, "days": 40, "signals": 900}, "filter": {"total_r": 3.5},
+                 "early_cut": {"total_r": -4.0}, "no_stop": {"total_r": -20.0}, "_vol_model": {"corr": 0.6}}
+            real = [{"scored": True, "actual_rs": -342.0, "filter_takes": False,
+                     "rs": {"current": -342.0, "filter": 0.0, "early_cut": -150.0, "let_run": -342.0}}]
+            storage.put_json("models/results/history.json", [{"date": "2026-11-18", "summary": s, "real_trades": real}])
+            out = model_report.lines()
+        self.assertIn("current rules -12R; best trade filter +4R, early cut -4R, no stop -20R", out[0])
+        self.assertIn("actual -342 Rs", out[1])
+        self.assertIn("trade filter +0", out[1])
+        self.assertIn("skipped 1", out[1])

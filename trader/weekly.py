@@ -195,6 +195,9 @@ def message(w, intraday_state):
 
     paper = (paper_lines(w) + [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
              + [f"- {x}" for x in swing_tech.lines(swing_tech.summary())])
+    import model_report
+
+    paper += [f"- {x}" for x in model_report.lines(days=5)]
     lines += ["", "Tested on paper (not used for real trades yet; /shadow any time):", *paper]
     if w["cooloffs"] or w["loss_limit_days"] or w.get("weekly_brake"):
         lines.append(f"Brakes used: {w['cooloffs']} cool-off(s), loss limit on {w['loss_limit_days']} day(s)"

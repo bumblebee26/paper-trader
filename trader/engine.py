@@ -295,6 +295,9 @@ def shadow_text(state) -> str:
 
     lines += [f"- {x}" for x in swing_shadow.lines(swing_shadow.summary())]
     lines += [f"- {x}" for x in swing_tech.lines(swing_tech.summary())]
+    import model_report
+
+    lines += [f"- {x}" for x in model_report.lines()]
     lt = storage.get_json("shadow/longterm/latest.json") or {}
     if lt:
         lines.append(f"- Long-term (weekly quality picks), week {lt.get('week')}: {inr(lt['equity'] - config.LONG_TERM_CAPITAL, sign=True)} "

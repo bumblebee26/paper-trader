@@ -182,7 +182,7 @@ def telegram_lines(summary, real, today):
     base = summary.get("current", {}).get("total_r")
     if base is None:
         return []
-    best = sorted(((k, v["total_r"]) for k, v in summary.items() if not k.startswith("_")),
+    best = sorted(((k, v["total_r"]) for k, v in summary.items() if k in RULE_WORDS and k != "current"),
                   key=lambda x: -x[1])[:3]
     lines = [f"[MOCK] Shadow models, {today} (paper only, nothing traded):",
              f"Backtest, last {summary['current']['days']} days out of sample: current rules {base:+.0f}R; best: "

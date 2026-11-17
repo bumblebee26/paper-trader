@@ -4,7 +4,7 @@
 > is in [paper-trader](https://github.com/bumblebee26/paper-trader/blob/main/docs/SYSTEM_PLAN.md) and
 > [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse/blob/main/docs/SYSTEM_PLAN.md); change
 > both together. For how the running system fits together, see [PLATFORM.md](PLATFORM.md).
-> As of 16 Nov 2026. Each section says what is **built** and what is still **planned**.
+> As of 17 Nov 2026. Each section says what is **built** and what is still **planned**.
 
 Everything is dummy money. Nothing here is investment advice; it is a system for learning how these
 strategies behave.
@@ -14,13 +14,14 @@ strategies behave.
 The paper trader is growing from one intraday strategy into a three-pool dummy portfolio of Rs 2,00,000,
 driven by live market data, company news and company financials, with you approving trades on Telegram.
 
-| Phase | Status (16 Nov 2026) | Next gate |
+| Phase | Status (17 Nov 2026) | Next gate |
 |---|---|---|
 | 1 Intraday upgrades | Built, live from 10 Nov | Track-record review, 23 Nov |
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
 | 3 Swing pool | Rs 60,000 held in NIFTYBEES; two rule sets in shadow mode: news breakouts (from 16 Nov) and the technical scanner (from 17 Nov) | Scanner signal review ~8 Dec; shadow review vs NIFTYBEES, mid-Dec |
 | 4 Long-term pool | Selection, backtest and shadow mode built | Go/no-go 18 Dec, buying from 21 Dec |
-| 5 Track record and auto mode | Live from 12 Nov: auto mode, 👍/👎 feedback, track record fed back every session | Review 23 Nov |
+| 5 Track record and auto mode | Live from 12 Nov: auto mode, track record (real outcomes only from 17 Nov) fed back every session | Review 23 Nov |
+| 6 Shadow models (intraday) | From 17 Nov, paper only: volatility stop, trade filter, early cut, let winners run, plus stop variants, judged walk-forward every day | Review with you before December go-live |
 
 ## Principles
 
@@ -194,15 +195,31 @@ Approximations; check with a chartered accountant before real money.
   one gets a ✅, also when you rate with a reaction), EXIT while the trade is open, Groww (any tradable stock: the
   address is made from the company name) and NSE quote links, and ℹ️ Full reasons, which replies with the long version (kept
   7 days). Reasons must agree with the live Nifty and sector moves.
-- **Your 👍/👎** on every auto decision is recorded (`user_feedback`), and EXIT closes a position.
+- **EXIT** closes a position. The 👍/👎 ratings were retired on 17 Nov at your request: only real outcomes count.
 - **The feedback loop:** the lakehouse builds `gold.proposal_outcomes` (every proposal: scores, decision,
-  outcome, your rating) and `gold.track_record` (by setup, hour, mood, sector, direction, suggestion band,
-  reviewer, mode, decision, news or watchlist and your rating, last 90 days). Each session reads it. Claude adjusts its own score only where a
+  real outcome) and `gold.track_record` (by setup, hour, mood, sector, direction, suggestion band,
+  reviewer, mode, decision, news or watchlist and scanner status, last 90 days). Each session reads it, plus
+  the last days' final results (`recent_days`, the daily feedback). Claude adjusts its own score only where a
   row has 8+ outcomes, and every proposal shows the record with its counts, including the stock's sector and
-  the direction (e.g. "Banks 3/10 · shorts 2/9"). Your ratings are measured
-  against outcomes too, so their weight is earned.
+  the direction (e.g. "Banks 3/10 · shorts 2/9").
 - At the 23 Nov review: calibration (do 60-69% suggestions win 60-69% of the time?), auto vs human,
-  your 👍/👎 accuracy, and the exit rules on trial.
+  and the exit rules on trial.
+
+**Shadow models (from 17 Nov, paper only):** after each close a GitHub job replays every scanner setup on
+every tradable stock's 5-minute candles (60+ days, growing) and trains four models walk-forward, so each day is
+judged only by models trained on earlier days:
+
+| Model | What it decides | How it's used if it passes |
+|---|---|---|
+| Volatility stop | The next hour's likely range; the stop goes just beyond normal noise, with fewer shares so the rupee risk is unchanged | Replaces the fixed stop distance |
+| Trade filter | The chance a setup ends in profit after costs | Skips setups under its threshold |
+| Early cut | At each 5-minute close while a trade is losing: will holding end worse than cutting now? | Closes the trade before its stop |
+| Let winners run | At the 2R target: will running on (stop to +1R, trailing 1R) beat booking it? | Lets that trade run |
+
+They are compared with the current rules and the stop variants (no stop; stops 1.5x and 2x wider with the same
+rupee risk; stop on a 5-minute close), and today's real trades are replayed under each. Results: a Telegram note
+after the close, `/shadow`, the weekly report, and `models/results/` in S3. **Nothing goes live before a review
+with you, before December**; a model is adopted only if it beats the current rules out of sample, net of costs.
 
 **News radar (from 16 Nov):** the intraday trader may go beyond its 36-stock watchlist to any Nifty 200 stock
 that passes the guardrails (`stocks.gold.intraday_universe`: main-board EQ series, Rs 50+, Rs 50 crore+ traded a
