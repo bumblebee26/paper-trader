@@ -8,6 +8,11 @@ candles under the current rule and four alternatives, with the same costs as rea
   half_and_run  at +1R, sell half there and move the stop to entry; the rest runs to the target, stop or 15:10
   trailing      no fixed target; once +1R, the stop trails 1R behind the best price
   time_stop     the current rule, but exit at the 60-minute mark if the trade isn't +0.5R by then
+  no_stop       no stop at all: target or the 15:10 square-off (what "never stop out" would have done)
+  wide_1_5      stop 1.5x as far, with fewer shares so the rupee risk is the same; same target price
+  wide_2        stop 2x as far, half the shares; same target price
+  close_stop    the stop counts only when a 5-minute candle CLOSES beyond it (wicks ignored), with a hard
+                stop at 2x the distance as a safety net (from 17 Nov)
 
 Plus one rule for the whole day:
 
@@ -21,14 +26,27 @@ next candle (conservative). Results are journaled for the daily and weekly repor
 import config
 import fees
 
-RULES = ("current", "breakeven", "half_and_run", "trailing", "time_stop")
+RULES = ("current", "breakeven", "half_and_run", "trailing", "time_stop", "no_stop", "wide_1_5", "wide_2",
+         "close_stop")
 RULE_WORDS = {
     "current": "current rules",
     "breakeven": "stop to entry at +1R",
     "half_and_run": "sell half at +1R",
     "trailing": "trailing stop",
     "time_stop": "60-minute time stop",
+    "no_stop": "no stop",
+    "wide_1_5": "stop 1.5x wider, same Rs risk",
+    "wide_2": "stop 2x wider, same Rs risk",
+    "close_stop": "stop on a 5-min close",
 }
+WIDE = {"wide_1_5": 1.5, "wide_2": 2.0}
+HARD_STOP_X = 2.0     # close_stop's safety net, in multiples of the planned stop distance
+
+
+def _last_of_5min(bars):
+    """For each bar, whether it is the last one of its 5-minute bucket (so its close is the 5-minute close)."""
+    keys = [b["time"][:14] + f"{int(b['time'][14:16]) // 5:02d}" for b in bars]
+    return [i == len(keys) - 1 or keys[i + 1] != k for i, k in enumerate(keys)]
 TIME_STOP_MIN = 60
 TIME_STOP_R = 0.5
 LOCK_ARM_R = 3.0
@@ -53,6 +71,14 @@ def replay(rule, side, qty, fill, stop, target, opened_at, bars):
     r = (fill - stop) * d
     if r <= 0 or qty <= 0:
         return None
+    if rule in WIDE:   # wider stop, fewer shares: the rupee risk stays the same
+        m = WIDE[rule]
+        qty = max(1, int(qty / m))
+        stop = fill - d * r * m
+        r = r * m
+        rule = "current"
+    hard_stop = fill - d * r * HARD_STOP_X if rule == "close_stop" else None
+    closes_5m = _last_of_5min(bars) if rule == "close_stop" else None
     open_hhmm = opened_at[11:16]
     cur_stop = stop
     tgt = None if rule in ("trailing", "eod") else target
@@ -71,7 +97,7 @@ def replay(rule, side, qty, fill, stop, target, opened_at, bars):
         charges += fees.order(px * n, "SELL" if side == "BUY" else "BUY")
 
     last_close = None
-    for b in bars:
+    for i, b in enumerate(bars):
         if b["time"] <= opened_at[:16]:
             continue
         hhmm = b["time"][11:16]
@@ -81,11 +107,18 @@ def replay(rule, side, qty, fill, stop, target, opened_at, bars):
             break
         adverse = b["low"] if d == 1 else b["high"]
         favorable = b["high"] if d == 1 else b["low"]
-        if (adverse - cur_stop) * d <= 0:
+        if rule == "close_stop":
+            if (adverse - hard_stop) * d <= 0:
+                leave(remaining, min(b["open"], hard_stop) if d == 1 else max(b["open"], hard_stop))
+                break
+        elif rule != "no_stop" and (adverse - cur_stop) * d <= 0:
             leave(remaining, min(b["open"], cur_stop) if d == 1 else max(b["open"], cur_stop))
             break
         if tgt is not None and (favorable - tgt) * d >= 0:
             leave(remaining, max(b["open"], tgt) if d == 1 else min(b["open"], tgt))
+            break
+        if rule == "close_stop" and closes_5m[i] and (b["close"] - cur_stop) * d <= 0:
+            leave(remaining, b["close"])
             break
         if rule == "time_stop" and not time_checked and _minutes(open_hhmm, hhmm) >= TIME_STOP_MIN:
             time_checked = True

@@ -106,6 +106,34 @@ def for_claude() -> list:
     return [{**r, "judged": int(r.get("trades") or 0) >= MIN_TRADES} for r in rows()]
 
 
+def recent_days(n=10, lookback=21) -> list:
+    """The last `n` trading days' final results from the journal: the daily feedback (ratings retired 17 Nov).
+    [{date, trades, wins, net_rs}], newest first. Days without a closed trade are left out."""
+    from datetime import timedelta
+
+    import market
+    import storage
+
+    out, d = [], market.now_ist().date()
+    for _ in range(lookback):
+        d -= timedelta(days=1)
+        if not market.is_trading_day(d):
+            continue
+        try:
+            rows = storage.read_rows(f"journal/{d.isoformat()}.csv") or []
+        except Exception:  # noqa: BLE001 - a missing day is just left out
+            continue
+        fees = {r["proposal_id"]: float(r.get("fees_rs") or 0) for r in rows if r["event"] == "filled"}
+        nets = [float(r.get("pnl_rs") or 0) - fees.get(r.get("proposal_id"), 0.0)
+                for r in rows if r["event"] in ("exited", "squared_off")]
+        if nets:
+            out.append({"date": d.isoformat(), "trades": len(nets), "wins": sum(1 for x in nets if x > 0),
+                        "net_rs": round(sum(nets), 2)})
+        if len(out) >= n:
+            break
+    return out
+
+
 def _rs(x) -> str:
     x = float(x or 0)
     return f"{'+' if x >= 0 else '-'}Rs {abs(x):,.0f}"

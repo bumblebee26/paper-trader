@@ -43,6 +43,7 @@ class Env:
         self.store = MemoryStore()
         self.sent, self.edits, self.updates, self.edit_buttons, self.button_sets = [], [], [], [], []
         self.prices, self.bars = {}, {}
+        self.callback_answers, self.sent_buttons = [], []
         self._patches = []
 
     def __enter__(self):
@@ -54,10 +55,13 @@ class Env:
         def fake_api(method, http_timeout=30, **p):
             if method == "getUpdates":
                 return [u for u in self.updates if u["update_id"] >= p.get("offset", 0)]
+            if method == "answerCallbackQuery":
+                self.callback_answers.append(p.get("text", ""))
             return True
 
         def fake_send(text, buttons=None, reply_to=None):
             self.sent.append(text)
+            self.sent_buttons.append(buttons)
             return len(self.sent)
 
         self._patches = [

@@ -130,10 +130,8 @@ def poll(state, wait=0) -> None:
                 continue
             data = cq.get("data", "")
             answer = "Got it"
-            if data.startswith("fb:"):                      # fb:like:<id> / fb:dislike:<id>: feedback only
-                _, kind, pid = data.split(":", 2)
-                state.setdefault("feedback", {})[pid] = kind
-                answer = f"Saved: {'👍 good call' if kind == 'like' else '👎 bad call'}. Tap the other to change it."
+            if data.startswith("fb:"):                      # old 👍/👎 buttons: ratings retired on 17 Nov
+                answer = "Ratings are off: only each trade's real result counts now"
             elif data.startswith(("cf:", "cx:")):          # Confirm / Cancel on your own order
                 state.setdefault("requests", []).append(("confirm:" if data.startswith("cf:") else "cancel:") + data[3:])
                 answer = "Placing it…" if data.startswith("cf:") else "Cancelled"
@@ -161,24 +159,7 @@ def poll(state, wait=0) -> None:
             except TelegramError:
                 pass
         elif "message_reaction" in u:
-            # A 👍 or 👎 *reaction* on a proposal message counts as a rating, same as the buttons
-            mr = u["message_reaction"]
-            if str((mr.get("user") or {}).get("id")) != allowed:
-                continue
-            emojis = {r.get("emoji") for r in mr.get("new_reaction", []) if r.get("type") == "emoji"}
-            old = {r.get("emoji") for r in mr.get("old_reaction", []) if r.get("type") == "emoji"}
-            if "👍" in emojis:
-                kind = "like"
-            elif "👎" in emojis:
-                kind = "dislike"
-            elif old & {"👍", "👎"}:
-                kind = "none"                                  # the rating reaction was taken away
-            else:
-                kind = None
-            pid = next((k for k, p in state.get("proposals", {}).items() if p.get("message_id") == mr.get("message_id")),
-                       None) or (state.get("msg_index") or {}).get(str(mr.get("message_id")), {}).get("pid")
-            if kind and pid:
-                state.setdefault("feedback", {})[pid] = kind
+            continue   # reactions used to be ratings; retired on 17 Nov (only real outcomes count)
         elif "message" in u:
             msg = u["message"]
             if str(msg.get("from", {}).get("id")) != allowed:
