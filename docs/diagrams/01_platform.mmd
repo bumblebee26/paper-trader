@@ -23,13 +23,13 @@ flowchart TB
             direction TB
             FET["<b>Fetcher Lambdas</b><br/>NSE 19:30 · Massive 11:00 · FRED 06:00 · F&amp;O Mon 08:00"]
             S3L[("<b>S3 landing bucket</b><br/>raw archive")]
-            PM["<b>Pre-market Lambda</b><br/>08:45 brief"]
-            NEWS["<b>News Lambda</b><br/>NSE filings every minute 09:00–15:59<br/>(every 30 min otherwise)"]
+            PM["<b>Pre-market Lambda</b><br/>08:45 brief + technical scanner"]
+            NEWS["<b>News Lambda</b><br/>NSE filings every minute 09:00–15:59<br/>(every 30 min otherwise)<br/>Business Standard · RBI · SEBI every few min"]
         end
         subgraph PTA["paper-trader"]
             direction TB
             KICK["<b>Kicker Lambda</b><br/>09:08 · 12:27"]
-            GUARD["<b>Guardian Lambda</b><br/>15:12 square-off · 15:14 swing into NIFTYBEES<br/>15:40 report · 15:45 export · 15:50 swing shadow<br/>23:30 late export · Fri weekly report"]
+            GUARD["<b>Guardian Lambda</b><br/>09:45 scanner check · 15:12 square-off · 15:14 swing into NIFTYBEES<br/>15:40 report · 15:45 export · 15:50 swing shadows<br/>23:30 late export · Fri weekly report"]
             S3T[("<b>Trader state bucket</b><br/>ledger · pools · journal · reports")]
             RESP["<b>Responder Lambda</b><br/>commands + your own orders<br/>when no session"]
         end
@@ -47,7 +47,7 @@ flowchart TB
         VOL[("<b>Landing volume</b><br/>nse · massive · fred · trades<br/>portfolio · fundamentals · index_members")]
         NVOL[("<b>News volume</b><br/>latest.jsonl")]
         PIPE["<b>stocks-medallion</b><br/>bronze → silver → gold"]
-        GOLD["<b>Gold tables</b><br/>markets · trading · portfolio · long-term"]
+        GOLD["<b>Gold tables</b><br/>markets · scanner · trading · portfolio · long-term"]
         WH["<b>SQL warehouse</b>"]
         DASH["<b>Dashboard</b><br/>Overview · Portfolio · Intraday trading<br/>Company quality"]
         VOL --> PIPE --> GOLD --> WH --> DASH
@@ -76,7 +76,7 @@ flowchart TB
     SESS <-- "proposals · YES/NO" --> TG
     GUARD <-- "backstops" --> S3T
     GUARD -- "15:45 journal + portfolio" --> VOL
-    WH -- "15:50 swing signals (SQL)" --> GUARD
+    WH -- "09:45 scanner · 15:50 swing signals (SQL)" --> GUARD
     RESP <-- "commands, any time" --> TG
     RESP -- "/analyze (SQL)" --> WH
 
