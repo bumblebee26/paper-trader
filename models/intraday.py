@@ -17,6 +17,7 @@ import math
 import config
 import exits
 import fees
+import stretch
 
 ONE_R_RS = 400.0                 # ~1% of the intraday pool; results are reported in R, so the size cancels out
 BALANCE_RS = 40000.0
@@ -110,9 +111,20 @@ def signals(bars, nifty=None):
                                  vol_x, nd, fired_today)
                 out.append({"date": d, "time": hm, "setup": setup, "side": side, "entry": entry, "stop": stop,
                             "target": entry + (2 if side == "BUY" else -2) * per_share, "i": i, "features": feats,
-                            "pdh": pdh, "pdl": pdl})
+                            "pdh": pdh, "pdl": pdl,
+                            "stretched": is_stretched(setup, side, t, i, vw[i], prev_ranges)})
                 fired_today += 1
     return out
+
+
+def is_stretched(setup, side, t, i, vwap, prev_ranges):
+    """The background rule "stretched" (trader/stretch.py) at candle i's close: breakouts only."""
+    if setup not in stretch.BREAKOUT_SETUPS:
+        return False
+    usual = sum(prev_ranges) / len(prev_ranges) if prev_ranges else None
+    seen = t[:i + 1]
+    return stretch.check(side, t[i]["close"], min(b["low"] for b in seen), max(b["high"] for b in seen), vwap,
+                         usual)[0]
 
 
 def bar_features(t, i, vw, prev_close, prev_ranges, or_hi, or_lo, nd):
@@ -384,5 +396,6 @@ def signal_from_trade(bars, nifty, trade):
                      vol_x, by_day(nifty or []).get(d, []), 0)
     sig = {"date": d, "time": _hhmm(t[i]), "setup": setup, "side": trade["side"], "entry": entry, "stop": stop,
            "target": float(trade["target"]), "i": i, "features": feats,
-           "pdh": max(b["high"] for b in prev), "pdl": min(b["low"] for b in prev)}
+           "pdh": max(b["high"] for b in prev), "pdl": min(b["low"] for b in prev),
+           "stretched": is_stretched(setup, trade["side"], t, i, vw[i], prev_ranges)}
     return label_signal(sig, t)

@@ -176,7 +176,9 @@ def decide(d, m, sig_names, cp_names, lr_names, vol_stop_fn):
     return {"symbol": d.get("symbol"), "date": d["date"], "time": d["time"], "setup": d["setup"], "side": d["side"],
             "p_win": p, "taken": take, "pred_range_pct": pred_range, "actual_range_pct": d["fwd_range_pct"],
             "r": {**d["results"], "filter": d["results"]["current"] if take else 0.0, "vol_stop": vol_r,
-                  "early_cut": cut, "let_run": run, "combined": combined}}
+                  "early_cut": cut, "let_run": run, "combined": combined,
+                  # background rule on trial (trader/stretch.py): skip breakouts that already ran a long way
+                  "skip_stretched": 0.0 if d.get("stretched") else d["results"]["current"]}}
 
 
 def summarise(decisions):
@@ -187,7 +189,7 @@ def summarise(decisions):
         vals = [(d["date"], d["r"][rule]) for d in decisions if d["r"].get(rule) is not None]
         if not vals:
             continue
-        traded = [v for _, v in vals if not (rule in ("filter", "combined") and v == 0.0)]
+        traded = [v for _, v in vals if not (rule in ("filter", "combined", "skip_stretched") and v == 0.0)]
         per_day = {}
         for day, v in vals:
             per_day[day] = per_day.get(day, 0.0) + v

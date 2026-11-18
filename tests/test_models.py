@@ -136,6 +136,9 @@ class WalkForward(unittest.TestCase):
             self.assertIsNotNone(x["results"]["target_1_5r"])
             self.assertIsNotNone(x["results"]["level_target"])
             self.assertIsNotNone(x["pdh"])
+            self.assertIn(x["stretched"], (True, False))
+            if not x["setup"].startswith(("ORB", "PDH", "PDL")):
+                self.assertFalse(x["stretched"])                     # breakouts only
         self.assertLess(d["checkpoints"][0]["features"]["open_r"], 0)
         self.assertIsNotNone(d["fwd_range_pct"])
         for x in self.data:
@@ -158,7 +161,7 @@ class WalkForward(unittest.TestCase):
         self.assertEqual(min(d["date"] for d in dec), days[12])
         s = walkforward.summarise(dec)
         for rule in ("current", "filter", "early_cut", "let_run", "combined", "no_stop", "wide_2", "close_stop",
-                     "target_1_5r", "level_target"):
+                     "target_1_5r", "level_target", "skip_stretched"):
             self.assertIn(rule, s)
         self.assertEqual(s["current"]["signals"], len(dec))
 

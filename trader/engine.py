@@ -1025,7 +1025,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     t_start = market.now_ist()
     risk_pct = round(risk_rs / state["balance"] * 100, 2)
     need = qty * entry / config.INTRADAY_LEVERAGE
-    advice = advisor.assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct)
+    advice = advisor.assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct, setup=setup)
     t_checks = market.now_ist()
     review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"])
     t_review = market.now_ist()
@@ -1530,20 +1530,53 @@ ORB_STOCKS = 10                               # the top stocks in play
 
 
 ORB_RESULTS = ("2r", "eod", "1_5r", "level")
+RETEST_WINDOW_MIN = 60                        # the retest version waits this long after the breakout
+
+
+def orb_retest(bars, k, side, hi, lo, one_r_rs, balance):
+    """The 'wait for the retest' version of a breakout at candle k (from 19 Nov): instead of buying the breakout
+    close, a limit order at the range edge (hi for a BUY, lo for a SELL), filled if a later 5-minute candle comes
+    back to it within RETEST_WINDOW_MIN and before ENTRY_END. Stop at the other side of the range (at least
+    ORB_MIN_STOP_PCT away), 2R target, same costs and slippage. Results are counted from the candle after the fill
+    (the rest of the fill candle is ignored, as for every replay). Net Rs, or None if the price never came back."""
+    d = 1 if side == "BUY" else -1
+    edge = hi if side == "BUY" else lo
+    t0 = int(bars[k]["time"][11:13]) * 60 + int(bars[k]["time"][14:16])
+    for j in range(k + 1, len(bars)):
+        b = bars[j]
+        t = b["time"][11:16]
+        if t >= config.ENTRY_END or int(t[:2]) * 60 + int(t[3:5]) - t0 > RETEST_WINDOW_MIN:
+            return None
+        if ((b["low"] if d == 1 else b["high"]) - edge) * d > 0:
+            continue                                  # still above the range high (below the low): no fill yet
+        entry = min(b["open"], edge) if d == 1 else max(b["open"], edge)
+        per_share = max(abs(entry - (lo if d == 1 else hi)), entry * ORB_MIN_STOP_PCT / 100)
+        stop = entry - d * per_share
+        qty = math.floor(min(one_r_rs / per_share,
+                             balance * config.MAX_POSITION_MARGIN_PCT / 100 * config.INTRADAY_LEVERAGE / entry))
+        if qty < 1:
+            return None
+        fill, target = slip(entry, side, opening=True), entry + d * 2 * per_share
+        if ((b["low"] if d == 1 else b["high"]) - stop) * d <= 0:
+            # filled and stopped in the same candle: the loss counts (replayed on that candle alone)
+            return exits.replay("current", side, qty, fill, stop, target, f"{bars[j - 1]['time']}:00", [b])
+        return exits.replay("current", side, qty, fill, stop, target, f"{b['time']}:00", bars)
+    return None
 
 
 def orb_trade(bars, minutes, one_r_rs, balance, levels=(None, None)):
     """On paper: the first 5-minute close outside the opening range (09:15 + `minutes`) before ENTRY_END, entry at
     that close, stop at the other side of the range (at least ORB_MIN_STOP_PCT away). Results with a 2R target
-    ('2r'), held to the square-off ('eod'), a 1.5R target ('1_5r') and the previous day's high/low as the target
-    when it comes first ('level'; from 19 Nov), same costs and slippage as real trades. None if no breakout.
+    ('2r'), held to the square-off ('eod'), a 1.5R target ('1_5r'), the previous day's high/low as the target
+    when it comes first ('level') and the wait-for-the-retest entry ('retest': None if the price never came back;
+    the last three from 19 Nov), same costs and slippage as real trades. None if no breakout.
     levels: the previous day's (high, low)."""
     end = f"09:{15 + minutes:02d}"
     rng = [b for b in bars if "09:15" <= b["time"][11:16] < end]
     if len(rng) < minutes // 5:
         return None
     hi, lo = max(b["high"] for b in rng), min(b["low"] for b in rng)
-    for b in bars:
+    for k, b in enumerate(bars):
         t = b["time"][11:16]
         if t < end or t >= config.ENTRY_END:
             continue
@@ -1565,7 +1598,8 @@ def orb_trade(bars, minutes, one_r_rs, balance, levels=(None, None)):
         res = {"2r": exits.replay("current", side, qty, fill, stop, target, opened, bars),
                "eod": exits.replay("eod", side, qty, fill, stop, target, opened, bars),
                "1_5r": exits.replay("target_1_5r", side, qty, fill, stop, target, opened, bars),
-               "level": exits.replay("level_target", side, qty, fill, stop, target, opened, bars, level=level)}
+               "level": exits.replay("level_target", side, qty, fill, stop, target, opened, bars, level=level),
+               "retest": orb_retest(bars, k, side, hi, lo, one_r_rs, balance)}
         return {"side": side, "time": t, **res}
     return None
 
@@ -1575,8 +1609,9 @@ def _orb_shadow(state) -> dict:
     names = [r["symbol"] for r in (state.get("in_play") or [])[:ORB_STOCKS]]
     if not names:
         return {}
-    totals = {f"{v}_{k}": 0.0 for v, _ in ORB_VARIANTS for k in ORB_RESULTS}
+    totals = {f"{v}_{k}": 0.0 for v, _ in ORB_VARIANTS for k in ORB_RESULTS + ("retest",)}
     trades = {v: 0 for v, _ in ORB_VARIANTS}
+    retests = {v: 0 for v, _ in ORB_VARIANTS}
     for sym in names:
         bars = [b for b in market.candles(sym, "5m", 1) if b["time"].startswith(_today())]
         levels = _prev_day_levels(sym)
@@ -1588,9 +1623,13 @@ def _orb_shadow(state) -> dict:
                 for k in ORB_RESULTS:
                     results[f"{v}_{k}"] = t[k]
                     totals[f"{v}_{k}"] += t[k]
+                if t["retest"] is not None:
+                    retests[v] += 1
+                    results[f"{v}_retest"] = t["retest"]
+                    totals[f"{v}_retest"] += t["retest"]
         if results:
             journal("orb_shadow", event_id=f"orb-{_today()}-{sym}", symbol=sym, note=exits.note_text(results))
-    return {"orb_trial_stocks": len(names), "orb_trial_trades": trades,
+    return {"orb_trial_stocks": len(names), "orb_trial_trades": trades, "orb_trial_retests": retests,
             "orb_trial_rs": {k: round(v, 2) for k, v in totals.items()}}
 
 
@@ -1603,7 +1642,9 @@ def _orb_lines(summary) -> list:
             f"{inr(t['orb5_1_5r'], sign=True)} 1.5R / {inr(t['orb5_level'], sign=True)} at yesterday's high-low / "
             f"{inr(t['orb5_eod'], sign=True)} held to 15:10; 15-min range {n['orb15']} trades, "
             f"{inr(t['orb15_2r'], sign=True)} / {inr(t['orb15_1_5r'], sign=True)} / {inr(t['orb15_level'], sign=True)}"
-            f" / {inr(t['orb15_eod'], sign=True)}"]
+            f" / {inr(t['orb15_eod'], sign=True)}. Waiting for the retest instead of buying the breakout: "
+            f"5-min {summary.get('orb_trial_retests', {}).get('orb5', 0)} filled, {inr(t['orb5_retest'], sign=True)}; "
+            f"15-min {summary.get('orb_trial_retests', {}).get('orb15', 0)} filled, {inr(t['orb15_retest'], sign=True)}"]
 
 
 def _auto_lines(state) -> list:

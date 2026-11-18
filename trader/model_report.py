@@ -11,6 +11,7 @@ WORDS = {
     "wide_1_5": "stop 1.5x wider", "wide_2": "stop 2x wider", "close_stop": "stop on a 5-min close",
     "trailing": "trailing stop", "half_and_run": "sell half at +1R", "breakeven": "stop to entry at +1R",
     "time_stop": "60-min time stop", "target_1_5r": "target 1.5R", "level_target": "target at yesterday's high/low",
+    "skip_stretched": "skip stretched breakouts",
 }
 
 
