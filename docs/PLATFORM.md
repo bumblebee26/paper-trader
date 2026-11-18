@@ -64,7 +64,8 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy and delivery file for the day; job `stocks-market-close` runs the market then research pipelines (including the technical scanner and momentum ranks), then the dashboard's plain-words summaries |
 | 23:30 | Mon–Fri | Trader → Lakehouse | Late export: the last 4 days' journals again, so late events reach the track record overnight |
 | 07:15 | Sat | Trader → Lakehouse | Company fundamentals job: Nifty 200 financials to `landing/fundamentals/`, the list to `landing/index_members/` |
-| 08:00, 12:00 | Sat | Lakehouse | Job `stocks-market-weekend`: market and research pipelines (fundamentals, Nifty 200 list, Friday's US file) |
+| 11:15 | Tue–Sat | Lakehouse | Job `stocks-market-morning`: market pipeline (overnight US prices, FRED), then the dashboard summaries |
+| 08:00 | Sat | Lakehouse | Job `stocks-market-weekend`: market and research pipelines (fundamentals, Nifty 200 list) |
 | 10:15 | Sat | Lakehouse → Trader | Long-term shadow job: reads this week's picks, "buys"/sells in the shadow ledger; the momentum shadows (top 15, and top 5 concentrated, from `gold.momentum_ranks`) rebalance on the first Saturday of the month; reports to Telegram |
 | every 2 min | all week | Trader | Responder answers Telegram commands (and your own orders) when no session is live |
 
@@ -81,7 +82,7 @@ there are no servers.
 | Sync Lambda | lakehouse | AWS Lambda | Copies anything missing from S3 to the volume (backfills, repairs) |
 | Landing volume | lakehouse | Databricks | `/Volumes/stocks/bronze/landing/<source>/date=…/`, what the pipeline reads |
 | Pipelines `stocks-market`, `stocks-research`, `stocks-trading` | lakehouse | Databricks | Market data in and cleaned (33 tables); the heavy daily research: scanner, momentum ranks (5); paper-trader's journal, portfolio and shadows (23). Bronze streaming tables, silver and gold materialized views. One runs at a time (Free Edition) |
-| Jobs `stocks-market-close`, `stocks-market-weekend`, `stocks-trading` | lakehouse | Databricks | When the NSE file lands: market → research; Saturday 08:00 and 12:00: the same; when paper-trader's export lands: trading. Each then runs `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`). Pipeline tasks retry every 15 min if another pipeline is running |
+| Jobs `stocks-market-close`, `stocks-market-morning`, `stocks-market-weekend`, `stocks-trading` | lakehouse | Databricks | When the NSE file lands: market → research; 11:15 Tue–Sat: market only (overnight US prices); Saturday 08:00: market → research; when paper-trader's export lands: trading. Each then runs `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`). Pipeline tasks retry every 15 min if another pipeline is running |
 | Dashboard | lakehouse | Databricks | Pages Desk, Intraday, Swing, Long term (each real pool vs its shadows, with a Show filter), Your calls and Global markets |
 | Pre-market Lambda | lakehouse | AWS Lambda | 08:45: queries gold and a few live Yahoo figures, sends two Telegram messages (the brief, India first, and the technical scanner) |
 | Trading session | paper-trader | GitHub Actions | Claude Code + paper-trader MCP tools; morning and afternoon runs |
