@@ -13,6 +13,9 @@ candles under the current rule and four alternatives, with the same costs as rea
   wide_2        stop 2x as far, half the shares; same target price
   close_stop    the stop counts only when a 5-minute candle CLOSES beyond it (wicks ignored), with a hard
                 stop at 2x the distance as a safety net (from 17 Nov)
+  target_1_5r   the current rule with a nearer target: 1.5R instead of 2R (from 19 Nov)
+  level_target  the current rule, but the target moves to the previous day's high (low for a short) when that
+                level sits between +0.5R and the planned target: the first resistance takes the profit (from 19 Nov)
 
 Plus one rule for the whole day:
 
@@ -27,7 +30,7 @@ import config
 import fees
 
 RULES = ("current", "breakeven", "half_and_run", "trailing", "time_stop", "no_stop", "wide_1_5", "wide_2",
-         "close_stop")
+         "close_stop", "target_1_5r", "level_target")
 RULE_WORDS = {
     "current": "current rules",
     "breakeven": "stop to entry at +1R",
@@ -38,9 +41,13 @@ RULE_WORDS = {
     "wide_1_5": "stop 1.5x wider, same Rs risk",
     "wide_2": "stop 2x wider, same Rs risk",
     "close_stop": "stop on a 5-min close",
+    "target_1_5r": "target 1.5R",
+    "level_target": "target at yesterday's high/low",
 }
 WIDE = {"wide_1_5": 1.5, "wide_2": 2.0}
 HARD_STOP_X = 2.0     # close_stop's safety net, in multiples of the planned stop distance
+SHORT_TARGET_R = 1.5  # target_1_5r
+LEVEL_MIN_R = 0.5     # level_target: a level nearer than this is ignored (costs would eat the profit)
 
 
 def _last_of_5min(bars):
@@ -64,13 +71,40 @@ def _exit_fill(price, side):
     return round(price * (1 - f) if side == "BUY" else price * (1 + f), 2)
 
 
-def replay(rule, side, qty, fill, stop, target, opened_at, bars):
+def level_target(side, fill, stop, target, level):
+    """The previous day's high (BUY) or low (SELL) as the target when it sits between +LEVEL_MIN_R and the planned
+    target; otherwise the planned target."""
+    d = 1 if side == "BUY" else -1
+    r = (fill - stop) * d
+    if level is None or r <= 0:
+        return target
+    if (level - (fill + d * LEVEL_MIN_R * r)) * d >= 0 and (target - level) * d > 0:
+        return level
+    return target
+
+
+def day_levels(daily_bars, today):
+    """(high, low) of the last daily candle before `today` ('YYYY-MM-DD'), or (None, None)."""
+    prev = [b for b in daily_bars or [] if b["time"][:10] < today]
+    return (prev[-1]["high"], prev[-1]["low"]) if prev else (None, None)
+
+
+def replay(rule, side, qty, fill, stop, target, opened_at, bars, level=None):
     """Net P&L of one trade under `rule` (every order's charges from fees.py, exit slippage; the fill already
-    has entry slippage). rule 'eod': fixed stop, no target, held to the square-off. bars: 1-minute candles {time 'YYYY-MM-DD HH:MM', open, high, low, close}."""
+    has entry slippage). rule 'eod': fixed stop, no target, held to the square-off. bars: 1-minute candles {time 'YYYY-MM-DD HH:MM', open, high, low, close}.
+    level: the previous day's high for a BUY (low for a SELL), used by level_target; without it that rule is the
+    current one."""
     d = 1 if side == "BUY" else -1
     r = (fill - stop) * d
     if r <= 0 or qty <= 0:
         return None
+    if rule == "target_1_5r":
+        nearer = fill + d * SHORT_TARGET_R * r
+        target = nearer if (target - nearer) * d > 0 else target
+        rule = "current"
+    elif rule == "level_target":
+        target = level_target(side, fill, stop, target, level)
+        rule = "current"
     if rule in WIDE:   # wider stop, fewer shares: the rupee risk stays the same
         m = WIDE[rule]
         qty = max(1, int(qty / m))
@@ -145,12 +179,14 @@ def replay(rule, side, qty, fill, stop, target, opened_at, bars):
     return round(pnl - charges, 2)
 
 
-def replay_all(trade, bars):
-    """{rule: net P&L} for one trade; trade has side, qty, fill_price, stop, target, opened_at."""
+def replay_all(trade, bars, levels=(None, None)):
+    """{rule: net P&L} for one trade; trade has side, qty, fill_price, stop, target, opened_at.
+    levels: the previous day's (high, low)."""
+    level = levels[0] if trade["side"] == "BUY" else levels[1]
     out = {}
     for rule in RULES:
         out[rule] = replay(rule, trade["side"], int(trade["qty"]), float(trade["fill_price"]),
-                           float(trade["stop"]), float(trade["target"]), trade["opened_at"], bars)
+                           float(trade["stop"]), float(trade["target"]), trade["opened_at"], bars, level=level)
     return out
 
 

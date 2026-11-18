@@ -109,7 +109,8 @@ def signals(bars, nifty=None):
                 feats = features(t, i, vw, side, entry, per_share, setup, prev_close, prev_ranges, or_hi, or_lo,
                                  vol_x, nd, fired_today)
                 out.append({"date": d, "time": hm, "setup": setup, "side": side, "entry": entry, "stop": stop,
-                            "target": entry + (2 if side == "BUY" else -2) * per_share, "i": i, "features": feats})
+                            "target": entry + (2 if side == "BUY" else -2) * per_share, "i": i, "features": feats,
+                            "pdh": pdh, "pdl": pdl})
                 fired_today += 1
     return out
 
@@ -196,7 +197,9 @@ def rule_r(rule, sig, day_bars, stop=None, target=None, qty=None):
     fill = _fill(sig["entry"], sig["side"])
     if (fill - stop) * (1 if sig["side"] == "BUY" else -1) <= 0:
         return None
-    net = exits.replay(rule, sig["side"], qty, fill, stop, target, f"{sig['date']} {sig['time']}:00", day_bars)
+    level = sig.get("pdh") if sig["side"] == "BUY" else sig.get("pdl")   # for level_target
+    net = exits.replay(rule, sig["side"], qty, fill, stop, target, f"{sig['date']} {sig['time']}:00", day_bars,
+                       level=level)
     return None if net is None else net / ONE_R_RS
 
 
@@ -292,7 +295,8 @@ def label_signal(sig, day_bars):
     early-cut checkpoints (with what cutting would have given), the let-run point, and the forward range."""
     d = 1 if sig["side"] == "BUY" else -1
     res = {r: rule_r(r, sig, day_bars) for r in ("current", "no_stop", "wide_1_5", "wide_2", "close_stop",
-                                                   "trailing", "half_and_run", "breakeven", "time_stop")}
+                                                   "trailing", "half_and_run", "breakeven", "time_stop",
+                                                   "target_1_5r", "level_target")}
     if res["current"] is None:
         return None
     vw = _vwap(day_bars)
@@ -379,5 +383,6 @@ def signal_from_trade(bars, nifty, trade):
     feats = features(t, i, vw, trade["side"], entry, per_share, setup, prev[-1]["close"], prev_ranges, or_hi, or_lo,
                      vol_x, by_day(nifty or []).get(d, []), 0)
     sig = {"date": d, "time": _hhmm(t[i]), "setup": setup, "side": trade["side"], "entry": entry, "stop": stop,
-           "target": float(trade["target"]), "i": i, "features": feats}
+           "target": float(trade["target"]), "i": i, "features": feats,
+           "pdh": max(b["high"] for b in prev), "pdl": min(b["low"] for b in prev)}
     return label_signal(sig, t)

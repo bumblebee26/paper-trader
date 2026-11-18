@@ -1478,12 +1478,21 @@ def report(state, send=True):
     return summary
 
 
+def _prev_day_levels(sym):
+    """The previous session's (high, low) for the level_target exit rule; (None, None) if unavailable."""
+    try:
+        return exits.day_levels(market.daily(sym, "5d"), _today())
+    except Exception as err:  # noqa: BLE001 - that rule then behaves like the current one
+        log.warning("previous-day levels for %s unavailable: %s", sym, err)
+        return None, None
+
+
 def _shadow_exits(state, rows) -> dict:
     """Replay today's closed trades under the exit rules on trial (trader/exits.py) and journal the results."""
     fills = {r["proposal_id"]: r for r in rows if r["event"] == "filled" and r.get("proposal_id")}
     exits_ = {r["proposal_id"]: r for r in rows if r["event"] in ("exited", "squared_off") and r.get("proposal_id")}
     totals = {rule: 0.0 for rule in exits.RULES}
-    actual_total, counted, day_events, bars_cache = 0.0, 0, [], {}
+    actual_total, counted, day_events, bars_cache, levels_cache = 0.0, 0, [], {}, {}
     for pid, f in fills.items():
         x = exits_.get(pid)
         if not x:
@@ -1493,9 +1502,10 @@ def _shadow_exits(state, rows) -> dict:
         sym = f["symbol"]
         if sym not in bars_cache:
             bars_cache[sym] = market.candles(sym, "1m", 1)
+            levels_cache[sym] = _prev_day_levels(sym)
         results = exits.replay_all({"side": f["side"], "qty": f["qty"], "fill_price": f["fill_price"],
                                     "stop": f["stop"], "target": f["target"], "opened_at": f["timestamp_ist"]},
-                                   bars_cache[sym])
+                                   bars_cache[sym], levels_cache[sym])
         journal("exit_variants", event_id=f"exitvar-{pid}", proposal_id=pid, symbol=sym, setup=f["setup"],
                 side=f["side"], qty=f["qty"], pnl_rs=round(net, 2), note=exits.note_text(results))
         if all(v is not None for v in results.values()):
@@ -1519,10 +1529,15 @@ ORB_MIN_STOP_PCT = 0.9                        # stop at least this far, so costs
 ORB_STOCKS = 10                               # the top stocks in play
 
 
-def orb_trade(bars, minutes, one_r_rs, balance):
+ORB_RESULTS = ("2r", "eod", "1_5r", "level")
+
+
+def orb_trade(bars, minutes, one_r_rs, balance, levels=(None, None)):
     """On paper: the first 5-minute close outside the opening range (09:15 + `minutes`) before ENTRY_END, entry at
     that close, stop at the other side of the range (at least ORB_MIN_STOP_PCT away). Results with a 2R target
-    ('2r') and held to the square-off ('eod'), same costs and slippage as real trades. None if no breakout."""
+    ('2r'), held to the square-off ('eod'), a 1.5R target ('1_5r') and the previous day's high/low as the target
+    when it comes first ('level'; from 19 Nov), same costs and slippage as real trades. None if no breakout.
+    levels: the previous day's (high, low)."""
     end = f"09:{15 + minutes:02d}"
     rng = [b for b in bars if "09:15" <= b["time"][11:16] < end]
     if len(rng) < minutes // 5:
@@ -1545,8 +1560,12 @@ def orb_trade(bars, minutes, one_r_rs, balance):
             return None
         fill = slip(entry, side, opening=True)
         opened = f"{b['time']}:00"
-        res = {"2r": exits.replay("current", side, qty, fill, stop, entry + d * 2 * per_share, opened, bars),
-               "eod": exits.replay("eod", side, qty, fill, stop, entry + d * 2 * per_share, opened, bars)}
+        target = entry + d * 2 * per_share
+        level = levels[0] if side == "BUY" else levels[1]
+        res = {"2r": exits.replay("current", side, qty, fill, stop, target, opened, bars),
+               "eod": exits.replay("eod", side, qty, fill, stop, target, opened, bars),
+               "1_5r": exits.replay("target_1_5r", side, qty, fill, stop, target, opened, bars),
+               "level": exits.replay("level_target", side, qty, fill, stop, target, opened, bars, level=level)}
         return {"side": side, "time": t, **res}
     return None
 
@@ -1556,16 +1575,17 @@ def _orb_shadow(state) -> dict:
     names = [r["symbol"] for r in (state.get("in_play") or [])[:ORB_STOCKS]]
     if not names:
         return {}
-    totals = {f"{v}_{k}": 0.0 for v, _ in ORB_VARIANTS for k in ("2r", "eod")}
+    totals = {f"{v}_{k}": 0.0 for v, _ in ORB_VARIANTS for k in ORB_RESULTS}
     trades = {v: 0 for v, _ in ORB_VARIANTS}
     for sym in names:
         bars = [b for b in market.candles(sym, "5m", 1) if b["time"].startswith(_today())]
+        levels = _prev_day_levels(sym)
         results = {}
         for v, minutes in ORB_VARIANTS:
-            t = orb_trade(bars, minutes, one_r(state), state["balance"])
-            if t and t["2r"] is not None and t["eod"] is not None:
+            t = orb_trade(bars, minutes, one_r(state), state["balance"], levels)
+            if t and all(t[k] is not None for k in ORB_RESULTS):
                 trades[v] += 1
-                for k in ("2r", "eod"):
+                for k in ORB_RESULTS:
                     results[f"{v}_{k}"] = t[k]
                     totals[f"{v}_{k}"] += t[k]
         if results:
@@ -1580,8 +1600,10 @@ def _orb_lines(summary) -> list:
     t, n = summary["orb_trial_rs"], summary["orb_trial_trades"]
     return [f"Opening-range test on the top {summary['orb_trial_stocks']} stocks in play (paper): "
             f"5-min range {n['orb5']} trades, {inr(t['orb5_2r'], sign=True)} with a 2R target / "
+            f"{inr(t['orb5_1_5r'], sign=True)} 1.5R / {inr(t['orb5_level'], sign=True)} at yesterday's high-low / "
             f"{inr(t['orb5_eod'], sign=True)} held to 15:10; 15-min range {n['orb15']} trades, "
-            f"{inr(t['orb15_2r'], sign=True)} / {inr(t['orb15_eod'], sign=True)}"]
+            f"{inr(t['orb15_2r'], sign=True)} / {inr(t['orb15_1_5r'], sign=True)} / {inr(t['orb15_level'], sign=True)}"
+            f" / {inr(t['orb15_eod'], sign=True)}"]
 
 
 def _auto_lines(state) -> list:

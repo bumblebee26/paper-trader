@@ -103,15 +103,22 @@ def build(today: date):
                     shadow[rule].append(taken[pid])
 
     # Exit rules on trial: one row per trade (fixed event_id; a re-run report repeats it, so keep the last)
+    # Each rule is compared with the current rule on the trades it has a result for: rules added later (e.g.
+    # target_1_5r from 19 Nov) are missing on older rows, and those rows still count for the other rules.
     variants = {r["event_id"]: r for r in rows if r["event"] == "exit_variants"}
     exit_totals, exit_trades, exit_actual = {k: 0.0 for k in exits.RULES}, 0, 0.0
+    exit_counts, exit_base = {k: 0 for k in exits.RULES}, {k: 0.0 for k in exits.RULES}
     for r in variants.values():
         res = exits.parse_note(r.get("note"))
-        if all(res.get(k) is not None for k in exits.RULES):
-            exit_trades += 1
-            exit_actual += float(r.get("pnl_rs") or 0)
-            for k in exits.RULES:
+        if res.get("current") is None:
+            continue
+        exit_trades += 1
+        exit_actual += float(r.get("pnl_rs") or 0)
+        for k in exits.RULES:
+            if res.get(k) is not None:
                 exit_totals[k] += res[k]
+                exit_counts[k] += 1
+                exit_base[k] += res["current"]
     orb_rows = {r["event_id"]: r for r in rows if r["event"] == "orb_shadow"}
     orb = {"stocks": 0, "rs": defaultdict(float), "trades": defaultdict(int)}
     for r in orb_rows.values():
@@ -129,7 +136,8 @@ def build(today: date):
 
     return {
         "exit_rules": {"trades": exit_trades, "actual": round(exit_actual, 2),
-                       "totals": {k: round(v, 2) for k, v in exit_totals.items()}},
+                       "totals": {k: round(v, 2) for k, v in exit_totals.items()},
+                       "counts": exit_counts, "base": {k: round(v, 2) for k, v in exit_base.items()}},
         "profit_lock": {"days": len(locks), "change": round(lock_change, 2)},
         "orb_trial": {"stocks": orb["stocks"], "trades": dict(orb["trades"]),
                       "rs": {k: round(v, 2) for k, v in orb["rs"].items()}},
@@ -233,8 +241,11 @@ def paper_lines(w) -> list:
         base = ex["totals"]["current"]
         parts = []
         for k in exits.RULES[1:]:
-            diff = ex["totals"][k] - base
-            parts.append(f"{exits.RULE_WORDS[k]} {_inr(diff, sign=True)}")
+            n = (ex.get("counts") or {}).get(k, ex["trades"])
+            if not n:
+                continue
+            diff = ex["totals"][k] - (ex.get("base") or {}).get(k, base)
+            parts.append(f"{exits.RULE_WORDS[k]} {_inr(diff, sign=True)}" + (f" ({n} trades)" if n < ex["trades"] else ""))
         lines.append(f"- Exit rules on trial ({ex['trades']} trades; current rules {_inr(base, sign=True)}): "
                      + ", ".join(parts) + ". Decided after 15+ trades; one week is mostly noise.")
     lock = w.get("profit_lock") or {}
@@ -244,10 +255,16 @@ def paper_lines(w) -> list:
     o = w.get("orb_trial") or {}
     if o.get("trades"):
         rs, n = o["rs"], o["trades"]
+        def nearer(v):  # the 1.5R and yesterday's-level targets (from 19 Nov; missing on older rows)
+            if f"{v}_1_5r" not in rs:
+                return ""
+            return (f" / {_inr(rs[f'{v}_1_5r'], sign=True)} 1.5R / {_inr(rs.get(f'{v}_level', 0), sign=True)} "
+                    "at yesterday's high-low")
         lines.append(f"- Opening-range test on stocks in play: 5-min range {n.get('orb5', 0)} trades, "
-                     f"{_inr(rs.get('orb5_2r', 0), sign=True)} with a 2R target / "
+                     f"{_inr(rs.get('orb5_2r', 0), sign=True)} with a 2R target{nearer('orb5')} / "
                      f"{_inr(rs.get('orb5_eod', 0), sign=True)} held to 15:10; 15-min range {n.get('orb15', 0)} "
-                     f"trades, {_inr(rs.get('orb15_2r', 0), sign=True)} / {_inr(rs.get('orb15_eod', 0), sign=True)}.")
+                     f"trades, {_inr(rs.get('orb15_2r', 0), sign=True)}{nearer('orb15')} / "
+                     f"{_inr(rs.get('orb15_eod', 0), sign=True)}.")
     if w.get("passed"):
         lines.append(f"- Skipped proposals ({w['passed']}) would have made {_inr(w['passed_pnl'], sign=True)}"
                      + (": skipping saved money." if w["passed_pnl"] < 0 else "."))

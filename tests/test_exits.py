@@ -64,6 +64,40 @@ class ReplayTest(unittest.TestCase):
         self.assertAlmostEqual(run("trailing", mirrored, side="SELL", fill=100.0, stop=102.0, target=96.0),
                                run("trailing", RUNNER), delta=15)  # slippage differs slightly by price level
 
+    def test_target_1_5r_takes_the_nearer_profit(self):
+        cur, near = run("current", RUNNER), run("target_1_5r", RUNNER)
+        exit_px = round(103 * 0.9995, 2)                     # 1R = 2 from the fill: target 103 instead of 104
+        self.assertAlmostEqual(near, (exit_px - 100) * 100 - fees.round_trip(100 * 100, exit_px * 100, "BUY"),
+                               delta=0.05)
+        self.assertLess(near, cur)                           # the runner went on to 104
+        self.assertEqual(run("target_1_5r", UP_THEN_DOWN), run("current", UP_THEN_DOWN))  # peaked at 102.6
+        self.assertEqual(run("target_1_5r", RUNNER, target=102.0), run("current", RUNNER, target=102.0))  # nearer already
+
+    def test_level_target_exits_at_yesterdays_high_first(self):
+        level = exits.replay("level_target", "BUY", 100, 100.0, 98.0, 104.0, OPEN, UP_THEN_DOWN, level=102.0)
+        self.assertGreater(level, 0)                         # sold at 102 on the way up
+        self.assertLess(run("current", UP_THEN_DOWN), 0)     # the current rule rode it back to the stop
+        for lvl in (None, 100.5, 105.0):                     # unknown, nearer than +0.5R, past the target
+            self.assertEqual(exits.replay("level_target", "BUY", 100, 100.0, 98.0, 104.0, OPEN, UP_THEN_DOWN,
+                                          level=lvl), run("current", UP_THEN_DOWN))
+
+    def test_level_target_short_uses_yesterdays_low(self):
+        self.assertEqual(exits.level_target("SELL", 100.0, 102.0, 96.0, 98.0), 98.0)
+        self.assertEqual(exits.level_target("SELL", 100.0, 102.0, 96.0, 99.5), 96.0)   # within +0.5R
+        self.assertEqual(exits.level_target("BUY", 100.0, 98.0, 104.0, 98.0), 104.0)   # below the entry
+
+    def test_day_levels_skip_today(self):
+        daily = [{"time": "2026-11-10 09:15", "high": 110.0, "low": 100.0},
+                 {"time": "2026-11-11 09:15", "high": 120.0, "low": 105.0}]
+        self.assertEqual(exits.day_levels(daily, "2026-11-11"), (110.0, 100.0))
+        self.assertEqual(exits.day_levels([], "2026-11-11"), (None, None))
+
+    def test_replay_all_has_every_rule(self):
+        out = exits.replay_all({"side": "BUY", "qty": 100, "fill_price": 100.0, "stop": 98.0, "target": 104.0,
+                                "opened_at": OPEN}, UP_THEN_DOWN, (102.0, 95.0))
+        self.assertEqual(set(out), set(exits.RULES))
+        self.assertGreater(out["level_target"], out["current"])
+
     def test_profit_lock(self):
         events = [("10:00", "10:20", 1300.0), ("10:30", "10:50", 1900.0),    # +3,200: armed (3R = 3,000)
                   ("11:00", "11:20", -1800.0),                              # back to 1,400 <= half of 3,200
@@ -97,6 +131,24 @@ class ReportTest(unittest.TestCase):
             w = weekly.build(date(2026, 11, 13))
             self.assertEqual(w["exit_rules"]["trades"], 1)                 # ...but the week counts it once
             self.assertIn("Exit rules on trial", weekly.message(w, st))
+            self.assertIn("target 1.5R", weekly.message(w, st))
+
+    def test_week_counts_rows_from_before_the_new_rules(self):
+        with Env(datetime(2026, 11, 13, 16, 0)) as env:
+            st = engine.load()
+            old = "current=-200.0;breakeven=-10.0;half_and_run=50.0;trailing=-10.0;time_stop=-200.0;no_stop=-300.0;" \
+                  "wide_1_5=-150.0;wide_2=-120.0;close_stop=-100.0"
+            new = old.replace("current=-200.0", "current=300.0") + ";target_1_5r=200.0;level_target=250.0"
+            engine.journal("exit_variants", event_id="exitvar-a", proposal_id="a", symbol="TCS", pnl_rs=-200.0, note=old)
+            env.clock = datetime(2026, 11, 13, 16, 1)
+            engine.journal("exit_variants", event_id="exitvar-b", proposal_id="b", symbol="INFY", pnl_rs=300.0, note=new)
+            w = weekly.build(date(2026, 11, 13))
+            ex = w["exit_rules"]
+            self.assertEqual(ex["trades"], 2)                              # the old row still counts
+            self.assertEqual(ex["counts"]["target_1_5r"], 1)
+            self.assertEqual(ex["totals"]["target_1_5r"] - ex["base"]["target_1_5r"], -100.0)  # vs current, same trade
+            text = "\n".join(weekly.paper_lines(w))
+            self.assertIn("target 1.5R -Rs 100 (1 trades)", text)
 
 
 if __name__ == "__main__":
