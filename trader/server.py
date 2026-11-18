@@ -29,6 +29,7 @@ from http_client import log
 mcp = _Server("paper-trader")
 
 SCAN_PAUSE_SEC = 0.3
+_LAST_WAKE = None   # when wait_for_next_candle last returned (latency marks)
 DEFAULT_WATCHLIST = sectors.WATCHLIST  # 36 large caps across 11 sectors (trader/sectors.py)
 
 
@@ -142,6 +143,7 @@ def run_cycle() -> dict:
     news_alerts: fresh NSE filings on tradable stocks since the last cycle; those stocks are added to the
     scan (up to 5 extra); named headlines (category media) count too. market_news: new RBI / SEBI items, context for
     the whole market only. stocks_in_play (once, at 09:25): the focus list re-ranked by opening relative volume. Read the filing before proposing: news says which stock may move, not which way."""
+    t_start = market.now_ist()
     state = engine.load()
     try:
         mon = engine.monitor(state)
@@ -177,8 +179,23 @@ def run_cycle() -> dict:
         if state.get("data_stale"):
             out["data_stale"] = "prices look stale: no proposals this cycle"
         else:
+            t_data = market.now_ist()
             out["candidates"] = _scan(focus)
+            _log_cycle(t_start, t_data, len(focus), len(out["candidates"]))
     return out
+
+
+def _log_cycle(t_start, t_data, symbols, candidates):
+    """Latency marks for one cycle, in seconds after the candle close: when the wait returned, when the agent called
+    run_cycle, when positions/news/Nifty were done, and when the scan finished."""
+    try:
+        sec = engine.secs_after_candle
+        woke = sec(_LAST_WAKE, t_start) if _LAST_WAKE else ""
+        engine.journal("cycle_timing", note=(f"woke={woke};start={sec(t_start)};data={sec(t_data, t_start)}"
+                                             f";scan={sec(market.now_ist(), t_start)};symbols={symbols}"
+                                             f";candidates={candidates}"))
+    except Exception as err:  # noqa: BLE001 - timing must never break a cycle
+        log.warning("cycle timing not logged: %s", err)
 
 
 @mcp.tool()
@@ -268,7 +285,8 @@ def wait_for_next_candle(session_end: str = "15:45") -> dict:
         finally:
             engine.save(state)
         engine.heartbeat()
-    t = market.now_ist()
+    global _LAST_WAKE
+    t = _LAST_WAKE = market.now_ist()
     return {"time_ist": t.strftime("%H:%M:%S"), "session_over": t >= end}
 
 

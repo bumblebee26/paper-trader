@@ -52,7 +52,17 @@ class EngineTest(unittest.TestCase):
             self.assertGreater(st["balance"], 100_000)
             engine.save(st)
             rows = storage.read_rows("journal/2026-11-09.csv")
-            self.assertEqual([r["event"] for r in rows], ["proposed", "filled", "exited"])
+            self.assertEqual([r["event"] for r in rows if r["event"] != "proposal_timing"], ["proposed", "filled", "exited"])
+            timing = next(r for r in rows if r["event"] == "proposal_timing")
+            self.assertIn("reviewer_sec=", timing["note"])
+
+    def test_seconds_after_candle_close(self):
+        ist = engine.market.IST
+        self.assertEqual(engine.secs_after_candle(datetime(2026, 11, 18, 9, 42, 7, tzinfo=ist)), 127.0)
+        self.assertEqual(engine.secs_after_candle(datetime(2026, 11, 18, 9, 45, 3, tzinfo=ist)), 3.0)
+        # measured from the candle the reference time falls in (a proposal that runs past the next close)
+        self.assertEqual(engine.secs_after_candle(datetime(2026, 11, 18, 9, 45, 20, tzinfo=ist),
+                                                  datetime(2026, 11, 18, 9, 44, 50, tzinfo=ist)), 320.0)
 
     def test_stop_checked_before_target_in_same_bar(self):
         with Env() as env:
