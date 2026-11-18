@@ -6,6 +6,7 @@ import json
 import math
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 import advisor
@@ -731,16 +732,27 @@ def is_news_pick(state, symbol) -> bool:
     return symbol in (state.get("news_symbols") or []) or symbol not in sectors.WATCHLIST
 
 
+def _relevant_news():
+    """Today's filings on tradable stocks in the radar's categories."""
+    today = _today()
+    return [i for i in (news.items() or [])
+            if (i.get("symbol") or "") and tradable(i["symbol"])
+            and i.get("category") in config.NEWS_RADAR_CATEGORIES
+            and (i.get("published_ist") or i.get("fetched_at_ist") or "").startswith(today)]
+
+
+def fresh_news(state) -> list:
+    """Stocks with a filing news_alerts hasn't reported yet, without marking anything seen (the wait between
+    candles uses it to wake the agent early; run_cycle then reports and scans them)."""
+    seen = set(state.get("news_seen") or [])
+    return sorted({i["symbol"].upper() for i in _relevant_news() if i.get("id") not in seen})
+
+
 def news_alerts(state, limit=8) -> list:
     """New NSE filings (results, orders, mergers, ratings...) on tradable stocks since the last check. Each one's
     stock joins the scan (up to NEWS_FOCUS_MAX extra names, newest first) and its trades are labelled 'news'."""
-    items = news.items() or []
+    relevant = _relevant_news()
     seen = set(state.get("news_seen") or [])
-    today = _today()
-    relevant = [i for i in items
-                if (i.get("symbol") or "") and tradable(i["symbol"])
-                and i.get("category") in config.NEWS_RADAR_CATEGORIES
-                and (i.get("published_ist") or i.get("fetched_at_ist") or "").startswith(today)]
     fresh = [i for i in relevant if i.get("id") not in seen]
     state["news_seen"] = [i.get("id") for i in relevant]   # today's relevant filings only: small, never truncated
     out = []
@@ -806,10 +818,9 @@ def rank_in_play(state, pause=0.0) -> list:
     pool = list(dict.fromkeys([*(state.get("focus") or []), *strict, *radar, *(state.get("news_symbols") or []),
                                *near, *sectors.WATCHLIST]))
     ranked = []
-    for i, sym in enumerate(pool):
-        if pause and i and i % 5 == 0:
-            time.sleep(pause)   # gentle on Yahoo's rate limits
-        r = opening_rvol(sym)
+    with ThreadPoolExecutor(max_workers=config.SCAN_WORKERS) as ex:   # a few at a time: fast, gentle on Yahoo
+        rvols = list(ex.map(opening_rvol, pool))
+    for sym, r in zip(pool, rvols):
         if r and tradable(sym):
             r["news"] = sym in (state.get("news_symbols") or []) or sym in radar
             r["scanner"] = "strict" if sym in strict else "near" if sym in near else None

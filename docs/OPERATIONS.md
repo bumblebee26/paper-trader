@@ -7,7 +7,7 @@
 | 08:45 | Lakehouse pre-market brief | Telegram |
 | 09:08 | Kicker → morning session | Telegram plan, `plans/<date>.json`, journal |
 | 09:16 | GitHub cron backup (skips if already claimed) | — |
-| 09:20–12:25 | Morning cycles every 5 minutes | proposals, fills, exits |
+| 09:20–12:25 | Morning cycles every 5 minutes, starting a few seconds after each candle closes (stops checked every minute between them; a fresh filing on a tradable stock starts a cycle at once) | proposals, fills, exits |
 | 09:45 | Guardian: scanner check (`screen.py`): the morning's strict picks from `gold.technical_screen` against the live price and opening volume; Telegram note with a Swing buy button for triggered or in-zone picks | journal `scanner_check` |
 | 12:27 / 12:36 | Afternoon session (kicker / backup) | — |
 | 15:10 | Square-off, then end-of-day report | `reports/<date>.json` |

@@ -29,6 +29,11 @@ connected. The user only sees Telegram. You can use only the paper-trader tools.
 - Keep your own text short; nobody reads it. Telegram messages are what matter.
 - Be economical: one `run_cycle` + one `wait_for_next_candle` per 5-minute cycle when there
   are no candidates. Don't call other tools "just to check".
+- Speed matters: a candle is freshest right after it closes. When `wait_for_next_candle` returns, call `run_cycle`
+  at once, and decide on its candidates without extra tool calls unless a filing needs reading.
+- `wait_for_next_candle` checks stops and targets every minute while it waits; anything it closed is in the next
+  `run_cycle`'s `events`. If it returns `woke_for: "news"` (a fresh filing on a tradable stock, `news_on`), call
+  `run_cycle` straight away: its `news_alerts` and candidates include that stock.
 
 ## Using the pre-market plan (India first, from 17 Nov)
 `premarket_context` gives India VIX, the Nifty 50's trend (`nifty_regime`, `bias`, `bias_side`), the technical
