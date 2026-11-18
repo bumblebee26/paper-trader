@@ -82,6 +82,15 @@ class OrbTrialTest(unittest.TestCase):
         self.assertGreater(t5["2r"], 0)
         self.assertEqual(t15["time"], "09:30")
         self.assertGreater(t15["eod"], t15["2r"])                     # the runner pays more when held
+        self.assertLess(t5["1_5r"], t5["2r"])                         # the nearer target banks less on a runner
+        self.assertEqual(t5["level"], t5["2r"])                       # no previous-day levels given
+
+    def test_level_target_with_yesterdays_high(self):
+        with Env(datetime(2026, 11, 16, 15, 20)):
+            plain = engine.orb_trade(self.day(), 5, 1000.0, 100_000)
+            t = engine.orb_trade(self.day(), 5, 1000.0, 100_000, levels=(101.8, 99.0))
+        self.assertLess(t["level"], plain["2r"])                      # sold at 101.8, before the 2R target
+        self.assertGreater(t["level"], 0)
 
     def test_report_and_week(self):
         with Env(datetime(2026, 11, 16, 15, 20)) as env:
@@ -90,7 +99,9 @@ class OrbTrialTest(unittest.TestCase):
             env.bars[("TCS", "5m")] = self.day()
             s = engine.report(st)
             self.assertEqual(s["orb_trial_trades"], {"orb5": 1, "orb15": 1})
+            self.assertIn("orb5_level", s["orb_trial_rs"])
             self.assertIn("Opening-range test on the top 1 stocks in play", env.sent[-1])
+            self.assertIn("1.5R", env.sent[-1])
             w = weekly.build(date(2026, 11, 16))
             self.assertEqual(w["orb_trial"]["trades"], {"orb5": 1, "orb15": 1})
             self.assertTrue(any("Opening-range test" in x for x in weekly.paper_lines(w)))

@@ -75,6 +75,7 @@ class Env:
             mock.patch.object(tg, "set_buttons", lambda m, b: self.button_sets.append((m, b))),
             mock.patch.object(market, "last_price", lambda s: (self.prices.get(s), "2026-11-09 10:40")),
             mock.patch.object(market, "candles", lambda s, i="5m", d=1: self.bars.get((s, i), [])),
+            mock.patch.object(market, "daily", lambda s, rng="1y": self.bars.get((s, "1d"), [])),
             mock.patch.object(config, "STARTING_CAPITAL", self.capital),
             # Mechanics tests use toy prices (very tight stops) and a fixed Rs 4,000 day limit; the R-based limits,
             # weekly brake and cost filter are tested with their real settings in test_risk_limits.py.

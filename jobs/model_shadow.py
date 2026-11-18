@@ -8,7 +8,9 @@ places, changes or closes a trade.
    the history keeps growing beyond Yahoo's 60 days.
 2. Backtest, walk-forward (models/walkforward.py): every scanner setup on every stock, each day predicted only by
    models trained on earlier days. Rules compared on the same signals: the current rules; no stop; stops 1.5x/2x
-   wider with the same rupee risk; stop on a 5-minute close; trailing/breakeven/half-and-run/time stop; and the
+   wider with the same rupee risk; stop on a 5-minute close; trailing/breakeven/half-and-run/time stop; a 1.5R
+   target; the previous day's high/low as the target when it comes before 2R; skipping breakouts that are already
+   stretched (trader/stretch.py) (all three from 19 Nov); and the
    four models (volatility stop, trade filter, early cut, let winners run) plus all of them combined.
 3. Today's real trades: each is scored by models trained on all earlier days, and replayed under every rule.
 4. Results: journal events "model_shadow" per real trade and "model_backtest" per rule (pnl_rs = total R; both
@@ -34,13 +36,16 @@ CACHE = "models/bars5m/{sym}.json"
 KEEP_DAYS = 250
 UNIVERSE_SQL = "SELECT symbol FROM stocks.gold.intraday_universe WHERE eligible ORDER BY symbol"
 RULE_ORDER = ("current", "filter", "vol_stop", "early_cut", "let_run", "combined", "no_stop", "wide_1_5", "wide_2",
-              "close_stop", "trailing", "half_and_run", "breakeven", "time_stop")
+              "close_stop", "trailing", "half_and_run", "breakeven", "time_stop", "target_1_5r", "level_target",
+              "skip_stretched")
 RULE_WORDS = {
     "current": "current rules", "filter": "model: trade filter", "vol_stop": "model: volatility stop",
     "early_cut": "model: early cut", "let_run": "model: let winners run", "combined": "models combined",
     "no_stop": "no stop", "wide_1_5": "stop 1.5x wider, same Rs risk", "wide_2": "stop 2x wider, same Rs risk",
     "close_stop": "stop on a 5-min close", "trailing": "trailing stop", "half_and_run": "sell half at +1R",
     "breakeven": "stop to entry at +1R", "time_stop": "60-minute time stop",
+    "target_1_5r": "target 1.5R", "level_target": "target at yesterday's high/low",
+    "skip_stretched": "skip stretched breakouts",
 }
 
 
