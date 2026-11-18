@@ -132,6 +132,10 @@ class WalkForward(unittest.TestCase):
     def test_labels(self):
         d = next(x for x in self.data if x["checkpoints"])
         self.assertIn("current", d["results"])
+        for x in self.data:                       # the nearer targets (from 19 Nov) on every signal
+            self.assertIsNotNone(x["results"]["target_1_5r"])
+            self.assertIsNotNone(x["results"]["level_target"])
+            self.assertIsNotNone(x["pdh"])
         self.assertLess(d["checkpoints"][0]["features"]["open_r"], 0)
         self.assertIsNotNone(d["fwd_range_pct"])
         for x in self.data:
@@ -153,7 +157,8 @@ class WalkForward(unittest.TestCase):
         days = sorted({d["date"] for d in self.data})
         self.assertEqual(min(d["date"] for d in dec), days[12])
         s = walkforward.summarise(dec)
-        for rule in ("current", "filter", "early_cut", "let_run", "combined", "no_stop", "wide_2", "close_stop"):
+        for rule in ("current", "filter", "early_cut", "let_run", "combined", "no_stop", "wide_2", "close_stop",
+                     "target_1_5r", "level_target"):
             self.assertIn(rule, s)
         self.assertEqual(s["current"]["signals"], len(dec))
 
@@ -167,6 +172,7 @@ class WalkForward(unittest.TestCase):
         self.assertEqual(real["time"], sig["time"])
         self.assertEqual(real["features"]["risk_pct"], sig["features"]["risk_pct"])
         self.assertEqual(real["results"]["current"], sig["results"]["current"])
+        self.assertEqual(real["results"]["level_target"], sig["results"]["level_target"])   # same previous-day levels
 
 
 if __name__ == "__main__":
