@@ -26,6 +26,8 @@ SHADOW_WORDS = {
     "after_14h": "no new trades after 14:00",
     "vwap_wrong_side": "no BUY below today's average price, VWAP (no SELL above it)",
     "lagging_sector": "no BUY on a stock weaker than its sector today (no SELL on a stronger one)",
+    "stretched": "no breakout once the price is already 70% of its usual day's range off today's low "
+                 "(high for a SELL) or 1% past VWAP",
 }
 
 
@@ -120,7 +122,7 @@ def build(today: date):
                 exit_counts[k] += 1
                 exit_base[k] += res["current"]
     orb_rows = {r["event_id"]: r for r in rows if r["event"] == "orb_shadow"}
-    orb = {"stocks": 0, "rs": defaultdict(float), "trades": defaultdict(int)}
+    orb = {"stocks": 0, "rs": defaultdict(float), "trades": defaultdict(int), "retests": defaultdict(int)}
     for r in orb_rows.values():
         orb["stocks"] += 1
         for k, v in exits.parse_note(r.get("note")).items():
@@ -128,6 +130,8 @@ def build(today: date):
                 orb["rs"][k] += v
                 if k.endswith("_2r"):
                     orb["trades"][k[:-3]] += 1
+                elif k.endswith("_retest"):
+                    orb["retests"][k[:-7]] += 1
     locks = {r["event_id"]: r for r in rows if r["event"] == "profit_lock_shadow"}
     lock_change = 0.0
     for r in locks.values():
@@ -139,7 +143,7 @@ def build(today: date):
                        "totals": {k: round(v, 2) for k, v in exit_totals.items()},
                        "counts": exit_counts, "base": {k: round(v, 2) for k, v in exit_base.items()}},
         "profit_lock": {"days": len(locks), "change": round(lock_change, 2)},
-        "orb_trial": {"stocks": orb["stocks"], "trades": dict(orb["trades"]),
+        "orb_trial": {"stocks": orb["stocks"], "trades": dict(orb["trades"]), "retests": dict(orb["retests"]),
                       "rs": {k: round(v, 2) for k, v in orb["rs"].items()}},
         "weekly_brake": any(r["event"] == "weekly_brake" for r in rows),
         "week_start": (week_days(today) or [today])[0].isoformat(), "week_end": today.isoformat(),
@@ -265,6 +269,13 @@ def paper_lines(w) -> list:
                      f"{_inr(rs.get('orb5_eod', 0), sign=True)} held to 15:10; 15-min range {n.get('orb15', 0)} "
                      f"trades, {_inr(rs.get('orb15_2r', 0), sign=True)}{nearer('orb15')} / "
                      f"{_inr(rs.get('orb15_eod', 0), sign=True)}.")
+        rt = o.get("retests") or {}
+        if rt:
+            lines.append(f"- Opening-range test, waiting for the retest instead of buying the breakout: 5-min range "
+                         f"{rt.get('orb5', 0)} filled, {_inr(rs.get('orb5_retest', 0), sign=True)}; 15-min range "
+                         f"{rt.get('orb15', 0)} filled, {_inr(rs.get('orb15_retest', 0), sign=True)} (vs "
+                         f"{_inr(rs.get('orb5_2r', 0), sign=True)} / {_inr(rs.get('orb15_2r', 0), sign=True)} "
+                         "buying every breakout).")
     if w.get("passed"):
         lines.append(f"- Skipped proposals ({w['passed']}) would have made {_inr(w['passed_pnl'], sign=True)}"
                      + (": skipping saved money." if w["passed_pnl"] < 0 else "."))

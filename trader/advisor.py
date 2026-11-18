@@ -8,6 +8,7 @@ The user always makes the final call.
 import market
 import news
 import sectors
+import stretch
 
 SECTOR_INDEX = sectors.SECTOR_INDEX
 FLAT_PCT = 0.15  # index moves smaller than this count as "flat"
@@ -62,7 +63,7 @@ def market_mood(nifty_pct, vix=None):
     return "choppy"
 
 
-def shadow_blocks(side, nifty_pct, mood, now, vwap_wrong=False, lagging=False):
+def shadow_blocks(side, nifty_pct, mood, now, vwap_wrong=False, lagging=False, stretched=False):
     """Alternative rules we are testing without trading them: which would have blocked this trade.
     Recorded in the journal so the 2-week review can compare them with the real results."""
     out = []
@@ -76,20 +77,27 @@ def shadow_blocks(side, nifty_pct, mood, now, vwap_wrong=False, lagging=False):
         out.append("vwap_wrong_side")
     if lagging:
         out.append("lagging_sector")
+    if stretched:
+        out.append("stretched")
     return out
 
 
 RS_GAP_PCT = 0.3   # stock vs its sector (or Nifty) since the open: more than this is "stronger" / "weaker"
 
 
-def vwap_and_strength(symbol):
-    """(vwap, stock % since today's open) from today's 5-minute candles; (None, None) if unavailable."""
+def today_bars(symbol):
+    """Today's 5-minute candles with volume; [] if unavailable."""
     try:
         bars = market.candles(symbol, "5m", 1)
     except Exception:  # noqa: BLE001 - a missing check never blocks a proposal
-        return None, None
+        return []
     today = market.now_ist().strftime("%Y-%m-%d")
-    bars = [b for b in bars if b["time"].startswith(today) and b.get("volume")]
+    return [b for b in bars if b["time"].startswith(today) and b.get("volume")]
+
+
+def vwap_and_strength(symbol, bars=None):
+    """(vwap, stock % since today's open) from today's 5-minute candles; (None, None) if unavailable."""
+    bars = today_bars(symbol) if bars is None else bars
     if not bars:
         return None, None
     pv = sum((b["high"] + b["low"] + b["close"]) / 3 * b["volume"] for b in bars)
@@ -115,7 +123,18 @@ def news_check(symbol):
     return OK, "No NSE filings for this company today or yesterday.", 0
 
 
-def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
+def stretched_check(symbol, side, price, bars, vwap):
+    """The background rule "stretched" (trader/stretch.py) for a breakout: (stretched?, plain words)."""
+    if not bars:
+        return False, ""
+    try:
+        usual = stretch.usual_range_pct(market.daily(symbol, "1mo"), market.now_ist().strftime("%Y-%m-%d"))
+    except Exception:  # noqa: BLE001 - then only the VWAP part is checked
+        usual = None
+    return stretch.check(side, price, min(b["low"] for b in bars), max(b["high"] for b in bars), vwap, usual)
+
+
+def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None, setup=None):
     """Return {"yes_pct", "verdict", "lines"} for the Telegram message."""
     checks = []  # (icon, text, points)
     short = []   # the one-line market check of the compact message: "Nifty -0.14% ➖"
@@ -163,8 +182,9 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
         checks.append((INFO, "Live price: couldn't check right now.", 0))
 
     # Which side of today's average price (VWAP), and strength against its own sector (or Nifty).
-    vwap, stock_pct = vwap_and_strength(symbol)
-    vwap_wrong = lagging = False
+    bars_today = today_bars(symbol)
+    vwap, stock_pct = vwap_and_strength(symbol, bars_today)
+    vwap_wrong = lagging = stretched = False
     price_now = live or entry
     if vwap:
         right = price_now > vwap if side == "BUY" else price_now < vwap
@@ -188,6 +208,13 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
             checks.append((WARN, f"The stock is {'weaker' if side == 'BUY' else 'stronger'} than {ref_name} today "
                                  f"({stock_pct:+.2f}% vs {ref_pct:+.2f}%), against this {side}.", -5))
             short.append(f"{'weaker' if side == 'BUY' else 'stronger'} than {ref_name} {WARN}")
+
+    # Background rule on trial (no points): a breakout that has already run a long way today.
+    if setup in stretch.BREAKOUT_SETUPS:
+        stretched, why = stretched_check(symbol, side, price_now, bars_today, vwap)
+        if stretched:
+            checks.append((INFO, f"Already stretched: {why}. Breakouts this far into the move are on trial as "
+                                 "a background rule (no points yet).", 0))
 
     # Time left before the 15:10 square-off.
     now = market.now_ist()
@@ -240,7 +267,7 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None):
                     + (" · ".join(s for s in short if s) or "no live market data right now"))
     out = {"checks_pct": checks_pct, "market_lines": market_lines, "mood": mood, "top_checks": top_checks,
            "market_short": market_short,
-           "shadow": shadow_blocks(side, nifty_pct, mood, market.now_ist(), vwap_wrong, lagging)}
+           "shadow": shadow_blocks(side, nifty_pct, mood, market.now_ist(), vwap_wrong, lagging, stretched)}
     return combine(out, ai_yes_pct, None)
 
 
