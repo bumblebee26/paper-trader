@@ -20,14 +20,14 @@ life of one trade).
 |---|---|
 | 08:45 | Lakehouse pre-market brief (India first: India VIX, the Nifty 50's trend; the US only as support) and the **technical scanner** (Nifty 200 strict picks with indicative levels and a Swing buy button) arrive on Telegram |
 | 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data (any source missing the day it should have is left out, never replaced by an older day), sends the day plan and focus list |
-| 09:20–12:25 | Every 5 minutes: check positions, scan the focus list (up to 15 names: the 36-stock watchlist plus news-radar picks from the Nifty 200), and any stock with a fresh NSE filing; propose setups |
+| 09:20–12:25 | Every 5 minutes, a few seconds after each candle closes: check positions, scan the focus list (up to 15 names: the 36-stock watchlist plus news-radar picks from the Nifty 200), and any stock with a fresh NSE filing; propose setups. Between cycles stops and targets are checked every minute, and a fresh filing on a tradable stock starts a cycle at once |
 | 09:45 | Scanner check: each strict pick against the first half hour (triggered, in its entry zone, waiting, extended or invalidated) |
 | 12:27 | Afternoon session. New entries stop at 14:30 |
 | 15:10 | Everything squared off, then the day report |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | The day's journal and a portfolio snapshot (all pools and holdings) are copied to the lakehouse; its `stocks-trading` job builds the trading and portfolio tables and dashboard pages |
 | 15:50 | Swing shadow tests: news breakouts, the technical scanner's strict picks (entry at its level the next day, stop, T2 or 15 days), and momentum + news (from 18 Nov: 6 holdings, 2% risk, trailing stop) with its concentrated copy (top 3, 3% risk), bought and sold on paper, compared with NIFTYBEES (`/shadow`); stops and targets on your own swing trades checked |
-| 16:10 | **Shadow models** (GitHub job): the volatility stop, trade filter, early cut and let-winners-run models, plus stop variants (no stop, wider stops, stop on a 5-minute close), trained on 60+ days of every tradable stock's setups and judged walk-forward; today's real trades replayed under each. Paper only, reviewed with you before December |
+| 16:10 | **Shadow models** (GitHub job): the volatility stop, trade filter, early cut and let-winners-run models, plus stop variants (no stop, wider stops, stop on a 5-minute close), nearer targets (1.5R, yesterday's high/low) and skipping "stretched" breakouts, trained on 60+ days of every tradable stock's setups and judged walk-forward; today's real trades replayed under each. Paper only, reviewed with you before December |
 | 23:30 | The last 4 days' journals are copied again, so late events reach the lakehouse |
 
 Money is split into three dummy pools (Rs 2,00,000 in total): **intraday** Rs 40,000 (trading now), **swing**
