@@ -14,7 +14,7 @@ flowchart TB
         NSE["<b>NSE</b><br/>daily bhavcopy"]
         MAS["<b>Massive</b><br/>US stocks"]
         FRED["<b>FRED</b><br/>global series"]
-        YF["<b>Yahoo Finance</b><br/>intraday NSE prices"]
+        YF["<b>Yahoo Finance</b><br/>intraday NSE prices · world markets"]
     end
 
     subgraph AWS["AWS account · free plan · ap-southeast-2 (Sydney)"]
@@ -23,7 +23,7 @@ flowchart TB
             direction TB
             FET["<b>Fetcher Lambdas</b><br/>NSE 19:30 · Massive 11:00 · FRED 06:00 · F&amp;O Mon 08:00"]
             S3L[("<b>S3 landing bucket</b><br/>raw archive")]
-            PM["<b>Pre-market Lambda</b><br/>08:45 brief + technical scanner"]
+            PM["<b>Pre-market Lambda</b><br/>08:45 pre-open snapshot<br/>brief + technical scanner"]
             NEWS["<b>News Lambda</b><br/>NSE filings every minute 09:00–15:59<br/>(every 30 min otherwise)<br/>Business Standard · RBI · SEBI every few min"]
         end
         subgraph PTA["paper-trader"]
@@ -45,7 +45,7 @@ flowchart TB
 
     subgraph DBX["Databricks Free Edition · catalog stocks"]
         direction TB
-        VOL[("<b>Landing volume</b><br/>nse · massive · fred · trades<br/>portfolio · fundamentals · index_members")]
+        VOL[("<b>Landing volume</b><br/>nse · massive · fred · premarket · trades<br/>portfolio · fundamentals · index_members")]
         NVOL[("<b>News volume</b><br/>latest.jsonl")]
         PIPE["<b>3 pipelines, one at a time</b><br/>market → research · trading<br/>bronze → silver → gold"]
         GOLD["<b>Gold tables</b><br/>markets · scanner · trading · portfolio · long-term"]
@@ -63,6 +63,8 @@ flowchart TB
     NSE --> NEWS
     NEWS -- "push" --> NVOL
     PM -- "SQL" --> WH
+    YF -- "world markets" --> PM
+    PM -- "08:45 pre-open snapshot" --> VOL
     PM -- "08:45 brief" --> TG
     KICK -- "workflow_dispatch" --> SESS
     SESS -- "pre-market context (SQL)" --> WH

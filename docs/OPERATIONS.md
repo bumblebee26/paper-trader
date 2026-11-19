@@ -66,12 +66,27 @@ proposal with its counts by setup, suggestion band, mood, hour, the stock's sect
 Claude, whose rules allow adjusting its own score only on judged rows.
 
 **Exit rules on trial** (`trader/exits.py`, from 11 Nov; nothing changes real trades): after the close each
-trade is replayed on its 1-minute candles under the current exits and eight alternatives (stop to entry at
+trade is replayed on its 1-minute candles under the current exits and ten alternatives (stop to entry at
 +1R, sell half at +1R, a trailing stop, a 60-minute time stop; from 17 Nov also no stop, the stop 1.5x and 2x
 wider with fewer shares for the same rupee risk, and a stop that counts only on a 5-minute close with a hard
-stop at 2x), plus a day profit lock (once the day is +3R, no
+stop at 2x; from 19 Nov a 1.5R target, and yesterday's high (low for a short) as the target when it sits
+between +0.5R and the planned target), plus a day profit lock (once the day is +3R, no
 new trades if it falls back to half). The day report and the weekly report show how each would have done;
-journal events `exit_variants` and `profit_lock_shadow`. Adopt one only at a review, after 15+ trades.
+journal events `exit_variants` and `profit_lock_shadow`. Adopt one only at a review, after 15+ trades. The two
+new targets also run in the opening-range test and the nightly model backtest, so the review has a larger sample;
+the weekly report compares each rule with the current one on the trades it has a result for.
+
+**Breakouts on trial** (from 19 Nov, paper only): `trader/stretch.py` marks an ORB, PDH or PDL breakout
+"stretched" when the price is already more than 70% of a usual day's range (last 5 sessions) off today's low
+(high for a SELL), or more than 1% past VWAP. It is recorded on the proposal as a background rule (no points)
+and judged in the weekly report; the nightly model backtest also tests skipping them (`skip_stretched`). The
+opening-range test adds a "retest" version: a limit order at the range edge, filled only if the price comes
+back within 60 minutes (a fill and stop-out in the same candle counts as a loss).
+
+**Cycle timing** (from 19 Nov): the settings `WAKE_AFTER_CLOSE_SEC` (3), `CANDLE_WAIT_MAX_SEC` (25),
+`MONITOR_EVERY_SEC` (60) and `SCAN_WORKERS` (4 stocks fetched at a time) set how fast each cycle starts. Journal
+events `cycle_timing` and `proposal_timing` record, in seconds after the candle close, when each cycle and each
+proposal happened (logging only).
 
 **Your own trades** (`trader/custom.py`, from 16 Nov): `/analyze SYMBOL` gives the trader's view of any NSE stock
 (code only, no Claude). `/buy` and `/short` trade on the intraday ledger (defaults: stop 1% away, target 2x the

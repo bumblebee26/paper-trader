@@ -3,7 +3,7 @@
 > The shared overview of both repositories. The same file is in
 > [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse/blob/main/docs/PLATFORM.md) and
 > [paper-trader](https://github.com/bumblebee26/paper-trader/blob/main/docs/PLATFORM.md); change both together
-> (only the diagram path differs). As of 17 Nov 2026.
+> (only the diagram path differs). As of 19 Nov 2026.
 
 ## Overview
 
@@ -47,10 +47,11 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 08:00 | Mon | Lakehouse | NSE F&O stock list |
 | 06:00 | Tue–Sat | Lakehouse | FRED: indices, FX, VIX, oil, rates (21-day window) |
 | every minute 09:00–15:59; every 30 min 08:00–19:30 otherwise | Mon–Fri | Lakehouse | NSE company news to the news volume (`latest.jsonl`, read by the trader within about a minute); Business Standard markets every 4 min, RBI and SEBI every 5 min |
-| 08:45 | Mon–Fri | Lakehouse | Pre-market brief (India first; global as support, live from Yahoo; sources missing their day left out) and the technical scanner to Telegram |
+| 08:45 | Mon–Fri | Lakehouse | Pre-market brief (India first; global as support, live from Yahoo; sources missing their day left out) and the technical scanner to Telegram. First it saves a pre-open snapshot of 21 world markets from Yahoo to `landing/premarket/` |
+| ~08:50 | Mon–Fri | Lakehouse | The snapshot starts job `stocks-market-preopen`: market pipeline, then the dashboard summaries, so Global markets is current by about 09:00, before NSE opens |
 | 09:08 | Mon–Fri | Trader | Kicker Lambda starts the morning session; plan + focus list to Telegram |
 | 09:16 | Mon–Fri | Trader | GitHub cron backup start (skips if already running) |
-| 09:20–12:25 | Mon–Fri | Trader | Every 5 min: check positions, scan focus list, propose; you tap YES/NO |
+| 09:20–12:25 | Mon–Fri | Trader | Every 5 min, a few seconds after each candle closes: check positions, scan focus list, propose; you tap YES/NO. Between cycles stops and targets are checked every minute, and a fresh filing on a tradable stock starts a cycle at once |
 | 09:45 | Mon–Fri | Trader | Guardian: the scanner's strict picks checked against the first half hour |
 | 11:00 | Tue–Sat | Lakehouse | Massive: previous US session, all US stocks (history only; the free plan releases it ~10:30 IST) |
 | 12:27 | Mon–Fri | Trader | Afternoon session; new entries stop at 14:30 |
@@ -59,7 +60,7 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 15:14 | Mon–Fri | Trader | Guardian puts the swing pool's idle cash into NIFTYBEES |
 | 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` and portfolio snapshot to `landing/portfolio/`; job `stocks-trading` builds the trading and portfolio tables |
 | 15:50 | Mon–Fri | Trader | Swing shadow tests: news breakouts from `gold.swing_signals`, the scanner's strict picks from `gold.technical_indicators`, and momentum + news from `gold.momentum_ranks` with its concentrated copy (top 3), bought and sold on paper, vs NIFTYBEES; stops and targets on your own swing trades checked |
-| 16:10 | Mon–Fri | Trader (GitHub job) | Shadow models: volatility stop, trade filter, early cut and let winners run, plus stop variants, trained walk-forward on the 5-minute setups of every stock in `gold.intraday_universe`; today's real trades replayed under each (paper only) |
+| 16:10 | Mon–Fri | Trader (GitHub job) | Shadow models: volatility stop, trade filter, early cut and let winners run, plus stop variants, the 1.5R and yesterday's-level targets and skipping stretched breakouts (from 19 Nov), trained walk-forward on the 5-minute setups of every stock in `gold.intraday_universe`; today's real trades replayed under each (paper only) |
 | 17:55 | Fri | Trader | Weekly report to Telegram |
 | 19:30 | Mon–Fri | Lakehouse | NSE bhavcopy and delivery file for the day; job `stocks-market-close` runs the market then research pipelines (including the technical scanner and momentum ranks), then the dashboard's plain-words summaries |
 | 23:30 | Mon–Fri | Trader → Lakehouse | Late export: the last 4 days' journals again, so late events reach the track record overnight |
@@ -81,10 +82,10 @@ there are no servers.
 | S3 landing bucket | lakehouse | AWS S3 | Permanent, untouched raw archive (private, encrypted, versioned) |
 | Sync Lambda | lakehouse | AWS Lambda | Copies anything missing from S3 to the volume (backfills, repairs) |
 | Landing volume | lakehouse | Databricks | `/Volumes/stocks/bronze/landing/<source>/date=…/`, what the pipeline reads |
-| Pipelines `stocks-market`, `stocks-research`, `stocks-trading` | lakehouse | Databricks | Market data in and cleaned (33 tables); the heavy daily research: scanner, momentum ranks (5); paper-trader's journal, portfolio and shadows (23). Bronze streaming tables, silver and gold materialized views. One runs at a time (Free Edition) |
-| Jobs `stocks-market-close`, `stocks-market-morning`, `stocks-market-weekend`, `stocks-trading` | lakehouse | Databricks | When the NSE file lands: market → research; 11:15 Tue–Sat: market only (overnight US prices); Saturday 08:00: market → research; when paper-trader's export lands: trading. Each then runs `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`). Pipeline tasks retry every 15 min if another pipeline is running |
+| Pipelines `stocks-market`, `stocks-research`, `stocks-trading` | lakehouse | Databricks | Market data in and cleaned (35 tables); the heavy daily research: scanner, momentum ranks (5); paper-trader's journal, portfolio and shadows (23). Bronze streaming tables, silver and gold materialized views. One runs at a time (Free Edition) |
+| Jobs `stocks-market-close`, `stocks-market-preopen`, `stocks-market-morning`, `stocks-market-weekend`, `stocks-trading` | lakehouse | Databricks | When the NSE file lands: market → research; when the 08:45 pre-open snapshot lands: market only (world markets before NSE opens); 11:15 Tue–Sat: market only (overnight US prices); Saturday 08:00: market → research; when paper-trader's export lands: trading. Each then runs `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`). Pipeline tasks retry every 15 min if another pipeline is running |
 | Dashboard | lakehouse | Databricks | Pages Desk, Intraday, Swing, Long term (each real pool vs its shadows, with a Show filter), Your calls and Global markets |
-| Pre-market Lambda | lakehouse | AWS Lambda | 08:45: queries gold and a few live Yahoo figures, sends two Telegram messages (the brief, India first, and the technical scanner) |
+| Pre-market Lambda | lakehouse | AWS Lambda | 08:45: saves the pre-open Yahoo snapshot (21 world markets) to the landing bucket and volume, queries gold and a few live Yahoo figures, sends two Telegram messages (the brief, India first, and the technical scanner) |
 | Trading session | paper-trader | GitHub Actions | Claude Code + paper-trader MCP tools; morning and afternoon runs |
 | Trader engine and MCP tools | paper-trader | inside the session | Ledger, risk gate, Telegram approvals, simulated fills, exits, report; your own orders (`/buy`, `/short`, `/swing`, `/longterm`) while a session is live |
 | Trader state bucket | paper-trader | AWS S3 | Ledger, journal, plans, reports, exports |
@@ -106,7 +107,7 @@ portfolio), and two per week on Saturdays (fundamentals and the Nifty 200 list).
 
 | Flow | From → to | Contract | When |
 |---|---|---|---|
-| Market data in | NSE (bhavcopy, delivery, F&O list), Massive, FRED → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 06:00, 11:00, 19:30, Mon 08:00 |
+| Market data in | NSE (bhavcopy, delivery, F&O list), Massive, FRED, the Yahoo pre-open snapshot (`premarket/`) → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 06:00, 08:45, 11:00, 19:30, Mon 08:00 |
 | Pre-market context | gold tables + Yahoo → trader (`premarket_context`) | Read-only SQL on `data_freshness`, `technical_screen`, `nifty_after_us_moves_summary`, `unusual_volume`, `intraday_universe` (news radar, tradable list with company names for the Groww buttons), `track_record`; live India VIX, S&P 500, Nasdaq, Brent, USD/INR and the ADRs from Yahoo, whose Nifty 50 and S&P 500 candles also say which session each source should have | ~09:10 |
 | Company news | news volume `date=YYYY-MM-DD/latest.jsonl` → trader | Read through the Files API (today and the last day), cached 10 min; failure = "news unavailable" | every proposal, `/news` |
 | Approvals | Trader ↔ Telegram | Proposal with YES/NO buttons; no reply in 3 min = skipped; `EXIT SYMBOL` closes | 09:20–14:30 |
@@ -149,7 +150,7 @@ Where each phase of the system plan stands. The full plan (pools, rules, backtes
 
 | Phase | Status | Live parts | Next |
 |---|---|---|---|
-| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial, realistic costs (STT, fees, GST, stamp), stocks-in-play focus at 09:25, VWAP and sector-strength checks, opening-range test on paper, auto mode (places a trade only if the suggestion is over 55%, raised by 5 for a losing setup, mood, hour, sector or direction and to 60% for flips, the trading agent over 50% and the reviewer answered; 6 trades a day; off at the weekly brake) with a lakehouse track record (real outcomes only from 17 Nov) read every session, 36 stocks in 11 sectors plus a news radar over the Nifty 200 (liquidity guardrails, news-labelled track record), sector and position caps | Track-record review 23 Nov |
+| 1 Intraday upgrades | Live from 10 Nov | 10 trades a day, 4R daily loss limit incl. open risk, weekly brake, cost filter, cool-off after 3 losses, exit rules on trial (from 19 Nov also a 1.5R target and yesterday's high/low as the target), realistic costs (STT, fees, GST, stamp), stocks-in-play focus at 09:25, VWAP and sector-strength checks, opening-range test on paper (from 19 Nov with a wait-for-the-retest version), "stretched" breakouts flagged on paper, cycles a few seconds after each candle with stops checked every minute (from 19 Nov), auto mode (places a trade only if the suggestion is over 55%, raised by 5 for a losing setup, mood, hour, sector or direction and to 60% for flips, the trading agent over 50% and the reviewer answered; 6 trades a day; off at the weekly brake) with a lakehouse track record (real outcomes only from 17 Nov) read every session, 36 stocks in 11 sectors plus a news radar over the Nifty 200 (liquidity guardrails, news-labelled track record), sector and position caps | Track-record review 23 Nov |
 | 2 Foundations | Live | Company news on proposals, market mood, shadow rule variants, `/news` `/portfolio` `/stop`, data alerts, pool ledgers, circuit breaker, weekly report | One-tap reasons, idle-cash interest (later) |
 | 3 Swing pool | Shadow test | Rs 60,000 held in NIFTYBEES (from 10 Nov 15:14); three rule sets on paper: news breakouts (16 Nov), technical scanner (17 Nov), momentum + news (18 Nov) and its concentrated copy (top 3) (`/shadow`) | Shadow review vs NIFTYBEES, mid-Dec |
 | 4 Long-term pool | Shadow mode | Weekly figures for the Nifty 200, quality tests, 10 picks a week, backtest, Saturday shadow report; momentum shadows (top 15, and a concentrated top 5, monthly) from 21 Nov | Go/no-go 18 Dec, live buying from 21 Dec |

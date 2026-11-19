@@ -4,7 +4,7 @@
 > is in [paper-trader](https://github.com/bumblebee26/paper-trader/blob/main/docs/SYSTEM_PLAN.md) and
 > [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse/blob/main/docs/SYSTEM_PLAN.md); change
 > both together. For how the running system fits together, see [PLATFORM.md](PLATFORM.md).
-> As of 17 Nov 2026. Each section says what is **built** and what is still **planned**.
+> As of 19 Nov 2026. Each section says what is **built** and what is still **planned**.
 
 Everything is dummy money. Nothing here is investment advice; it is a system for learning how these
 strategies behave.
@@ -14,7 +14,7 @@ strategies behave.
 The paper trader is growing from one intraday strategy into a three-pool dummy portfolio of Rs 2,00,000,
 driven by live market data, company news and company financials, with you approving trades on Telegram.
 
-| Phase | Status (17 Nov 2026) | Next gate |
+| Phase | Status (19 Nov 2026) | Next gate |
 |---|---|---|
 | 1 Intraday upgrades | Built, live from 10 Nov | Track-record review, 23 Nov |
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
@@ -61,14 +61,14 @@ more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follow
 | Weekly brake | none | Week down 8R: half-size trades until Monday |
 | Costs | Rs 20 per order + 0.05% slippage | From 16 Nov, every order also pays STT (0.025% on sells), exchange and SEBI fees, GST and stamp duty (0.003% on buys), as on a contract note: about 0.26% of the position per round trip with slippage |
 | Cost filter | none | No trade whose costs exceed 30% of its risk (in practice a stop of about 0.9% or more) |
-| Exit rules | fixed stop and 2R target | Same, with four alternatives and a day profit lock on trial in the background (reports; decided at a review) |
+| Exit rules | fixed stop and 2R target | Same, with alternatives and a day profit lock on trial in the background (reports; decided at a review); from 19 Nov also a nearer 1.5R target, and yesterday's high (low for a short) as the target when it comes before 2R |
 | Cool-off | none | 30 minutes without new proposals after 3 losses in a row |
 | Watchlist | 16 stocks, mostly banks and IT | 36 stocks across 11 sectors (`trader/sectors.py`) |
 | Focus list each morning | up to 10 | up to 15, at least 6 sectors; from 16 Nov re-ranked at 09:25 by opening relative volume (the first 10 minutes vs the usual), the "stocks in play" |
 | Sector caps | none | 1 open position per sector, 2 trades per sector a day |
 | Position cap | margin limit only | One trade uses at most 30% of the balance as margin |
 | Proposal | numbers | Suggestion % (live checks + trading agent + independent reviewer), plain words, market check, company news; from 16 Nov the live checks also score the VWAP side and strength against the stock's sector |
-| Research tests (paper, from 16 Nov) | none | Background rules "no BUY below VWAP" and "no BUY on a stock weaker than its sector" (mirrored for SELL); opening-range breakout on the top 10 stocks in play with 5- vs 15-minute ranges, 2R target vs held to 15:10. Decided at a review |
+| Research tests (paper, from 16 Nov) | none | Background rules "no BUY below VWAP" and "no BUY on a stock weaker than its sector" (mirrored for SELL); opening-range breakout on the top 10 stocks in play with 5- vs 15-minute ranges, 2R target vs held to 15:10. From 19 Nov: a "wait for the retest" version of that test (buy only if the price comes back to the range edge within 60 minutes), and a "stretched" flag on breakouts that start already far from the day's low (more than 70% of a usual day's range) or more than 1% past VWAP, recorded on each proposal without changing its score. Decided at a review |
 
 ## Phase 2: foundations (built)
 
@@ -238,7 +238,8 @@ judged only by models trained on earlier days:
 | Let winners run | At the 2R target: will running on (stop to +1R, trailing 1R) beat booking it? | Lets that trade run |
 
 They are compared with the current rules and the stop variants (no stop; stops 1.5x and 2x wider with the same
-rupee risk; stop on a 5-minute close), and today's real trades are replayed under each. Results: a Telegram note
+rupee risk; stop on a 5-minute close), from 19 Nov also the 1.5R target, yesterday's high/low as the target and
+skipping stretched breakouts, and today's real trades are replayed under each. Results: a Telegram note
 after the close, `/shadow`, the weekly report, and `models/results/` in S3. **Nothing goes live before a review
 with you, before December**; a model is adopted only if it beats the current rules out of sample, net of costs.
 
@@ -317,7 +318,8 @@ Desk (auto mode, VIX, mood; portfolio vs NIFTYBEES, track record by setup, today
 leaderboard, holdings), Intraday (real vs every exit rule, model and the opening-range test in one chart, with a
 Show filter; daily P&L, by setup and hour, model tests on ~200 stocks), Swing and Long term (real pool vs shadow pools
 vs NIFTYBEES with a Show filter; scanner, momentum ranks, company quality), Your calls (your 👍/👎 vs what happened:
-right %, liked vs disliked results, you vs the trader, by week and setup) and Global markets (today's read written
+right %, liked vs disliked results, you vs the trader, by week and setup) and Global markets (current by about 09:00
+from the 08:45 pre-open snapshot; today's read written
 from the data with fixed rules, world moves, who India's open follows, after-US-moves table, NSE breadth, ADRs). Money pages start at the 18 Nov ledger reset. Ask Genie on the
 dashboard answers questions in plain words.
 
@@ -365,7 +367,8 @@ Cost review: Sun 15 Nov.
 | 15 Nov | Cost review: is Claude usage sustainable? |
 | 16 Nov | News radar (Nifty 200 beyond the watchlist) and the swing shadow pool start; your own trades from Telegram (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`) |
 | 17 Nov | Technical scanner (08:45 report, 09:45 check, `/screen`, second swing shadow pool); India-first plan with the freshness rule; more news sources; shadow models (16:10 daily); ratings no longer train the system; ledger reset; lakehouse pipeline split in three |
-| 18 Nov | Day 1 after the reset: every pool from its starting cash; momentum + news swing shadow and its concentrated copy start |
+| 18 Nov | Day 1 after the reset: every pool from its starting cash; momentum + news swing shadow and its concentrated copy start; pre-open world-markets snapshot on the dashboard by ~09:00 |
+| 19 Nov | Faster intraday cycles (a few seconds after each candle; stops every minute); on paper: 1.5R and yesterday's-level targets, wait-for-the-retest opening-range entries, stretched-breakout flag |
 | 21 Nov | First long-term momentum shadows (top 15, top 5) |
 | 23 Nov | Track-record review (phase 5), including news vs watchlist picks |
 | ~8 Dec | Scanner signal review (about 15 trading days): `gold.signal_performance` and the scanner shadow pool vs NIFTYBEES |
