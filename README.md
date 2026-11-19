@@ -134,3 +134,7 @@ The same tools run locally in Claude Desktop with state in `journal/`: copy `.en
 only one program can read the Telegram bot at a time.
 
 *Mock trading with dummy money for learning. Not investment advice.*
+
+## Licence
+
+Copyright 2026 Viren Baria. Licensed under the [Apache License, Version 2.0](LICENSE); see [NOTICE](NOTICE).
