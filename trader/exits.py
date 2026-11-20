@@ -14,6 +14,11 @@ candles under the current rule and four alternatives, with the same costs as rea
   close_stop    the stop counts only when a 5-minute candle CLOSES beyond it (wicks ignored), with a hard
                 stop at 2x the distance as a safety net (from 17 Nov)
   target_1_5r   the current rule with a nearer target: 1.5R instead of 2R (from 19 Nov)
+  early_any     the current rule plus the trade's own early exit on ANY 5-minute close beyond its exit line
+                (how the session used to act on "invalid if": TECHM on 20 Nov left on a close 0.06% past VWAP)
+  early_strict  the current rule plus the early exit only on a real break: two 5-minute closes in a row
+                beyond the line, or one close at least EARLY_BREAK_PCT beyond it. Live trades use this
+                from 20 Nov (engine.monitor); both are replayed so the review can see if early exits pay
   level_target  the current rule, but the target moves to the previous day's high (low for a short) when that
                 level sits between +0.5R and the planned target: the first resistance takes the profit (from 19 Nov)
 
@@ -30,7 +35,7 @@ import config
 import fees
 
 RULES = ("current", "breakeven", "half_and_run", "trailing", "time_stop", "no_stop", "wide_1_5", "wide_2",
-         "close_stop", "target_1_5r", "level_target")
+         "close_stop", "target_1_5r", "level_target", "early_any", "early_strict")
 RULE_WORDS = {
     "current": "current rules",
     "breakeven": "stop to entry at +1R",
@@ -43,10 +48,13 @@ RULE_WORDS = {
     "close_stop": "stop on a 5-min close",
     "target_1_5r": "target 1.5R",
     "level_target": "target at yesterday's high/low",
+    "early_any": "early exit on any close past the line",
+    "early_strict": "early exit on a real break",
 }
 WIDE = {"wide_1_5": 1.5, "wide_2": 2.0}
 HARD_STOP_X = 2.0     # close_stop's safety net, in multiples of the planned stop distance
 SHORT_TARGET_R = 1.5  # target_1_5r
+EARLY_BREAK_PCT = 0.2 # early_strict (and live): one 5-minute close this far past the exit line, or two in a row
 LEVEL_MIN_R = 0.5     # level_target: a level nearer than this is ignored (costs would eat the profit)
 
 
@@ -71,6 +79,32 @@ def _exit_fill(price, side):
     return round(price * (1 - f) if side == "BUY" else price * (1 + f), 2)
 
 
+def early_break(side, line, closes, strict=True):
+    """The trade's early exit: True when the completed 5-minute closes (oldest first, after entry) break its exit
+    line (below it for a BUY, above it for a SELL). strict: two closes in a row past the line, or one at least
+    EARLY_BREAK_PCT past it; not strict: any close past it."""
+    if line is None or not closes:
+        return False
+    d = 1 if side == "BUY" else -1
+
+    def past(c):
+        return (line - c) * d > 0
+
+    if not strict:
+        return past(closes[-1])
+    if past(closes[-1]) and (line - closes[-1]) * d / line * 100 >= EARLY_BREAK_PCT:
+        return True
+    return len(closes) >= 2 and past(closes[-1]) and past(closes[-2])
+
+
+def valid_exit_line(side, entry, stop, line):
+    """An exit line only counts between the stop and the entry (it must trigger before the stop)."""
+    if line is None:
+        return None
+    d = 1 if side == "BUY" else -1
+    return float(line) if (entry - line) * d > 0 and (line - stop) * d > 0 else None
+
+
 def level_target(side, fill, stop, target, level):
     """The previous day's high (BUY) or low (SELL) as the target when it sits between +LEVEL_MIN_R and the planned
     target; otherwise the planned target."""
@@ -89,11 +123,11 @@ def day_levels(daily_bars, today):
     return (prev[-1]["high"], prev[-1]["low"]) if prev else (None, None)
 
 
-def replay(rule, side, qty, fill, stop, target, opened_at, bars, level=None):
+def replay(rule, side, qty, fill, stop, target, opened_at, bars, level=None, exit_line=None):
     """Net P&L of one trade under `rule` (every order's charges from fees.py, exit slippage; the fill already
     has entry slippage). rule 'eod': fixed stop, no target, held to the square-off. bars: 1-minute candles {time 'YYYY-MM-DD HH:MM', open, high, low, close}.
     level: the previous day's high for a BUY (low for a SELL), used by level_target; without it that rule is the
-    current one."""
+    current one. exit_line: the trade's early-exit line (early_any / early_strict; without it they are current)."""
     d = 1 if side == "BUY" else -1
     r = (fill - stop) * d
     if r <= 0 or qty <= 0:
@@ -111,8 +145,14 @@ def replay(rule, side, qty, fill, stop, target, opened_at, bars, level=None):
         stop = fill - d * r * m
         r = r * m
         rule = "current"
+    early = {"early_any": False, "early_strict": True}.get(rule)
+    if early is not None:
+        rule = "current"
+        if exit_line is None:
+            early = None
     hard_stop = fill - d * r * HARD_STOP_X if rule == "close_stop" else None
-    closes_5m = _last_of_5min(bars) if rule == "close_stop" else None
+    closes_5m = _last_of_5min(bars) if rule == "close_stop" or early is not None else None
+    seen_closes = []
     open_hhmm = opened_at[11:16]
     cur_stop = stop
     tgt = None if rule in ("trailing", "eod") else target
@@ -151,6 +191,11 @@ def replay(rule, side, qty, fill, stop, target, opened_at, bars, level=None):
         if tgt is not None and (favorable - tgt) * d >= 0:
             leave(remaining, max(b["open"], tgt) if d == 1 else min(b["open"], tgt))
             break
+        if early is not None and closes_5m[i]:
+            seen_closes.append(b["close"])
+            if early_break(side, exit_line, seen_closes, strict=early):
+                leave(remaining, b["close"])
+                break
         if rule == "close_stop" and closes_5m[i] and (b["close"] - cur_stop) * d <= 0:
             leave(remaining, b["close"])
             break
@@ -183,10 +228,12 @@ def replay_all(trade, bars, levels=(None, None)):
     """{rule: net P&L} for one trade; trade has side, qty, fill_price, stop, target, opened_at.
     levels: the previous day's (high, low)."""
     level = levels[0] if trade["side"] == "BUY" else levels[1]
+    line = trade.get("exit_line")
     out = {}
     for rule in RULES:
         out[rule] = replay(rule, trade["side"], int(trade["qty"]), float(trade["fill_price"]),
-                           float(trade["stop"]), float(trade["target"]), trade["opened_at"], bars, level=level)
+                           float(trade["stop"]), float(trade["target"]), trade["opened_at"], bars, level=level,
+                           exit_line=float(line) if line not in (None, "") else None)
     return out
 
 

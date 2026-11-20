@@ -222,7 +222,7 @@ def company_news(symbol: str) -> dict:
 @mcp.tool()
 def propose_trade(symbol: str, side: str, setup: str, entry: float, stop: float, target: float,
                   reasons: list[str], invalid_if: str, news: str = "none", summary: str = "",
-                  ai_yes_pct: int | None = None, ai_reason: str = "") -> dict:
+                  ai_yes_pct: int | None = None, ai_reason: str = "", exit_line: float | None = None) -> dict:
     """Risk gate + position size + Telegram proposal. Returns proposal_id and a status:
     pending (human mode: call wait_for_decision), approved (auto mode, suggestion high enough: call
     execute_approved_trade now), skipped_auto (auto mode, suggestion too low: move on), or blocked.
@@ -232,9 +232,12 @@ def propose_trade(symbol: str, side: str, setup: str, entry: float, stop: float,
     this looks good and the main thing that could go wrong. Money amounts are added by code.
     ai_yes_pct: your honest 0-100 view of whether this trade should be taken. ai_reason: one short sentence
     on why that number (shown to the user as the trading agent's reason). Code adds live Nifty, Sensex and
-    sector checks and the independent reviewer, and combines the three into one suggestion."""
+    sector checks and the independent reviewer, and combines the three into one suggestion.
+    exit_line: the price that breaks the idea (e.g. VWAP, or the opening-range edge), between the stop and the
+    entry. Code exits early only on a real break (two 5-minute closes past it, or one 0.2%+ past it); never
+    close a position yourself because invalid_if was touched."""
     return _run(engine.propose, symbol, side, setup, entry, stop, target, reasons, invalid_if, news, summary,
-                ai_yes_pct, ai_reason)
+                ai_yes_pct, ai_reason, exit_line)
 
 
 @mcp.tool()
