@@ -1477,6 +1477,11 @@ def report(state, send=True):
     except Exception as err:  # noqa: BLE001
         summary["orb_trial_error"] = str(err)
     try:
+        import selector
+        summary.update(selector.run(state))
+    except Exception as err:  # noqa: BLE001 - a paper study never breaks the day report
+        summary["selector_error"] = str(err)
+    try:
         snap = pools.snapshot(state)
         summary["portfolio_total_rs"] = snap["total"]
         summary["portfolio_drawdown_pct"] = snap["drawdown_pct"]
@@ -1505,6 +1510,8 @@ def report(state, send=True):
             lines += [f"- {k}: {inr(v, sign=True)}" for k, v in hypo.items()]
         lines += _shadow_exit_lines(summary)
         lines += _orb_lines(summary)
+        import selector
+        lines += selector.lines(summary)
         lines += _auto_lines(state)
         if summary["open_positions"]:
             lines.append(f"WARNING still open: {', '.join(summary['open_positions'])}")
