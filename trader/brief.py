@@ -32,6 +32,12 @@ FRESHNESS = {"nse_prices": "NSE", "technical_scanner": "NSE"}
 
 QUERIES = {
     "freshness": "SELECT source, CAST(latest_date AS STRING) AS latest_date FROM stocks.gold.data_freshness",
+    # India VIX from NSE's own index file (19:30 the evening before); Yahoo's ^INDIAVIX is only the backup
+    "india_vix": """
+        SELECT CAST(trade_date AS STRING) AS trade_date, close, change_pct
+        FROM stocks.silver.nse_index_daily WHERE lower(index_name) = 'india vix'
+        ORDER BY trade_date DESC LIMIT 1
+    """,
     "summary": "SELECT * FROM stocks.gold.nifty_after_us_moves_summary",
     "radar": """
         SELECT symbol, company, industry, close, return_pct, volume_ratio, avg_turnover_cr, reasons,
@@ -169,10 +175,11 @@ def expected_sessions(today, sessions):
 
 # ------------------------------------------------------------------- plan ---
 def risk_for_vix(vix):
-    """Risk per trade (% of balance) from India VIX, never above the configured default."""
+    """Risk per trade (% of balance) from India VIX, never above the configured default. Without India VIX
+    (neither NSE's file nor Yahoo has the last session) the cautious 0.75x is used, not the full default."""
     base = config.RISK_PER_TRADE_PCT
     if vix is None:
-        return base
+        return round(base * 0.75, 2)
     if vix >= 30:
         return round(base * 0.5, 2)
     if vix >= 20:
@@ -229,8 +236,16 @@ def build_plan(data, failed=(), live=None, sessions=None, today=None):
         if fresh_source(src) is False:
             missing.append(f"{label} for {nse_day} (latest {latest.get(src) or 'none'})")
 
-    # risk: India VIX (the Indian market's own fear gauge)
-    vix_row = live_fresh("india_vix", nse_day)
+    # risk: India VIX (the Indian market's own fear gauge): NSE's own index file first, Yahoo as the backup
+    nse_vix = (data.get("india_vix") or [None])[0]
+    if nse_vix and nse_vix.get("close") is not None and (nse_vix.get("trade_date") or "")[:10] >= nse_day:
+        vix_row = {"date": nse_vix["trade_date"][:10], "close": float(nse_vix["close"]),
+                   "change_pct": float(nse_vix["change_pct"]) if nse_vix.get("change_pct") is not None else None,
+                   "source": "NSE"}
+    else:
+        vix_row = live_fresh("india_vix", nse_day)
+        if vix_row:
+            vix_row = {**vix_row, "source": "Yahoo"}
     vix = vix_row["close"] if vix_row else None
     if not vix_row:
         missing.append("India VIX")
@@ -276,6 +291,7 @@ def build_plan(data, failed=(), live=None, sessions=None, today=None):
         "missing": missing,
         "india_vix": vix,
         "india_vix_change_pct": vix_row["change_pct"] if vix_row else None,
+        "india_vix_source": vix_row["source"] if vix_row else None,
         "vix": vix,   # the risk gate and the advisor's mood read this key
         "risk_per_trade_pct": risk_for_vix(vix),
         "nifty_regime": regime, "nifty_regime_words": regime_words,
@@ -316,12 +332,12 @@ def scanner_status(plan, symbol):
 def plan_message(plan, focus):
     lines = ["[MOCK] Trader plan for today"]
     if plan.get("source") == "unavailable":
-        lines.append("Lakehouse data unavailable: default risk, watchlist only.")
+        lines.append("Lakehouse data unavailable: watchlist only.")
     vix = plan.get("india_vix", plan.get("vix"))
     if vix is not None:
         lines.append(f"India VIX {vix:.1f} -> risk {plan['risk_per_trade_pct']}% per trade")
     elif plan.get("risk_per_trade_pct") is not None:
-        lines.append(f"India VIX not available -> default risk {plan['risk_per_trade_pct']}% per trade")
+        lines.append(f"India VIX not available -> cautious risk {plan['risk_per_trade_pct']}% per trade")
     if plan.get("nifty_regime_words"):
         lines.append(f"India: {plan['nifty_regime_words']} ({plan['nifty_regime']})")
     sc = plan.get("scanner") or {}
