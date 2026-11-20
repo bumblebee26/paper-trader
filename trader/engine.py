@@ -1521,6 +1521,19 @@ def _prev_day_levels(sym):
         return None, None
 
 
+def fill_check(fill_row, bars):
+    """The paper entry fill against the real 1-minute candle of its minute (from 21 Nov): worse_bps = how far
+    the fill was from that minute's close against the trader (positive: paper was stricter); inside = 1 if the
+    fill sits within the minute's high-low."""
+    minute = (fill_row.get("timestamp_ist") or "")[:16]
+    bar = next((b for b in bars or [] if b["time"][:16] == minute), None)
+    if not bar or not bar.get("close"):
+        return None
+    fill, d = float(fill_row["fill_price"]), 1 if fill_row["side"] == "BUY" else -1
+    return {"worse_bps": round((fill - bar["close"]) / bar["close"] * 10000 * d, 1),
+            "inside": 1 if bar["low"] <= fill <= bar["high"] else 0}
+
+
 def _shadow_exits(state, rows) -> dict:
     """Replay today's closed trades under the exit rules on trial (trader/exits.py) and journal the results."""
     fills = {r["proposal_id"]: r for r in rows if r["event"] == "filled" and r.get("proposal_id")}
@@ -1542,6 +1555,10 @@ def _shadow_exits(state, rows) -> dict:
                                     "stop": f["stop"], "target": f["target"], "opened_at": f["timestamp_ist"],
                                     "exit_line": line},
                                    bars_cache[sym], levels_cache[sym])
+        fc = fill_check(f, bars_cache[sym])
+        if fc:
+            journal("fill_check", event_id=f"fillchk-{pid}", proposal_id=pid, symbol=sym, side=f["side"],
+                    fill_price=f["fill_price"], note=exits.note_text(fc))
         journal("exit_variants", event_id=f"exitvar-{pid}", proposal_id=pid, symbol=sym, setup=f["setup"],
                 side=f["side"], qty=f["qty"], pnl_rs=round(net, 2), note=exits.note_text(results))
         if all(v is not None for v in results.values()):
@@ -1663,6 +1680,57 @@ def open_buy_trade(bars, one_r_rs, balance):
             "eod": exits.replay("eod", "BUY", qty, fill, stop, target, opened, bars)}
 
 
+GAP_FADE_MIN_PCT = 3.0          # gap-fade test: the open at least this far above the previous close
+GAP_FADE_LAST_ENTRY = "11:00"   # ... and the break of the first 15 minutes' low before this
+
+
+def gap_fade_trade(bars, prev_close, one_r_rs, balance):
+    """On paper (from 21 Nov): SHORT a stock that opened GAP_FADE_MIN_PCT+ above yesterday's close once a 5-minute
+    candle closes below its first 15 minutes' low (09:15-09:30), before GAP_FADE_LAST_ENTRY. Entry at that close,
+    stop at the day's high so far (at least ORB_MIN_STOP_PCT away), 2R target ('2r') or held to 15:10 ('eod');
+    same costs and slippage as real trades. None if it didn't gap that far or never broke down."""
+    if not bars or not prev_close or bars[0]["time"][11:16] != "09:15":
+        return None
+    if (bars[0]["open"] / prev_close - 1) * 100 < GAP_FADE_MIN_PCT:
+        return None
+    first = [b for b in bars if b["time"][11:16] < "09:30"]
+    if len(first) < 3:
+        return None
+    low15 = min(b["low"] for b in first)
+    for k, b in enumerate(bars):
+        t = b["time"][11:16]
+        if t < "09:30":
+            continue
+        if t >= GAP_FADE_LAST_ENTRY:
+            return None
+        if b["close"] >= low15:
+            continue
+        entry = b["close"]
+        high = max(x["high"] for x in bars[:k + 1])
+        per_share = max(high - entry, entry * ORB_MIN_STOP_PCT / 100)
+        qty = math.floor(min(one_r_rs / per_share,
+                             balance * config.MAX_POSITION_MARGIN_PCT / 100 * config.INTRADAY_LEVERAGE / entry))
+        if qty < 1:
+            return None
+        fill, opened = slip(entry, "SELL", opening=True), f"{b['time']}:00"
+        stop, target = entry + per_share, entry - 2 * per_share
+        return {"2r": exits.replay("current", "SELL", qty, fill, stop, target, opened, bars),
+                "eod": exits.replay("eod", "SELL", qty, fill, stop, target, opened, bars)}
+    return None
+
+
+def _prev_close(sym):
+    try:
+        prev = [b for b in market.daily(sym, "5d") if b["time"][:10] < _today()]
+        return prev[-1]["close"] if prev else None
+    except Exception:  # noqa: BLE001 - that stock is left out of the gap-fade test
+        return None
+
+
+def _news_names(state):
+    return [r.get("symbol") for r in (state.get("plan") or {}).get("news_radar") or [] if r.get("symbol")]
+
+
 def _open_buy_names(state):
     """The morning's news-radar names and scanner strict picks (the stocks the plan suggested)."""
     plan = state.get("plan") or {}
@@ -1676,16 +1744,24 @@ def _orb_shadow(state) -> dict:
     and the opening buy (open_buy_trade) on the morning's news-radar and scanner picks."""
     names = [r["symbol"] for r in (state.get("in_play") or [])[:ORB_STOCKS]]
     picks = _open_buy_names(state)
+    fades = list(dict.fromkeys(_news_names(state) + names))
     if not names and not picks:
         return {}
     totals = {f"{v}_{k}": 0.0 for v, _ in ORB_VARIANTS for k in ORB_RESULTS + ("retest",)}
     trades = {v: 0 for v, _ in ORB_VARIANTS}
     retests = {v: 0 for v, _ in ORB_VARIANTS}
-    totals.update({"open_2r": 0.0, "open_eod": 0.0})
-    open_trades = 0
+    totals.update({"open_2r": 0.0, "open_eod": 0.0, "fade_2r": 0.0, "fade_eod": 0.0})
+    open_trades = fade_trades = 0
     for sym in dict.fromkeys(names + picks):
         bars = [b for b in market.candles(sym, "5m", 1) if b["time"].startswith(_today())]
         results = {}
+        if sym in fades:
+            g = gap_fade_trade(bars, _prev_close(sym), one_r(state), state["balance"])
+            if g and g["2r"] is not None and g["eod"] is not None:
+                fade_trades += 1
+                for k in ("2r", "eod"):
+                    results[f"fade_{k}"] = g[k]
+                    totals[f"fade_{k}"] += g[k]
         if sym in picks:
             o = open_buy_trade(bars, one_r(state), state["balance"])
             if o and o["2r"] is not None and o["eod"] is not None:
@@ -1712,7 +1788,7 @@ def _orb_shadow(state) -> dict:
         if results:
             journal("orb_shadow", event_id=f"orb-{_today()}-{sym}", symbol=sym, note=exits.note_text(results))
     return {"orb_trial_stocks": len(names), "orb_trial_trades": trades, "orb_trial_retests": retests,
-            "open_buy_stocks": len(picks), "open_buy_trades": open_trades,
+            "open_buy_stocks": len(picks), "open_buy_trades": open_trades, "gap_fade_trades": fade_trades,
             "orb_trial_rs": {k: round(v, 2) for k, v in totals.items()}}
 
 
@@ -1723,6 +1799,11 @@ def _orb_lines(summary) -> list:
         out.append(f"Opening buy at 09:15 on the plan's news and scanner picks (paper, double slippage): "
                    f"{summary['open_buy_trades']} of {summary['open_buy_stocks']} stocks, "
                    f"{inr(t['open_2r'], sign=True)} with a 2R target / {inr(t['open_eod'], sign=True)} held to 15:10")
+    if summary.get("gap_fade_trades"):
+        t = summary["orb_trial_rs"]
+        out.append(f"Gap fade (paper): {summary['gap_fade_trades']} stocks gapped up {GAP_FADE_MIN_PCT:g}%+ and broke "
+                   f"their first 15 minutes' low; shorting them made {inr(t['fade_2r'], sign=True)} with a 2R target "
+                   f"/ {inr(t['fade_eod'], sign=True)} held to 15:10")
     if not summary.get("orb_trial_stocks"):
         return out
     t, n = summary["orb_trial_rs"], summary["orb_trial_trades"]
