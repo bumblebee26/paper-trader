@@ -1640,18 +1640,64 @@ def orb_trade(bars, minutes, one_r_rs, balance, levels=(None, None)):
     return None
 
 
+OPEN_BUY_STOP_PCT = 1.2        # the opening buy's stop: a fixed distance (nothing to measure from at 09:15)
+OPEN_BUY_SLIP_X = 2            # opening fills are rough: twice the normal slippage
+
+
+def open_buy_trade(bars, one_r_rs, balance):
+    """On paper (from 21 Nov): BUY at the 09:15 open of the morning's news-radar and scanner picks, at twice the
+    normal slippage, stop OPEN_BUY_STOP_PCT below, 2R target ('2r') or held to the square-off ('eod'); same costs.
+    The first candle counts from its open (stop checked before target), so nothing is known ahead. None if no data."""
+    if not bars or bars[0]["time"][11:16] != "09:15":
+        return None
+    entry = bars[0]["open"]
+    per_share = entry * OPEN_BUY_STOP_PCT / 100
+    qty = math.floor(min(one_r_rs / per_share,
+                         balance * config.MAX_POSITION_MARGIN_PCT / 100 * config.INTRADAY_LEVERAGE / entry))
+    if qty < 1:
+        return None
+    fill = round(entry * (1 + OPEN_BUY_SLIP_X * config.SLIPPAGE_PCT / 100), 2)
+    stop, target = entry - per_share, entry + 2 * per_share
+    opened = f"{bars[0]['time'][:10]} 09:14:00"
+    return {"2r": exits.replay("current", "BUY", qty, fill, stop, target, opened, bars),
+            "eod": exits.replay("eod", "BUY", qty, fill, stop, target, opened, bars)}
+
+
+def _open_buy_names(state):
+    """The morning's news-radar names and scanner strict picks (the stocks the plan suggested)."""
+    plan = state.get("plan") or {}
+    names = [r.get("symbol") for r in plan.get("news_radar") or []]
+    names += [r.get("symbol") for r in (plan.get("scanner") or {}).get("strict") or []]
+    return [n for n in dict.fromkeys(names) if n]
+
+
 def _orb_shadow(state) -> dict:
-    """Opening-range test on today's top stocks in play: 5- vs 15-minute ranges, 2R target vs held to 15:10."""
+    """Opening-range test on today's top stocks in play: 5- vs 15-minute ranges, 2R target vs held to 15:10;
+    and the opening buy (open_buy_trade) on the morning's news-radar and scanner picks."""
     names = [r["symbol"] for r in (state.get("in_play") or [])[:ORB_STOCKS]]
-    if not names:
+    picks = _open_buy_names(state)
+    if not names and not picks:
         return {}
     totals = {f"{v}_{k}": 0.0 for v, _ in ORB_VARIANTS for k in ORB_RESULTS + ("retest",)}
     trades = {v: 0 for v, _ in ORB_VARIANTS}
     retests = {v: 0 for v, _ in ORB_VARIANTS}
-    for sym in names:
+    totals.update({"open_2r": 0.0, "open_eod": 0.0})
+    open_trades = 0
+    for sym in dict.fromkeys(names + picks):
         bars = [b for b in market.candles(sym, "5m", 1) if b["time"].startswith(_today())]
-        levels = _prev_day_levels(sym)
         results = {}
+        if sym in picks:
+            o = open_buy_trade(bars, one_r(state), state["balance"])
+            if o and o["2r"] is not None and o["eod"] is not None:
+                open_trades += 1
+                for k in ("2r", "eod"):
+                    results[f"open_{k}"] = o[k]
+                    totals[f"open_{k}"] += o[k]
+        if sym not in names:
+            if results:
+                journal("orb_shadow", event_id=f"orb-{_today()}-{sym}", symbol=sym, note=exits.note_text(results))
+            continue
+        levels = _prev_day_levels(sym)
         for v, minutes in ORB_VARIANTS:
             t = orb_trade(bars, minutes, one_r(state), state["balance"], levels)
             if t and all(t[k] is not None for k in ORB_RESULTS):
@@ -1666,14 +1712,21 @@ def _orb_shadow(state) -> dict:
         if results:
             journal("orb_shadow", event_id=f"orb-{_today()}-{sym}", symbol=sym, note=exits.note_text(results))
     return {"orb_trial_stocks": len(names), "orb_trial_trades": trades, "orb_trial_retests": retests,
+            "open_buy_stocks": len(picks), "open_buy_trades": open_trades,
             "orb_trial_rs": {k: round(v, 2) for k, v in totals.items()}}
 
 
 def _orb_lines(summary) -> list:
+    out = []
+    if summary.get("open_buy_trades"):
+        t = summary["orb_trial_rs"]
+        out.append(f"Opening buy at 09:15 on the plan's news and scanner picks (paper, double slippage): "
+                   f"{summary['open_buy_trades']} of {summary['open_buy_stocks']} stocks, "
+                   f"{inr(t['open_2r'], sign=True)} with a 2R target / {inr(t['open_eod'], sign=True)} held to 15:10")
     if not summary.get("orb_trial_stocks"):
-        return []
+        return out
     t, n = summary["orb_trial_rs"], summary["orb_trial_trades"]
-    return [f"Opening-range test on the top {summary['orb_trial_stocks']} stocks in play (paper): "
+    return out + [f"Opening-range test on the top {summary['orb_trial_stocks']} stocks in play (paper): "
             f"5-min range {n['orb5']} trades, {inr(t['orb5_2r'], sign=True)} with a 2R target / "
             f"{inr(t['orb5_1_5r'], sign=True)} 1.5R / {inr(t['orb5_level'], sign=True)} at yesterday's high-low / "
             f"{inr(t['orb5_eod'], sign=True)} held to 15:10; 15-min range {n['orb15']} trades, "

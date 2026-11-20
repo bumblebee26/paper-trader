@@ -269,6 +269,10 @@ def paper_lines(w) -> list:
                      f"{_inr(rs.get('orb5_eod', 0), sign=True)} held to 15:10; 15-min range {n.get('orb15', 0)} "
                      f"trades, {_inr(rs.get('orb15_2r', 0), sign=True)}{nearer('orb15')} / "
                      f"{_inr(rs.get('orb15_eod', 0), sign=True)}.")
+        if (o.get("trades") or {}).get("open"):
+            lines.append(f"- Opening buy at 09:15 on the plan's news and scanner picks: {o['trades']['open']} trades, "
+                         f"{_inr(rs.get('open_2r', 0), sign=True)} with a 2R target / "
+                         f"{_inr(rs.get('open_eod', 0), sign=True)} held to 15:10.")
         rt = o.get("retests") or {}
         if rt:
             lines.append(f"- Opening-range test, waiting for the retest instead of buying the breakout: 5-min range "
