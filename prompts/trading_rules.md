@@ -108,7 +108,11 @@ only if all of these hold:
 `propose_trade` needs: setup name, side, entry (the candidate's close), stop, target,
 reasons (max 3, number-based, each under ~15 words: the main signal first, and the honest risk last, starting
 "Risk:"; the Telegram message shows the first as "For" and the risk as "Against", one line each),
-invalid_if (one concrete price condition), news ("none" unless a tool gave you news).
+invalid_if (one concrete price condition), exit_line (the price in that condition, e.g. today's VWAP or the
+opening-range edge, between the stop and the entry), news ("none" unless a tool gave you news).
+Early exits are code's job: it closes the trade only on a real break of exit_line (two 5-minute closes past
+it, or one at least 0.2% past it). Never call close_position because invalid_if was touched: a single close
+just past the line is usually noise (TECHM on 20 Nov left 0.06% below VWAP, then rose straight back).
 summary: one or two plain-English sentences for someone who isn't a trader: what is happening in
 the market for this stock and the main thing that could go wrong. No jargon or abbreviations (say
 "today's average price", not "VWAP"; "the market", not "Nifty breadth"). Don't repeat money amounts;

@@ -940,6 +940,8 @@ EXIT_PLAIN = {
     "stop_loss": "It hit the stop-loss price, so it was closed to keep the loss small, as planned.",
     "square_off": "Intraday trades must close the same day, so it was closed at 15:10 at the market price.",
     "user_exit": "You asked to exit, so it was closed at the market price.",
+    "early_exit": "The idea broke: two 5-minute closes past its exit line (or one at least 0.2% past it), so it "
+                  "was closed before the stop.",
 }
 
 
@@ -1024,8 +1026,9 @@ def compact_proposal(*, auto, place, symbol, side, setup, entry, stop, target, q
 
 # -------------------------------------------------------------- proposals --
 def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news_note="none", summary="",
-            ai_yes_pct=None, ai_reason=""):
+            ai_yes_pct=None, ai_reason="", exit_line=None):
     symbol, side = symbol.upper(), side.upper()
+    exit_line = exits.valid_exit_line(side, entry, stop, exit_line)
     ok, why, qty, risk_rs, rr = risk_gate(state, symbol, side, entry, stop, target)
     if not ok:
         journal("blocked_by_risk_gate", symbol=symbol, setup=setup, side=side, entry=entry,
@@ -1114,7 +1117,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     state["proposals"][pid] = {
         "day": _today(), "symbol": symbol, "side": side, "setup": setup, "entry": entry,
         "stop": stop, "target": target, "qty": qty, "risk_rs": risk_rs, "rr": rr,
-        "reasons": reasons[:3], "invalid_if": invalid_if, "status": "pending",
+        "reasons": reasons[:3], "invalid_if": invalid_if, "exit_line": exit_line, "status": "pending",
         "sent_at": _now(), "valid_until": valid_until.strftime("%Y-%m-%d %H:%M:%S"),
         "message_id": msg_id, "text": text, "full_text": full_text, "suggested_yes_pct": yes,
         "review": review, "mode": "auto" if auto else "human",
@@ -1270,6 +1273,7 @@ def execute(state, pid):
     state["positions"][p["symbol"]] = {
         "side": p["side"], "qty": p["qty"], "fill_price": fill, "stop": p["stop"],
         "target": p["target"], "opened_at": _now(), "setup": p["setup"], "proposal_id": pid,
+        "exit_line": p.get("exit_line"),
     }
     p["status"] = "filled"
     keep = (rating_buttons(state, pid, p.get("feedback")) if p.get("mode") == "auto"
@@ -1285,7 +1289,7 @@ def execute(state, pid):
             symbol=p["symbol"], setup=p["setup"], side=p["side"], entry=p["entry"],
             stop=p["stop"], target=p["target"], qty=p["qty"], fill_price=fill,
             user_reply="CUSTOM" if custom else "YES",
-            note=f"quote time {ts}")
+            note=f"quote time {ts}" + (f";exit_line={p['exit_line']}" if p.get("exit_line") else ""))
     return {"status": "filled", "fill_price": fill, "qty": p["qty"]}
 
 
@@ -1314,6 +1318,19 @@ def close(state, symbol, exit_price, reason, notify=True):
     check_weekly_brake(state)
     record_result(state, net)
     return {"status": "closed", "symbol": symbol, "exit_price": exit_fill, "pnl_rs": net}
+
+
+def _closed_5min(sym, opened):
+    """Closes of the completed 5-minute candles that end after the entry (oldest first)."""
+    now = market.now_ist().strftime("%Y-%m-%d %H:%M")
+    out = []
+    for b in market.candles(sym, "5m", 1):
+        t = b["time"][:16]
+        start = datetime.strptime(t, "%Y-%m-%d %H:%M")
+        end = (start + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M")
+        if end > opened[:16] and end <= now:
+            out.append(b["close"])
+    return out
 
 
 def monitor(state):
@@ -1345,6 +1362,12 @@ def monitor(state):
                     hit = (min(b["open"], pos["target"]), "target")
             if hit:
                 break
+        if not hit and pos.get("exit_line"):
+            closes = _closed_5min(sym, opened)
+            if exits.early_break(pos["side"], pos["exit_line"], closes, strict=True):
+                price, _ = market.last_price(sym)
+                if price is not None:
+                    hit = (price, "early_exit")
         if hit:
             events.append(close(state, sym, hit[0], hit[1]))
 
@@ -1514,8 +1537,10 @@ def _shadow_exits(state, rows) -> dict:
         if sym not in bars_cache:
             bars_cache[sym] = market.candles(sym, "1m", 1)
             levels_cache[sym] = _prev_day_levels(sym)
+        line = dict(kv.split("=", 1) for kv in (f.get("note") or "").split(";") if "=" in kv).get("exit_line")
         results = exits.replay_all({"side": f["side"], "qty": f["qty"], "fill_price": f["fill_price"],
-                                    "stop": f["stop"], "target": f["target"], "opened_at": f["timestamp_ist"]},
+                                    "stop": f["stop"], "target": f["target"], "opened_at": f["timestamp_ist"],
+                                    "exit_line": line},
                                    bars_cache[sym], levels_cache[sym])
         journal("exit_variants", event_id=f"exitvar-{pid}", proposal_id=pid, symbol=sym, setup=f["setup"],
                 side=f["side"], qty=f["qty"], pnl_rs=round(net, 2), note=exits.note_text(results))
