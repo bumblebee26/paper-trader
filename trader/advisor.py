@@ -63,7 +63,7 @@ def market_mood(nifty_pct, vix=None):
     return "choppy"
 
 
-def shadow_blocks(side, nifty_pct, mood, now, vwap_wrong=False, lagging=False, stretched=False):
+def shadow_blocks(side, nifty_pct, mood, now, vwap_wrong=False, lagging=False, stretched=False, regime=None):
     """Alternative rules we are testing without trading them: which would have blocked this trade.
     Recorded in the journal so the 2-week review can compare them with the real results."""
     out = []
@@ -79,6 +79,8 @@ def shadow_blocks(side, nifty_pct, mood, now, vwap_wrong=False, lagging=False, s
         out.append("lagging_sector")
     if stretched:
         out.append("stretched")
+    if side == "SELL" and regime == "uptrend":   # from 21 Nov: SELLs won 4 of 18 in the first week
+        out.append("sell_uptrend")
     return out
 
 
@@ -267,7 +269,8 @@ def assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct=None, setup=
                     + (" · ".join(s for s in short if s) or "no live market data right now"))
     out = {"checks_pct": checks_pct, "market_lines": market_lines, "mood": mood, "top_checks": top_checks,
            "market_short": market_short,
-           "shadow": shadow_blocks(side, nifty_pct, mood, market.now_ist(), vwap_wrong, lagging, stretched)}
+           "shadow": shadow_blocks(side, nifty_pct, mood, market.now_ist(), vwap_wrong, lagging, stretched,
+                                   (state.get("plan") or {}).get("bias"))}
     return combine(out, ai_yes_pct, None)
 
 

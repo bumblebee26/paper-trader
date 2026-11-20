@@ -16,16 +16,48 @@ import pools
 import sectors
 import storage
 import telegram_bot as tg
+from http_client import log
 
 SUGGESTED = re.compile(r"suggested (YES|NO|UNSURE) (\d+)%")
 REVIEWER = re.compile(r"reviewer (YES|NO|UNSURE) (\d+)%")
 SHADOW = re.compile(r"shadow-block ([\w.,\-]+)")
+BAR_LADDER = (50, 55, 60, 65, 70)
+
+
+def size_for_score(pct):
+    """Score-sized trades on paper: 0.5x risk at 55-59%, 1x at 60-69%, 1.5x at 70%+; None below 55%."""
+    if pct < 55:
+        return None
+    return 0.5 if pct < 60 else 1.0 if pct < 70 else 1.5
+
+
+def fill_check(rows):
+    """Paper fills against the real 1-minute candle of the fill minute (fill_check rows from the day report):
+    how far the paper fill was from that minute's close, against the trader (positive = paper was worse)."""
+    checks = {r["event_id"]: r for r in rows if r["event"] == "fill_check"}
+    vals = [exits.parse_note(r.get("note")) for r in checks.values()]
+    worse = [v["worse_bps"] for v in vals if v.get("worse_bps") is not None]
+    inside = [v for v in vals if v.get("inside") is not None]
+    return {"fills": len(worse), "avg_worse_bps": round(sum(worse) / len(worse), 1) if worse else None,
+            "inside_pct": round(100 * sum(v["inside"] for v in inside) / len(inside)) if inside else None}
+
+
+def swing_hold_safe(today):
+    try:
+        import swing_hold
+        return swing_hold.analyse(today)
+    except Exception as err:  # noqa: BLE001 - a paper study never breaks the weekly report
+        log.warning("swing holding-period study failed: %s", err)
+        return {}
+
+
 SHADOW_WORDS = {
     "nifty_against_0.3": "no BUY when Nifty is down 0.3% (no SELL when up 0.3%)",
     "against_mood": "no trades against the market mood",
     "after_14h": "no new trades after 14:00",
     "vwap_wrong_side": "no BUY below today's average price, VWAP (no SELL above it)",
     "lagging_sector": "no BUY on a stock weaker than its sector today (no SELL on a stronger one)",
+    "sell_uptrend": "no SELL all day while the Nifty 50 is in an uptrend (above its 20/50/200-day averages)",
     "stretched": "no breakout once the price is already 70% of its usual day's range off today's low "
                  "(high for a SELL) or 1% past VWAP",
 }
@@ -104,6 +136,19 @@ def build(today: date):
                 if rule and rule != "-":
                     shadow[rule].append(taken[pid])
 
+    # Auto-bar ladder and score-sized trades (paper, from 21 Nov): every proposal with a known outcome (placed:
+    # the real result; skipped: what it would have made), at each bar, and sized by its suggestion.
+    scored = []
+    for pid, r in proposals.items():
+        m = SUGGESTED.search(r.get("note") or "")
+        outcome = taken.get(pid, passed.get(pid))
+        if m and outcome is not None:
+            scored.append((int(m.group(2)), outcome))
+    ladder = {b: {"trades": sum(1 for pct, _ in scored if pct > b),
+                  "pnl": round(sum(o for pct, o in scored if pct > b), 2)} for b in BAR_LADDER}
+    sized = [(size_for_score(pct), o) for pct, o in scored if size_for_score(pct)]
+    score_sized = {"trades": len(sized), "pnl": round(sum(mult * o for mult, o in sized), 2)}
+
     # Exit rules on trial: one row per trade (fixed event_id; a re-run report repeats it, so keep the last)
     # Each rule is compared with the current rule on the trades it has a result for: rules added later (e.g.
     # target_1_5r from 19 Nov) are missing on older rows, and those rows still count for the other rules.
@@ -143,6 +188,9 @@ def build(today: date):
                        "totals": {k: round(v, 2) for k, v in exit_totals.items()},
                        "counts": exit_counts, "base": {k: round(v, 2) for k, v in exit_base.items()}},
         "profit_lock": {"days": len(locks), "change": round(lock_change, 2)},
+        "bar_ladder": ladder, "score_sized": score_sized,
+        "fill_check": fill_check(rows),
+        "swing_hold": swing_hold_safe(today),
         "orb_trial": {"stocks": orb["stocks"], "trades": dict(orb["trades"]), "retests": dict(orb["retests"]),
                       "rs": {k: round(v, 2) for k, v in orb["rs"].items()}},
         "weekly_brake": any(r["event"] == "weekly_brake" for r in rows),
@@ -273,6 +321,10 @@ def paper_lines(w) -> list:
             lines.append(f"- Opening buy at 09:15 on the plan's news and scanner picks: {o['trades']['open']} trades, "
                          f"{_inr(rs.get('open_2r', 0), sign=True)} with a 2R target / "
                          f"{_inr(rs.get('open_eod', 0), sign=True)} held to 15:10.")
+        if (o.get("trades") or {}).get("fade"):
+            lines.append(f"- Gap fade (short a 3%+ gap-up that breaks its first 15 minutes' low): "
+                         f"{o['trades']['fade']} trades, {_inr(rs.get('fade_2r', 0), sign=True)} with a 2R target / "
+                         f"{_inr(rs.get('fade_eod', 0), sign=True)} held to 15:10.")
         rt = o.get("retests") or {}
         if rt:
             lines.append(f"- Opening-range test, waiting for the retest instead of buying the breakout: 5-min range "
@@ -280,6 +332,25 @@ def paper_lines(w) -> list:
                          f"{rt.get('orb15', 0)} filled, {_inr(rs.get('orb15_retest', 0), sign=True)} (vs "
                          f"{_inr(rs.get('orb5_2r', 0), sign=True)} / {_inr(rs.get('orb15_2r', 0), sign=True)} "
                          "buying every breakout).")
+    lad = w.get("bar_ladder") or {}
+    if any(v["trades"] for v in lad.values()):
+        parts = [f"over {b}%: {v['trades']} trades {_inr(v['pnl'], sign=True)}" for b, v in sorted(lad.items(),
+                 key=lambda kv: int(kv[0]))]
+        lines.append(f"- Auto bar ladder (every proposal, placed or skipped): {'; '.join(parts)}.")
+    ss = w.get("score_sized") or {}
+    if ss.get("trades"):
+        lines.append(f"- Sized by the suggestion (0.5x at 55-59%, 1x at 60-69%, 1.5x at 70%+): {ss['trades']} trades, "
+                     f"{_inr(ss['pnl'], sign=True)}.")
+    fc = w.get("fill_check") or {}
+    if fc.get("fills"):
+        lines.append(f"- Paper fills vs the real minute: {fc['fills']} fills, on average {fc['avg_worse_bps']} bps "
+                     f"worse than that minute's close (positive = paper is the stricter one); "
+                     f"{fc['inside_pct']}% inside the minute's high-low.")
+    sh = w.get("swing_hold") or {}
+    for pool, v in sorted(sh.items()):
+        if v.get("trades"):
+            lines.append(f"- {v['label']}: {v['trades']} trades, actual {_inr(v['actual'], sign=True)}; sold after "
+                         f"5 days {_inr(v['hold_5'], sign=True)}, after 10 days {_inr(v['hold_10'], sign=True)}.")
     if w.get("passed"):
         lines.append(f"- Skipped proposals ({w['passed']}) would have made {_inr(w['passed_pnl'], sign=True)}"
                      + (": skipping saved money." if w["passed_pnl"] < 0 else "."))
