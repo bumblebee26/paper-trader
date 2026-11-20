@@ -86,7 +86,7 @@ class BriefTest(unittest.TestCase):
         self.assertEqual(p["unusual_volume_nse"], [])
         self.assertEqual(p["scanner"]["strict"], [])
         self.assertIsNone(p["india_vix"])
-        self.assertEqual(p["risk_per_trade_pct"], config.RISK_PER_TRADE_PCT)
+        self.assertEqual(p["risk_per_trade_pct"], round(config.RISK_PER_TRADE_PCT * 0.75, 2))
         self.assertEqual(p["adr_moves_pct"], {})
         self.assertIsNone(p["global_supporting"]["sp500_pct"])
         self.assertEqual(p["bias"], "neutral")
@@ -120,7 +120,7 @@ class BriefTest(unittest.TestCase):
 
     def test_risk_scales_with_vix(self):
         base = config.RISK_PER_TRADE_PCT
-        self.assertEqual(brief.risk_for_vix(None), base)
+        self.assertEqual(brief.risk_for_vix(None), round(base * 0.75, 2))    # unknown: cautious
         self.assertEqual(brief.risk_for_vix(14), base)
         self.assertEqual(brief.risk_for_vix(22), round(base * 0.75, 2))
         self.assertEqual(brief.risk_for_vix(35), round(base * 0.5, 2))
@@ -132,8 +132,21 @@ class BriefTest(unittest.TestCase):
         p = brief.build_plan(data, failed)
         self.assertEqual(p["source"], "unavailable")
         self.assertEqual(p["bias"], "neutral")
-        self.assertEqual(p["risk_per_trade_pct"], config.RISK_PER_TRADE_PCT)
+        self.assertEqual(p["risk_per_trade_pct"], round(config.RISK_PER_TRADE_PCT * 0.75, 2))
         self.assertIn("Lakehouse data unavailable", brief.plan_message(p, ["TCS"]))
+        self.assertIn("cautious risk", brief.plan_message(p, ["TCS"]))
+
+    def test_india_vix_from_nse_first_yahoo_backup(self):
+        nse = {**SAMPLE, "india_vix": [{"trade_date": "2026-11-13", "close": 16.1, "change_pct": 3.5}]}
+        p = plan(nse)
+        self.assertEqual((p["india_vix"], p["india_vix_source"]), (16.1, "NSE"))   # NSE wins over Yahoo's 24.3
+        self.assertEqual(p["risk_per_trade_pct"], config.RISK_PER_TRADE_PCT)
+        old = {**SAMPLE, "india_vix": [{"trade_date": "2026-11-12", "close": 16.1, "change_pct": 3.5}]}
+        p = plan(old)
+        self.assertEqual((p["india_vix"], p["india_vix_source"]), (24.3, "Yahoo"))  # NSE a day old: Yahoo
+        p = plan(old, live(india_vix=None))
+        self.assertIsNone(p["india_vix"])                                          # neither: cautious
+        self.assertEqual(p["risk_per_trade_pct"], round(config.RISK_PER_TRADE_PCT * 0.75, 2))
 
     def test_message_is_short(self):
         msg = brief.plan_message(plan(), ["RELIANCE", "TATAPOWER"])
