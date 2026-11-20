@@ -24,11 +24,41 @@ SHADOW = re.compile(r"shadow-block ([\w.,\-]+)")
 BAR_LADDER = (50, 55, 60, 65, 70)
 
 
+def scored_proposals(rows):
+    """[(suggestion %, outcome Rs)] for every proposal in rows with a known outcome: placed (the real result,
+    entry fee included) or skipped (what it would have made)."""
+    entry_fee = {r["proposal_id"]: float(r.get("fees_rs") or 0) for r in rows
+                 if r["event"] == "filled" and r.get("proposal_id")}
+    taken = {r["proposal_id"]: float(r.get("pnl_rs") or 0) - entry_fee.get(r["proposal_id"], 0)
+             for r in rows if r["event"] in ("exited", "squared_off") and r.get("proposal_id")}
+    passed = {r["proposal_id"]: float(r.get("pnl_rs") or 0) for r in rows
+              if r["event"] == "passed_outcome" and r.get("proposal_id")}
+    out = []
+    for r in rows:
+        if r["event"] != "proposed" or not r.get("proposal_id"):
+            continue
+        m = SUGGESTED.search(r.get("note") or "")
+        outcome = taken.get(r["proposal_id"], passed.get(r["proposal_id"]))
+        if m and outcome is not None:
+            out.append((int(m.group(2)), outcome))
+    return out
+
+
 def size_for_score(pct):
     """Score-sized trades on paper: 0.5x risk at 55-59%, 1x at 60-69%, 1.5x at 70%+; None below 55%."""
     if pct < 55:
         return None
     return 0.5 if pct < 60 else 1.0 if pct < 70 else 1.5
+
+
+def selector_week(rows):
+    """The selector's daily scores this week (selector rows from the day report)."""
+    days = {r["event_id"]: exits.parse_note(r.get("note")) for r in rows if r["event"] == "selector"}
+    fams = {}
+    for f in ("exit", "bar", "entry"):
+        fams[f] = {"rs": round(sum(d.get(f"{f}_rs") or 0 for d in days.values()), 2),
+                   "fixed": round(sum(d.get(f"{f}_fixed_rs") or 0 for d in days.values()), 2)}
+    return {"days": len(days), "families": fams}
 
 
 def fill_check(rows):
@@ -138,12 +168,7 @@ def build(today: date):
 
     # Auto-bar ladder and score-sized trades (paper, from 21 Nov): every proposal with a known outcome (placed:
     # the real result; skipped: what it would have made), at each bar, and sized by its suggestion.
-    scored = []
-    for pid, r in proposals.items():
-        m = SUGGESTED.search(r.get("note") or "")
-        outcome = taken.get(pid, passed.get(pid))
-        if m and outcome is not None:
-            scored.append((int(m.group(2)), outcome))
+    scored = scored_proposals(rows)
     ladder = {b: {"trades": sum(1 for pct, _ in scored if pct > b),
                   "pnl": round(sum(o for pct, o in scored if pct > b), 2)} for b in BAR_LADDER}
     sized = [(size_for_score(pct), o) for pct, o in scored if size_for_score(pct)]
@@ -188,7 +213,7 @@ def build(today: date):
                        "totals": {k: round(v, 2) for k, v in exit_totals.items()},
                        "counts": exit_counts, "base": {k: round(v, 2) for k, v in exit_base.items()}},
         "profit_lock": {"days": len(locks), "change": round(lock_change, 2)},
-        "bar_ladder": ladder, "score_sized": score_sized,
+        "bar_ladder": ladder, "score_sized": score_sized, "selector": selector_week(rows),
         "fill_check": fill_check(rows),
         "swing_hold": swing_hold_safe(today),
         "orb_trial": {"stocks": orb["stocks"], "trades": dict(orb["trades"]), "retests": dict(orb["retests"]),
@@ -332,6 +357,11 @@ def paper_lines(w) -> list:
                          f"{rt.get('orb15', 0)} filled, {_inr(rs.get('orb15_retest', 0), sign=True)} (vs "
                          f"{_inr(rs.get('orb5_2r', 0), sign=True)} / {_inr(rs.get('orb15_2r', 0), sign=True)} "
                          "buying every breakout).")
+    sel = w.get("selector") or {}
+    if sel.get("days"):
+        lines.append("- Selector (picks tomorrow's version from the last 20 days): " + "; ".join(
+            f"{f} {_inr(v['rs'], sign=True)} vs fixed {_inr(v['fixed'], sign=True)}"
+            for f, v in sel["families"].items()) + f" over {sel['days']} days.")
     lad = w.get("bar_ladder") or {}
     if any(v["trades"] for v in lad.values()):
         parts = [f"over {b}%: {v['trades']} trades {_inr(v['pnl'], sign=True)}" for b, v in sorted(lad.items(),
