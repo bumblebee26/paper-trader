@@ -1,5 +1,7 @@
 # paper-trader
 
+📝 Project write-up on LinkedIn: <https://lnkd.in/p/deDTKYeT>
+
 A **mock intraday trader for NSE stocks** with dummy money (an Rs 40,000 intraday pool, part of an Rs 2,00,000 dummy portfolio). Claude reads the market,
 proposes trades with reasons on **Telegram**, and nothing happens unless you tap **YES**. No broker, demat
 or bank account is involved.

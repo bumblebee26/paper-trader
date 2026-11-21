@@ -1,5 +1,7 @@
 # paper-trader wiki
 
+📝 Project write-up on LinkedIn: <https://lnkd.in/p/deDTKYeT>
+
 An AI-assisted **NSE paper-trading desk**. Claude (in a GitHub Actions job) finds and explains trades; plain Python
 enforces every risk rule and keeps the ledger; you rate or approve on Telegram. **Dummy money only**: no broker, no bank.
 
