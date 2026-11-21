@@ -1,5 +1,7 @@
 # paper-trader
 
+📝 Project write-up on LinkedIn: <https://lnkd.in/p/deDTKYeT>
+
 A **mock intraday trader for NSE stocks** with dummy money (an Rs 40,000 intraday pool, part of an Rs 2,00,000 dummy portfolio). Claude reads the market,
 proposes trades with reasons on **Telegram**, and nothing happens unless you tap **YES**. No broker, demat
 or bank account is involved.
@@ -116,6 +118,8 @@ edit on dev  ──push──▶  CI: tests, MCP check, terraform fmt + validate
 `main` only changes through pull requests (same rules as stocks_lakehouse).
 
 ## Documentation
+
+Start with the [wiki](docs/wiki/Home.md): how it works, strategies and shadow tests, Telegram commands, FAQ.
 
 | Doc | Read it when |
 |---|---|

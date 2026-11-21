@@ -12,7 +12,7 @@ Guardrails against picking luck:
   - a version needs at least MIN_N trades in the window to be picked;
   - each average is shrunk towards zero by PRIOR_N trades (small samples count for little);
   - it switches only when the challenger beats the current pick by SWITCH_RS per trade (bar: per day).
-Scored each day: what yesterday's picks made today vs the fixed rules (real result, 60% bar, 5-minute breakout).
+Scored each day: what yesterday's picks made today vs the fixed rules (real result, 55% bar, 5-minute breakout).
 Nothing here places, sizes or closes a real trade.
 """
 from datetime import timedelta
@@ -23,7 +23,7 @@ import storage
 import weekly
 
 FAMILIES = ("exit", "bar", "entry")
-BASELINE = {"exit": "actual", "bar": "60", "entry": "orb5_2r"}
+BASELINE = {"exit": "actual", "bar": "55", "entry": "orb5_2r"}
 ENTRY_VERSIONS = ("orb5_2r", "orb15_2r", "orb5_retest", "orb15_retest", "open_2r", "fade_2r")
 WORDS = {"actual": "the live rules", "orb5_2r": "5-min breakout", "orb15_2r": "15-min breakout",
          "orb5_retest": "5-min retest", "orb15_retest": "15-min retest", "open_2r": "09:15 opening buy",
