@@ -117,6 +117,8 @@ edit on dev  ──push──▶  CI: tests, MCP check, terraform fmt + validate
 
 ## Documentation
 
+Start with the [wiki](docs/wiki/Home.md): how it works, strategies and shadow tests, Telegram commands, FAQ.
+
 | Doc | Read it when |
 |---|---|
 | [docs/PLATFORM.md](docs/PLATFORM.md) | The whole platform with stocks_lakehouse: diagram, daily timeline, contracts, security, costs |
