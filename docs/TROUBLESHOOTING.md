@@ -79,8 +79,19 @@ Your plan's limit was reached. The guardian squares off at 15:12. See OPERATIONS
 ### `Lakehouse data: unavailable`
 `premarket_context` couldn't query Databricks. Check, in order: the lakehouse's
 `/stocks/databricks-pusher-token` hasn't expired (180 days), the warehouse ID parameter exists, and the
-gold tables refreshed (Databricks → Jobs & Pipelines). The day still runs with default risk and the
-watchlist.
+gold tables refreshed (Databricks → Jobs & Pipelines). The day still runs on the watchlist, with risk from
+Yahoo's India VIX, or the cautious 0.75% if that is missing too.
+
+### Plan says `India VIX not available -> cautious risk 0.75% per trade`
+Neither NSE's own index file (`stocks.silver.nse_index_daily`, landed by the lakehouse's NSE fetcher at 19:30
+the evening before) nor Yahoo's `^INDIAVIX` has the last session. Check the lakehouse's `stocks-fetch-nse` log
+for `NSE index file ... failed` or `India VIX missing`; the plan's `india_vix_source` says which source was
+used on other days. The day trades normally at the cautious risk.
+
+### A trade closed before its stop with `early_exit`
+On purpose (from 20 Nov): the trade's exit line (the price that breaks its idea) was broken for real, two
+5-minute closes past it or one at least 0.2% past it. The day report's exit rules compare this with
+`early_any` and with no early exit at all.
 
 ### Proposals say `News: unavailable` (or a "news feed is ... minutes old" alert)
 The trader reads `/Volumes/stocks/bronze/news/date=<today>/latest.jsonl`, written every minute

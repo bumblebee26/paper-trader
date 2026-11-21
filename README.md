@@ -7,7 +7,7 @@ proposes trades with reasons on **Telegram**, and nothing happens unless you tap
 or bank account is involved.
 
 It builds on [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse): the lakehouse's
-pre-market data (India VIX, the Nifty 50's trend, the technical scanner's picks, unusual volume, ADRs; the US
+pre-market data (India VIX from NSE's own index file, the Nifty 50's trend, the technical scanner's picks, unusual volume, ADRs; the US
 only as support) sets each day's risk level and focus list.
 
 ![Platform at a glance: AWS Sydney, GitHub Actions and Databricks, meeting at the morning SQL read and the 15:45 journal export](docs/diagrams/platform_overview.png)
@@ -21,11 +21,11 @@ life of one trade).
 | Time | What happens |
 |---|---|
 | 08:45 | Lakehouse pre-market brief (India first: India VIX, the Nifty 50's trend; the US only as support) and the **technical scanner** (Nifty 200 strict picks with indicative levels and a Swing buy button) arrive on Telegram |
-| 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data (any source missing the day it should have is left out, never replaced by an older day), sends the day plan and focus list |
-| 09:20–12:25 | Every 5 minutes, a few seconds after each candle closes: check positions, scan the focus list (up to 15 names: the 36-stock watchlist plus news-radar picks from the Nifty 200), and any stock with a fresh NSE filing; propose setups. Between cycles stops and targets are checked every minute, and a fresh filing on a tradable stock starts a cycle at once |
+| 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data (any source missing the day it should have is left out, never replaced by an older day), sends the day plan and focus list. Risk per trade comes from India VIX (NSE's own index file, Yahoo as the backup); if neither has the last session, it is the cautious 0.75%, not the full 1% |
+| 09:20–12:25 | Every 5 minutes, a few seconds after each candle closes: check positions, scan the focus list (up to 15 names: the 36-stock watchlist plus news-radar picks from the Nifty 200), and any stock with a fresh NSE filing; propose setups. Between cycles stops and targets are checked every minute, and a fresh filing on a tradable stock starts a cycle at once. From 20 Nov a trade also closes early when its idea breaks: two 5-minute closes past its exit line (or one 0.2%+ past it), never on one close that just touches it |
 | 09:45 | Scanner check: each strict pick against the first half hour (triggered, in its entry zone, waiting, extended or invalidated) |
 | 12:27 | Afternoon session. New entries stop at 14:30 |
-| 15:10 | Everything squared off, then the day report |
+| 15:10 | Everything squared off, then the day report (with the day's paper tests: opening-range breakouts, from 21 Nov the 09:15 opening buy and the gap-fade short, and from 23 Nov the selector's picks for tomorrow) |
 | 15:12 / 15:40 | Guardian backstops: square-off and report if the session didn't |
 | 15:45 | The day's journal and a portfolio snapshot (all pools and holdings) are copied to the lakehouse; its `stocks-trading` job builds the trading and portfolio tables and dashboard pages |
 | 15:50 | Swing shadow tests: news breakouts, the technical scanner's strict picks (entry at its level the next day, stop, T2 or 15 days), and momentum + news (from 18 Nov: 6 holdings, 2% risk, trailing stop) with its concentrated copy (top 3, 3% risk), bought and sold on paper, compared with NIFTYBEES (`/shadow`); stops and targets on your own swing trades checked |
@@ -77,6 +77,13 @@ its suggestions. Rate any proposal with 👍/👎 (buttons or a reaction, for 7 
 the dashboard's "Your calls" page and never train the system. The lakehouse table `stocks.gold.trading_decisions` shows later how
 your YES and NO calls worked out.
 
+**Tested on paper, never traded** (day and weekly reports, `/shadow`, the dashboard's Intraday page): from 21 Nov,
+buying the plan's news and scanner picks at the 09:15 open; shorting a 3%+ gap-up once it breaks its first 15
+minutes' low; every auto bar from 50% to 70% and trades sized by their suggestion (0.5x / 1x / 1.5x); no SELLs
+while the Nifty 50 is in an uptrend; selling the swing shadows' trades after 5 or 10 days; and each paper fill
+against the real minute. From 23 Nov a **selector** picks tomorrow's exit rule, auto bar and entry from the last
+20 trading days, with guardrails against luck (30+ trades, and a switch only for a Rs 40-a-trade edge).
+
 Send `/help` (or ask "what can you do?") for every command, with or without the `/`: `/ledger`, `/plan`,
 `/exit SYMBOL`, `/news SYMBOL`, `/screen` (the technical scanner's picks, or `/screen SYMBOL`), `/portfolio`, `/shadow` (everything tested on paper), `/analyze SYMBOL`, your own trades with `/buy`, `/short`, `/swing buy|sell`, `/longterm buy|sell` (each order shows its numbers and costs and runs only when you tap Confirm within 3 minutes; marked custom and kept out of the trader's own track record), `/auto on|off`, `/pause`, `/stop` (kill switch), `/resume`. They also appear in the bot's `/` menu, and the bot answers at any time:
 within seconds during sessions, within ~2 minutes otherwise (evenings, weekends). A `/pause` sent in the evening
@@ -87,7 +94,8 @@ money in use, money free, and open positions with live P&L. Every fill and exit 
 
 ```
 trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer, track record, exit rules on trial, swing shadows
-                   (swing_shadow.py, swing_tech.py, swing_momentum.py), technical scanner (screen.py), your own trades
+                   (swing_shadow.py, swing_tech.py, swing_momentum.py) and their holding-period study (swing_hold.py),
+                   the selector (selector.py, paper), technical scanner (screen.py), your own trades
                    (custom.py), Groww/NSE links, weekly report, shadow-model summary (model_report.py), export,
                    storage (S3/local), Telegram, MCP server, Lambda handlers. Standard library + boto3 only.
 models/            Shadow models for the intraday pool (intraday.py, walkforward.py; scikit-learn, GitHub job only)
