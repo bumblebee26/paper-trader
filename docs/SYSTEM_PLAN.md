@@ -14,14 +14,14 @@ strategies behave.
 The paper trader is growing from one intraday strategy into a three-pool dummy portfolio of Rs 2,00,000,
 driven by live market data, company news and company financials, with you approving trades on Telegram.
 
-| Phase | Status (19 Nov 2026) | Next gate |
+| Phase | Status (21 Nov 2026) | Next gate |
 |---|---|---|
 | 1 Intraday upgrades | Built, live from 10 Nov | Track-record review, 23 Nov |
 | 2 Foundations (news, pools, alerts) | Built | Cost review, 15 Nov |
 | 3 Swing pool | Rs 60,000 held in NIFTYBEES; three rule sets in shadow mode: news breakouts (from 16 Nov), the technical scanner (from 17 Nov) and momentum + news (from 18 Nov, with a concentrated top-3 copy) | Scanner signal review ~8 Dec; shadow review vs NIFTYBEES, mid-Dec |
 | 4 Long-term pool | Selection, backtest and shadow mode built; a second shadow, momentum (top 15, monthly, with a concentrated top-5 copy), from 21 Nov | Go/no-go 18 Dec, buying from 21 Dec |
 | 5 Track record and auto mode | Live from 12 Nov: auto mode, track record (real outcomes only from 17 Nov) fed back every session | Review 23 Nov |
-| 6 Shadow models (intraday) | From 17 Nov, paper only: volatility stop, trade filter, early cut, let winners run, plus stop variants, judged walk-forward every day | Review with you before December go-live |
+| 6 Shadow models (intraday) | From 17 Nov, paper only: volatility stop, trade filter, early cut, let winners run, plus stop variants, judged walk-forward every day; from 21 Nov more paper tests (09:15 opening buy, gap fade, auto-bar ladder, score sizing) and from 23 Nov a selector that picks tomorrow's version from the last 20 days | Review with you before December go-live |
 
 Every pool and shadow pool restarted from its starting cash on Wed 18 Nov (ledger reset of 17 Nov), so all
 strategies are compared from the same day; the trade history, track record and ratings were kept.
@@ -31,7 +31,8 @@ strategies are compared from the same day; the trade history, track record and r
 1. **Dummy money only.** No broker, demat or bank link. Real money would need a separate decision and SEBI's
    retail algo rules (see Risks).
 2. **You approve every buy and sell** on Telegram. Automatic exits are limited to rules set in advance
-   (stop-loss, target, the 15:10 intraday square-off, and for pools, rules you agreed to).
+   (stop-loss, target, the 15:10 intraday square-off, from 20 Nov the early exit when a trade's idea really
+   breaks, and for pools, rules you agreed to).
 3. **Plain words first.** Every proposal opens with a suggestion and a plain-English summary; numbers sit
    under Details.
 4. **Independent review.** A second agent, which never sees the proposer's pitch, argues against every trade.
@@ -61,23 +62,23 @@ more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follow
 | Weekly brake | none | Week down 8R: half-size trades until Monday |
 | Costs | Rs 20 per order + 0.05% slippage | From 16 Nov, every order also pays STT (0.025% on sells), exchange and SEBI fees, GST and stamp duty (0.003% on buys), as on a contract note: about 0.26% of the position per round trip with slippage |
 | Cost filter | none | No trade whose costs exceed 30% of its risk (in practice a stop of about 0.9% or more) |
-| Exit rules | fixed stop and 2R target | Same, with alternatives and a day profit lock on trial in the background (reports; decided at a review); from 19 Nov also a nearer 1.5R target, and yesterday's high (low for a short) as the target when it comes before 2R |
+| Exit rules | fixed stop and 2R target | Same, with alternatives and a day profit lock on trial in the background (reports; decided at a review); from 19 Nov also a nearer 1.5R target, and yesterday's high (low for a short) as the target when it comes before 2R. From 20 Nov, live: an early exit when the trade's exit line (the price that breaks its idea) breaks for real, two 5-minute closes past it or one 0.2%+ past it, enforced by code (one close just past the line was usually noise) |
 | Cool-off | none | 30 minutes without new proposals after 3 losses in a row |
 | Watchlist | 16 stocks, mostly banks and IT | 36 stocks across 11 sectors (`trader/sectors.py`) |
 | Focus list each morning | up to 10 | up to 15, at least 6 sectors; from 16 Nov re-ranked at 09:25 by opening relative volume (the first 10 minutes vs the usual), the "stocks in play" |
 | Sector caps | none | 1 open position per sector, 2 trades per sector a day |
 | Position cap | margin limit only | One trade uses at most 30% of the balance as margin |
 | Proposal | numbers | Suggestion % (live checks + trading agent + independent reviewer), plain words, market check, company news; from 16 Nov the live checks also score the VWAP side and strength against the stock's sector |
-| Research tests (paper, from 16 Nov) | none | Background rules "no BUY below VWAP" and "no BUY on a stock weaker than its sector" (mirrored for SELL); opening-range breakout on the top 10 stocks in play with 5- vs 15-minute ranges, 2R target vs held to 15:10. From 19 Nov: a "wait for the retest" version of that test (buy only if the price comes back to the range edge within 60 minutes), and a "stretched" flag on breakouts that start already far from the day's low (more than 70% of a usual day's range) or more than 1% past VWAP, recorded on each proposal without changing its score. Decided at a review |
+| Research tests (paper, from 16 Nov) | none | Background rules "no BUY below VWAP" and "no BUY on a stock weaker than its sector" (mirrored for SELL); opening-range breakout on the top 10 stocks in play with 5- vs 15-minute ranges, 2R target vs held to 15:10. From 19 Nov: a "wait for the retest" version of that test (buy only if the price comes back to the range edge within 60 minutes), and a "stretched" flag on breakouts that start already far from the day's low (more than 70% of a usual day's range) or more than 1% past VWAP, recorded on each proposal without changing its score. From 21 Nov: buying the plan's news and scanner picks at the 09:15 open (double slippage, stop 1.2% below); shorting a 3%+ gap-up once it breaks its first 15 minutes' low before 11:00 (the gap fade); every auto bar from 50% to 70% and trades sized by their suggestion (0.5x / 1x / 1.5x); and each paper fill checked against the real minute. Decided at a review |
 
 ## Phase 2: foundations (built)
 
 | Part | What it does |
 |---|---|
 | Company news | NSE announcements, results, board meetings and corporate actions into the lakehouse every minute in market hours (every 30 min otherwise); from 17 Nov also Business Standard markets headlines (every 4 min; only headlines naming a tradable company reach the trader) and RBI and SEBI press releases (every 5 min; market-wide context, never a stock signal). BSE announcements are built but off (no verified public feed). Every proposal lists the company's filings with links and flags regulatory, rating, pledge filings and board meetings within 2 days |
-| Morning plan, India first (from 17 Nov) | Risk per trade from India VIX (1%; 0.75% at 20+; 0.5% at 30+); bias from the Nifty 50's trend; the US (S&P 500, Nasdaq, Brent, USD/INR, live from Yahoo) only as support, plus a "global shock" line at a 2%+ S&P move; the five ADRs as evidence for those stocks only. **Freshness rule:** each source must have the session it should (from the market's own calendar); one that doesn't is left out and named, never replaced by an older day; holidays are stated. Massive's US history now lands at 11:00 IST, after its free plan releases the day |
+| Morning plan, India first (from 17 Nov) | Risk per trade from India VIX (1%; 0.75% at 20+; 0.5% at 30+; from 20 Nov read from NSE's own index file first, Yahoo only as the backup, and 0.75% when neither has the last session); bias from the Nifty 50's trend; the US (S&P 500, Nasdaq, Brent, USD/INR, live from Yahoo) only as support, plus a "global shock" line at a 2%+ S&P move; the five ADRs as evidence for those stocks only. **Freshness rule:** each source must have the session it should (from the market's own calendar); one that doesn't is left out and named, never replaced by an older day; holidays are stated. Massive's US history now lands at 11:00 IST, after its free plan releases the day |
 | Market mood | Each proposal says trending up, trending down, jumpy or choppy (Nifty since the open and India VIX) |
-| Shadow rule variants | Each proposal records which alternative rules would have blocked it (Nifty against the trade by 0.3%, against the mood, after 14:00), for the 23 Nov review |
+| Shadow rule variants | Each proposal records which alternative rules would have blocked it (Nifty against the trade by 0.3%, against the mood, after 14:00; from 21 Nov also no SELL while the Nifty 50 is in an uptrend), for the 23 Nov review |
 | Commands | `/news SYMBOL`, `/portfolio`, `/screen` (`/screen SYMBOL`), `/stop` (kill switch) plus `/ledger`, `/plan`, `/pause`, `/resume`, `/exit`, `/help`, answered any time |
 | Data alerts | Stale prices pause proposals with one alert and an all-clear; a news feed more than 90 minutes behind alerts once a day |
 | Pool ledgers and circuit breaker | Separate ledgers for swing and long-term with delivery costs; all pools 12% below their peak stops new buys until `/resume` |
@@ -239,9 +240,18 @@ judged only by models trained on earlier days:
 
 They are compared with the current rules and the stop variants (no stop; stops 1.5x and 2x wider with the same
 rupee risk; stop on a 5-minute close), from 19 Nov also the 1.5R target, yesterday's high/low as the target and
-skipping stretched breakouts, and today's real trades are replayed under each. Results: a Telegram note
+skipping stretched breakouts, from 20 Nov the early exits (on any close past the exit line, the old way, and only
+on a real break, the live rule), and today's real trades are replayed under each. Results: a Telegram note
 after the close, `/shadow`, the weekly report, and `models/results/` in S3. **Nothing goes live before a review
 with you, before December**; a model is adopted only if it beats the current rules out of sample, net of costs.
+
+**Selector (from 23 Nov, paper only):** after each day report it picks tomorrow's version of three things from the
+last 20 trading days of shadow results: the exit rule, the auto bar (50 to 70%) and the entry (5- or 15-minute
+breakout, the retest, the 09:15 opening buy, the gap fade). Guardrails against picking luck: a version needs 30+
+trades, small samples are shrunk towards zero, and it switches only for a Rs 40-a-trade edge. Each day it is scored
+on results it couldn't see when it picked, against the fixed rules (the live result, the 55% bar, the 5-minute
+breakout). It never touches a real trade; beating the fixed rules for weeks would make it worth a review.
+The weekly report also shows the swing shadows' trades sold after at most 5 or 10 days (holding-period study).
 
 **News radar (from 16 Nov):** the intraday trader may go beyond its 36-stock watchlist to any Nifty 200 stock
 that passes the guardrails (`stocks.gold.intraday_universe`: main-board EQ series, Rs 50+, Rs 50 crore+ traded a
@@ -306,7 +316,7 @@ Rs 16 per sell plus slippage.
 | 08:45 | Pre-market brief |
 | 09:08 | Day plan and focus list |
 | During sessions | Proposals (suggestion, reviewer, plain words, market check, news), fills, exits, alerts |
-| ~15:20 | Day report |
+| ~15:20 | Day report (with the day's paper tests and, from 23 Nov, the selector's picks for tomorrow) |
 | Fri 17:55 | Weekly report |
 | 15:50 (when something moves) | Swing shadow tests: what each paper pool bought or sold |
 | After 16:10 | Shadow models: a short note on the day's results when the job finishes |
@@ -316,7 +326,8 @@ Rs 16 per sell plus slippage.
 Databricks dashboard (redesigned 18 Nov, same order on every page: tiles, main chart, breakdowns, tables):
 Desk (auto mode, VIX, mood; portfolio vs NIFTYBEES, track record by setup, today's decisions, real and shadow
 leaderboard, holdings), Intraday (real vs every exit rule, model and the opening-range test in one chart, with a
-Show filter; daily P&L, by setup and hour, model tests on ~200 stocks), Swing and Long term (real pool vs shadow pools
+Show filter; daily P&L, by setup and hour, model tests on ~200 stocks; from 21 Nov the auto-bar ladder and sizing,
+paper fills vs the real minute and the selector), Swing and Long term (real pool vs shadow pools
 vs NIFTYBEES with a Show filter; scanner, momentum ranks, company quality), Your calls (your 👍/👎 vs what happened:
 right %, liked vs disliked results, you vs the trader, by week and setup) and Global markets (current by about 09:00
 from the 08:45 pre-open snapshot; today's read written
@@ -353,6 +364,10 @@ Cost review: Sun 15 Nov.
 | Real-money readiness checklist | After phase 5 |
 | Technical scanner (Nifty 200) | Built 17 Nov; review ~8 Dec |
 | Shadow models (intraday) | Built 17 Nov, paper only; review before December |
+| Early exit on a real break of the exit line | Live 20 Nov |
+| India VIX from NSE's own index file | Live 20 Nov (Yahoo as the backup) |
+| Opening buy, gap fade, auto-bar ladder, score sizing, fill check, swing holding period | Built 20 Nov, on paper from 21 Nov |
+| Selector (picks tomorrow's version from the last 20 days) | Built 20 Nov, on paper from 23 Nov |
 | Momentum shadows (swing and long-term) and concentrated copies | Built 17 Nov, on paper from 18 / 21 Nov; December review |
 | Ratings as training data | Retired 17 Nov: your 👍/👎 is kept for your own review only |
 | Bloomberg news | Not feasible (paid terminal licence; no free feed); free sources used instead |
@@ -369,8 +384,9 @@ Cost review: Sun 15 Nov.
 | 17 Nov | Technical scanner (08:45 report, 09:45 check, `/screen`, second swing shadow pool); India-first plan with the freshness rule; more news sources; shadow models (16:10 daily); ratings no longer train the system; ledger reset; lakehouse pipeline split in three |
 | 18 Nov | Day 1 after the reset: every pool from its starting cash; momentum + news swing shadow and its concentrated copy start; pre-open world-markets snapshot on the dashboard by ~09:00 |
 | 19 Nov | Faster intraday cycles (a few seconds after each candle; stops every minute); on paper: 1.5R and yesterday's-level targets, wait-for-the-retest opening-range entries, stretched-breakout flag |
-| 21 Nov | First long-term momentum shadows (top 15, top 5) |
-| 23 Nov | Track-record review (phase 5), including news vs watchlist picks |
+| 20 Nov | India VIX from NSE's own index file (Yahoo as the backup; cautious risk when neither has it); early exits only on a real break of the exit line, enforced by code |
+| 21 Nov | First long-term momentum shadows (top 15, top 5); on paper: 09:15 opening buy, gap fade, auto-bar ladder, score sizing, no SELLs in an uptrend, swing holding period, fill check |
+| 23 Nov | Track-record review (phase 5), including news vs watchlist picks; the selector's first picks (paper) |
 | ~8 Dec | Scanner signal review (about 15 trading days): `gold.signal_performance` and the scanner shadow pool vs NIFTYBEES |
 | 18 Dec | Long-term go/no-go (backtest + 5 shadow weeks) |
 | 21 Dec | Long-term buying starts, if approved |
@@ -380,7 +396,7 @@ Cost review: Sun 15 Nov.
 | Risk | How it's handled |
 |---|---|
 | Too many messages | Long-term reports only on Saturdays; intraday caps |
-| Data gaps (Yahoo lag, NSE blocking) | Stale-data alerts; "news unavailable" shown honestly; fallbacks for the Nifty 200 list |
+| Data gaps (Yahoo lag, NSE blocking) | India VIX from NSE's own file with Yahoo as the backup, and cautious risk when neither has it; stale-data alerts; "news unavailable" shown honestly; fallbacks for the Nifty 200 list |
 | Backtests flatter reality | No-hindsight universes, unseen-month tests, then shadow weeks |
 | Claude usage limits | Swing and long-term use no Claude; cost review 15 Nov |
 | Real money later | SEBI's retail algo framework (from 1 Apr 2026) needs a registered app ID on a whitelisted static IP, daily two-factor login and at most 10 orders a second ([FYERS notice](https://fyers.in/notice-board/new-sebi-framework-for-retail-algo-trading-from-april-01-2026/)); a static IP isn't on the AWS free plan. Out of scope |

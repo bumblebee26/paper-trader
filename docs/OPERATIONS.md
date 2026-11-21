@@ -7,10 +7,10 @@
 | 08:45 | Lakehouse pre-market brief | Telegram |
 | 09:08 | Kicker → morning session | Telegram plan, `plans/<date>.json`, journal |
 | 09:16 | GitHub cron backup (skips if already claimed) | — |
-| 09:20–12:25 | Morning cycles every 5 minutes, starting a few seconds after each candle closes (stops checked every minute between them; a fresh filing on a tradable stock starts a cycle at once) | proposals, fills, exits |
+| 09:20–12:25 | Morning cycles every 5 minutes, starting a few seconds after each candle closes (stops checked every minute between them; a fresh filing on a tradable stock starts a cycle at once). From 20 Nov a trade also closes early on a real break of its exit line (two 5-minute closes past it, or one 0.2%+ past it) | proposals, fills, exits |
 | 09:45 | Guardian: scanner check (`screen.py`): the morning's strict picks from `gold.technical_screen` against the live price and opening volume; Telegram note with a Swing buy button for triggered or in-zone picks | journal `scanner_check` |
 | 12:27 / 12:36 | Afternoon session (kicker / backup) | — |
-| 15:10 | Square-off, then end-of-day report | `reports/<date>.json` |
+| 15:10 | Square-off, then end-of-day report, with the day's paper tests (opening-range test, from 21 Nov the 09:15 opening buy and the gap fade; each fill checked against the real minute) and, from 23 Nov, the selector's score for today and picks for tomorrow | `reports/<date>.json`, journal `exit_variants`, `orb_shadow`, `fill_check`, `selector`; `state/selector.json` |
 | 15:12 | Guardian: square-off if no live session | — |
 | 15:14 | Guardian: puts the swing pool's idle cash into NIFTYBEES (once; nothing to do afterwards) | `state/pools/swing.json` |
 | 15:40 | Guardian: report if none was sent; daily portfolio snapshot (circuit breaker at 12% below the peak) | `state/portfolio.json` |
@@ -18,7 +18,7 @@
 | 15:50 | Guardian: swing shadow test (`swing_shadow.py`): yesterday's `gold.swing_signals` bought at today's open, exits on today's candle; then the technical-scanner shadow (`swing_tech.py`): yesterday's strict picks from `gold.technical_indicators`, entered only if today reaches the scanner's level, exits at its stop, T2 or after 15 trading days; then the momentum + news shadow (`swing_momentum.py`, from 18 Nov): yesterday's top of `gold.momentum_ranks` bought at today's open (6 holdings, 2% risk), stop 2 x ATR trailing under the highest close, out after 20 trading days, and its concentrated copy (`swing_mom_conc_shadow`: 3 holdings, up to a third each, 3% risk, no sector cap). Telegram note when something moves. Also sells your own swing holdings whose stop or target was hit today | `state/pools/swing_shadow.json`, `state/pools/swing_tech_shadow.json`, `state/pools/swing.json`, `state/pools/swing_mom_shadow.json`, `state/pools/swing_mom_conc_shadow.json`, `shadow/swing/<date>.json`, `shadow/swing_tech/<date>.json`, `shadow/swing_mom/<date>.json`, `shadow/swing_mom_conc/<date>.json`, `journal/pools/<pool>/` |
 | 16:10 | GitHub Actions *Model shadow* (`jobs/model_shadow.py`, no Claude, paper only): 5-minute candles for every tradable stock in `gold.intraday_universe` (cached in S3 so history grows past Yahoo's 60 days); the four shadow models and the stop variants judged walk-forward on every scanner setup, and today's real trades replayed under each; short Telegram note | `models/bars5m/`, `models/results/<date>.json`, `models/results/history.json`, journal `model_shadow` and `model_backtest` (reach the lakehouse with the 23:30 export) |
 | 23:30 | Guardian: export the last 4 days' journals again, so late events reach the lakehouse overnight | same journal files |
-| Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools) | `reports/weekly/<date>.json` |
+| Fri 17:55 | Guardian: weekly report in plain words (results, setups, your calls vs the suggestion and reviewer, background rules, all pools; from 21 Nov also the auto-bar ladder, score sizing, the selector, paper fills vs the real minute and the swing holding-period study) | `reports/weekly/<date>.json` |
 | Sat 07:15 | GitHub Actions *Company fundamentals*: NSE's Nifty 200 list (the 250 most traded NSE stocks if the list can't be read) plus the watchlist; financials → lakehouse `landing/fundamentals/` (feeds `stocks.gold.company_fundamentals`), the list → `landing/index_members/` | `fundamentals/date=<date>/fundamentals.jsonl`, `index_members/date=<date>/nifty200.jsonl` |
 | Sat 10:15 | GitHub Actions *Long-term shadow*: what the long-term pool would buy or sell this week (shadow ledger `state/pools/long_term_shadow.json`, never in the real portfolio), plus the momentum shadow (`long_term_mom_shadow`: top 15 of `gold.momentum_ranks`, rebalanced on the first Saturday of each month, kept while in the top 30) and its concentrated copy (`long_term_mom_conc_shadow`: top 5, kept while in the top 10); Telegram reports | `shadow/longterm/<date>.json`, `shadow/longterm_mom/<date>.json`, `shadow/longterm_mom_conc/<date>.json` |
 | every 2 min | Responder: answers Telegram commands (including `/analyze` and your own orders) when no session is live | ledger and pool files when you place an order |
@@ -36,7 +36,7 @@ when it finds no prices.
 | Limit | Default | Setting in `trader/config.py` |
 |---|---|---|
 | Trades per day | 10 (0 = no limit) | `MAX_TRADES_PER_DAY` |
-| 1R (one trade's risk) | Start-of-day balance × today's risk %: Rs 400, or Rs 300 at VIX ≥ 20, Rs 200 at VIX ≥ 30 | `RISK_PER_TRADE_PCT` (VIX scaling in `trader/brief.py`) |
+| 1R (one trade's risk) | Start-of-day balance × today's risk %: Rs 400, or Rs 300 at VIX ≥ 20 (and when India VIX isn't available for the last session), Rs 200 at VIX ≥ 30. India VIX comes from NSE's own index file (`stocks.silver.nse_index_daily`), Yahoo only as the backup | `RISK_PER_TRADE_PCT` (VIX scaling in `trader/brief.py`) |
 | Daily loss limit | 4R (Rs 1,600; Rs 1,200 at VIX ≥ 20), counting today's loss **plus the risk in open positions**: a new trade is sized to fit what's left, or blocked. Lifts again if a winner brings the loss back under | `DAILY_LOSS_LIMIT_R` (`DAILY_LOSS_LIMIT_RS` > 0 = a fixed rupee limit instead) |
 | Weekly brake | Week's loss reaches 8R: risk per trade halved until Monday | `WEEKLY_LOSS_LIMIT_R`, `WEEKLY_BRAKE_FACTOR` |
 | Cost filter | Blocks a trade whose round-trip costs (brokerage, STT, exchange and SEBI fees, GST, stamp duty) and slippage exceed 30% of its risk at full size (stops tighter than about 0.9% of the price, about 1.2% at VIX ≥ 30); trades made smaller by the weekly brake or the room left aren't penalised for it | `MAX_COST_SHARE_PCT` |
@@ -66,7 +66,7 @@ proposal with its counts by setup, suggestion band, mood, hour, the stock's sect
 Claude, whose rules allow adjusting its own score only on judged rows.
 
 **Exit rules on trial** (`trader/exits.py`, from 11 Nov; nothing changes real trades): after the close each
-trade is replayed on its 1-minute candles under the current exits and ten alternatives (stop to entry at
+trade is replayed on its 1-minute candles under the current exits and twelve alternatives (stop to entry at
 +1R, sell half at +1R, a trailing stop, a 60-minute time stop; from 17 Nov also no stop, the stop 1.5x and 2x
 wider with fewer shares for the same rupee risk, and a stop that counts only on a 5-minute close with a hard
 stop at 2x; from 19 Nov a 1.5R target, and yesterday's high (low for a short) as the target when it sits
@@ -74,7 +74,27 @@ between +0.5R and the planned target), plus a day profit lock (once the day is +
 new trades if it falls back to half). The day report and the weekly report show how each would have done;
 journal events `exit_variants` and `profit_lock_shadow`. Adopt one only at a review, after 15+ trades. The two
 new targets also run in the opening-range test and the nightly model backtest, so the review has a larger sample;
-the weekly report compares each rule with the current one on the trades it has a result for.
+the weekly report compares each rule with the current one on the trades it has a result for. From 20 Nov two more:
+`early_any` (leave on any 5-minute close past the trade's exit line: how the session used to act on "invalid if")
+and `early_strict` (only on a real break: two closes in a row past it, or one at least `EARLY_BREAK_PCT` (0.2%)
+past it). `early_strict` is also the live rule: the engine closes the trade (`early_exit`), and Claude no longer
+closes one itself when `invalid_if` is touched. The exit line is journaled on the `filled` row (`exit_line=` in the note).
+
+**More paper tests** (from 21 Nov; nothing changes a real trade): at the day report, the 09:15 opening buy of the
+morning plan's news-radar names and scanner strict picks (twice the normal slippage, stop 1.2% below, 2R target or
+held to 15:10) and the gap fade (short a 3%+ gap-up from the news radar or stocks in play once a 5-minute close
+breaks its first 15 minutes' low before 11:00, stop at the day's high), both as `orb_shadow` rows (`open_2r`,
+`open_eod`, `fade_2r`, `fade_eod`); `fill_check` rows compare each paper entry fill with the real 1-minute candle
+of its minute. The weekly report and `/shadow` add the auto-bar ladder (every proposal with a known outcome at bars
+50/55/60/65/70%), score sizing (0.5x at 55–59%, 1x at 60–69%, 1.5x at 70%+), the background rule `sell_uptrend`
+(no SELL while the plan's Nifty regime is uptrend) and the swing holding-period study (`trader/swing_hold.py`:
+each swing shadow trade sold after at most 5 or 10 trading days).
+
+**Selector** (`trader/selector.py`, from 23 Nov, paper only): after each day report it scores yesterday's picks
+on today against the fixed rules (the live result, the 55% bar, the 5-minute breakout), then picks tomorrow's
+exit rule, auto bar and entry from the last 20 trading days. Guardrails against luck: at least 30 trades,
+averages shrunk towards zero by 30 trades, and a switch only for a Rs 40-a-trade edge (bar: per day). It never
+places, sizes or closes a real trade.
 
 **Breakouts on trial** (from 19 Nov, paper only): `trader/stretch.py` marks an ORB, PDH or PDL breakout
 "stretched" when the price is already more than 70% of a usual day's range (last 5 sessions) off today's low
@@ -113,7 +133,9 @@ counts, but their profit or loss counts toward the daily loss limit. Journal: se
 | Pools, circuit breaker, weekly report | `trader/pools.py`, `trader/weekly.py`, capitals in `trader/config.py` |
 | Fundamentals universe | `NIFTY200_URLS` and fallback query in `jobs/fundamentals.py`; schedule in `.github/workflows/fundamentals.yml` |
 | Risk limits, capital, costs, times | defaults in `trader/config.py` (or `env:` in the workflow) |
-| VIX → risk scaling, bias thresholds | `risk_for_vix` / `build_plan` in `trader/brief.py` |
+| VIX → risk scaling, bias thresholds, India VIX source | `risk_for_vix` / `build_plan` in `trader/brief.py` |
+| Early exit on a real break | `EARLY_BREAK_PCT` and `early_break` in `trader/exits.py`; `monitor` in `trader/engine.py` |
+| Paper tests (opening buy, gap fade), selector guardrails | constants at the top of `open_buy_trade` / `gap_fade_trade` in `trader/engine.py`; `trader/selector.py` |
 | Setups (ORB, VWAP, PDH/PDL) | `trader/scanner.py` |
 | Technical scanner: `/screen`, the 09:45 check, its shadow pool (risk, 15-day limit) | `trader/screen.py`, `trader/swing_tech.py` (the filters themselves are in the lakehouse) |
 | Your own trades (`/analyze`, `/buy`, `/short`, `/swing`, `/longterm`) | `trader/custom.py` (defaults at the top) |
