@@ -1,0 +1,61 @@
+variant,family,source,lane,started,ended,what it tests,kill rule
+current,Exit: early exit,exit_variants,exploring,2026-11-11,,fixed stop and 2R target without the early exit,after 200 trades: upper 95% bound of Rs/trade vs the live rule below 0
+early_strict,Exit: early exit,exit_variants,baseline,2026-11-20,,the live rule: fixed stop and 2R target plus the early exit on a real break,baseline
+early_any,Exit: early exit,exit_variants,exploring,2026-11-20,,early exit on any 5-min close past the line (the pre-20 Nov behaviour),same as current
+breakeven,Exit: at +1R,exit_variants,exploring,2026-11-11,,stop to entry at +1R,same as current
+half_and_run,Exit: at +1R,exit_variants,exploring,2026-11-11,,sell half at +1R and move the stop to entry,same as current
+trailing,Exit: at +1R,exit_variants,exploring,2026-11-11,,trailing stop 1R behind the best price from +1R (no early exit),same as current
+trailing_early,Exit: at +1R,exit_variants,exploring,2026-11-24,,trailing stop with the early exit: as it would run live,same as current
+time_stop,Exit: time stop,exit_variants,exploring,2026-11-11,,exit at 60 minutes unless +0.5R,same as current
+no_stop,Exit: stop placement,exit_variants,exploring,2026-11-17,,no stop (target or 15:10 only),same as current
+wide_1_5,Exit: stop placement,exit_variants,exploring,2026-11-17,,stop 1.5x wider with the same rupee risk,same as current
+wide_2,Exit: stop placement,exit_variants,exploring,2026-11-17,,stop 2x wider with the same rupee risk,same as current
+close_stop,Exit: stop placement,exit_variants,exploring,2026-11-17,,stop only on a 5-min close (hard stop at 2x),same as current
+target_1_5r,Exit: target,exit_variants,exploring,2026-11-19,,1.5R target,same as current
+level_target,Exit: target,exit_variants,exploring,2026-11-19,,yesterday's high or low as the target when it comes first,same as current
+profit_lock,Exit: day profit lock,profit_lock_shadow,exploring,2026-11-11,,no new trades once a +3R day falls back to half,after 20 armed days: no better than without
+orb5_2r,Entry: opening range,orb_shadow,exploring,2026-11-16,,5-min opening-range breakout on the top 10 stocks in play with a 2R target,after 200 trades: upper 95% bound of Rs/trade below 0 (no trade = 0)
+orb5_eod,Entry: opening range,orb_shadow,exploring,2026-11-16,,5-min breakout held to 15:10,same as orb5_2r
+orb5_1_5r,Entry: opening range,orb_shadow,exploring,2026-11-19,,5-min breakout with a 1.5R target,same as orb5_2r
+orb5_level,Entry: opening range,orb_shadow,exploring,2026-11-19,,5-min breakout with yesterday's level as the target,same as orb5_2r
+orb15_2r,Entry: opening range,orb_shadow,exploring,2026-11-16,,15-min opening-range breakout with a 2R target,same as orb5_2r
+orb15_eod,Entry: opening range,orb_shadow,exploring,2026-11-16,,15-min breakout held to 15:10,same as orb5_2r
+orb15_1_5r,Entry: opening range,orb_shadow,exploring,2026-11-19,,15-min breakout with a 1.5R target,same as orb5_2r
+orb15_level,Entry: opening range,orb_shadow,exploring,2026-11-19,,15-min breakout with yesterday's level as the target,same as orb5_2r
+orb5_retest,Entry: opening range,orb_shadow,exploring,2026-11-19,,wait for the retest of the 5-min range edge,same as orb5_2r
+orb15_retest,Entry: opening range,orb_shadow,exploring,2026-11-19,,wait for the retest of the 15-min range edge,same as orb5_2r
+open_2r,Entry: opening auction,orb_shadow,exploring,2026-11-21,,buy the plan's news and scanner picks at 09:15 with a 2R target,same as orb5_2r
+open_eod,Entry: opening auction,orb_shadow,exploring,2026-11-21,,09:15 buy held to 15:10,same as orb5_2r
+fade_2r,Entry: opening auction,orb_shadow,exploring,2026-11-21,,short a 3%+ gap-up that breaks its first 15 minutes' low with a 2R target,same as orb5_2r
+fade_eod,Entry: opening auction,orb_shadow,exploring,2026-11-21,,gap fade held to 15:10,same as orb5_2r
+nifty_against_0.3,Filter: market against the trade,proposed shadow-block,exploring,2026-11-12,,skip when Nifty is 0.3% against the trade,after 100 blocked trades: upper 95% bound of Rs saved per trade below 0
+against_mood,Filter: market against the trade,proposed shadow-block,exploring,2026-11-12,,skip when the market mood is against the trade,same as nifty_against_0.3
+sell_uptrend,Filter: market against the trade,proposed shadow-block,exploring,2026-11-21,,no SELL while Nifty 50 is in an uptrend,same as nifty_against_0.3
+after_14h,Filter: late entry,proposed shadow-block,exploring,2026-11-12,,no new trade after 14:00,same as nifty_against_0.3
+vwap_wrong_side,Filter: price position,proposed shadow-block,exploring,2026-11-16,,no BUY below VWAP (no SELL above),same as nifty_against_0.3
+stretched,Filter: price position,proposed shadow-block,exploring,2026-11-19,,skip breakouts already far from the day's low or 1% past VWAP,same as nifty_against_0.3
+lagging_sector,Filter: sector strength,risk gate,live,2026-11-16,,no BUY on a stock weaker than its sector (no SELL on a stronger one); paper until 23 Nov then live,review 1 Dec: blocked trades' would-be results
+bar50,Score: auto bar and sizing,proposed suggestion,exploring,2026-11-21,,auto bar 50% instead of 55%,after 200 proposals: upper 95% bound vs the 55% bar below 0
+bar55,Score: auto bar and sizing,proposed suggestion,baseline,2026-11-12,,the live auto bar,baseline
+bar60,Score: auto bar and sizing,proposed suggestion,exploring,2026-11-21,,auto bar 60%,same as bar50
+bar65,Score: auto bar and sizing,proposed suggestion,exploring,2026-11-21,,auto bar 65%,same as bar50
+bar70,Score: auto bar and sizing,proposed suggestion,exploring,2026-11-21,,auto bar 70%,same as bar50
+sized,Score: auto bar and sizing,proposed suggestion,exploring,2026-11-21,,size 0.5x / 1x / 1.5x by the suggestion,same as bar50
+selector,Meta: selector,selector,exploring,2026-11-23,,picks tomorrow's exit / bar / entry from the last 20 days,after 60 trading days: no better than the fixed rules
+model_vol_stop,Shadow models,model_shadow,exploring,2026-11-17,,volatility-sized stop (walk-forward),walk-forward below the live rules for 60 days
+model_filter,Shadow models,model_shadow,exploring,2026-11-17,,trade filter model (walk-forward),same as model_vol_stop
+model_early_cut,Shadow models,model_shadow,exploring,2026-11-17,,early cut model (walk-forward),same as model_vol_stop
+model_let_run,Shadow models,model_shadow,exploring,2026-11-17,,let winners run model (walk-forward),same as model_vol_stop
+model_combined,Shadow models,model_shadow,exploring,2026-11-17,,the four models combined,same as model_vol_stop
+swing_shadow,Swing: news breakout,pool,exploring,2026-11-16,,filing + 20-day high on 2x volume; 5-day-low stop; 2R; 10 days,6 months or 30 trades: behind NIFTYBEES after costs
+swing_tech_shadow,Swing: technical scanner,pool,exploring,2026-11-17,,six-filter scanner picks at the scanner's level,same as swing_shadow; scanner review ~8 Dec
+swing_mom_shadow,Swing: momentum (k),pool,exploring,2026-11-18,,momentum + news top 6; 2% risk; 2x ATR trail; 20 days,same as swing_shadow
+swing_mom_conc_shadow,Swing: momentum (k),pool,exploring,2026-11-18,,the same signals with 3 holdings and 3% risk,same as swing_shadow
+long_term_shadow,Long-term: quality,pool,exploring,2026-11-14,,weekly quality picks (top 10),18 Dec go/no-go; then 12 months behind NIFTYBEES
+long_term_mom_shadow,Long-term: momentum (k),pool,exploring,2026-11-21,,momentum top 15 monthly,12 months behind NIFTYBEES (and the Nifty200 Momentum 30 index)
+long_term_mom_conc_shadow,Long-term: momentum (k),pool,exploring,2026-11-21,,momentum top 5 monthly,same as long_term_mom_shadow
+swing_pullback,Swing: rules backtest,backtest,dead,2026-11-09,2026-11-09,pullback to the 20-day average in an uptrend,failed two backtests (9 Nov)
+swing_breakout_55d,Swing: rules backtest,backtest,dead,2026-11-09,2026-11-09,close above the 55-day high on 1.5x volume,failed two backtests (9 Nov)
+swing_tuned_16,Swing: rules backtest,backtest,dead,2026-11-09,2026-11-09,16 tuned versions of the swing rules,best +8.3% in sample; -3.8% on unseen months
+ratings_training,Learning,track record,dead,2026-11-12,2026-11-17,the owner's ratings training the trader,retired 17 Nov (ratings kept for review only)
+trailing_auto_switch,Exit: at +1R,engine,dead,2026-11-23,2026-11-23,automatic switch to the trailing stop at 15 trades,withdrawn: tested without the live early exit
