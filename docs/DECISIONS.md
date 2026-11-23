@@ -136,6 +136,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 | X5 | Ship via PR to `main`: tests, fmt, validate, Terraform plan as a comment, Checkov/CodeQL/zizmor; merge applies. Reviewed Checkov skips in `.checkov.yaml` (mobile app CloudFront and Lambda URL skipped at your request) | `.github/workflows/terraform.yml`, `security.yml`, `.checkov.yaml` |
 | X6 | Claude usage: Opus for the trader, Sonnet for the reviewer; swing, long-term, models and backtests use no Claude | `trading-session.yml` |
 | X7 | Docs kept in step by a scheduled task every 2 days (skips while PRs are open); `SYSTEM_PLAN.md` identical in both repos | scheduled task "Docs update for both repos" |
+| X8 | Renewal reminders on Telegram 30, 7, 3 and 1 days before the Databricks token (~6 May 2027), the AWS free plan (~6 May 2027 or sooner), the Claude token and the GitHub dispatch token (~7–8 Nov 2027); dates are estimates, corrected in S3 `config/expiries.json` | `trader/expiry.py`, guardian 15:45 |
 
 ## 12. Governance and reviews
 
