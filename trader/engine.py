@@ -291,7 +291,7 @@ Commands (with or without the /):
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
-On its own (Mon-Fri IST): 08:45 brief and technical scanner (lakehouse); 09:08 day plan; 09:45 scanner check; proposals until 14:30 (auto mode: placed if 55%+ YES; otherwise each needs your YES within 3 min); stops, targets and EXIT watched every minute; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
+On its own (Mon-Fri IST): 08:30 brief and technical scanner (lakehouse); 09:08 day plan; 09:45 scanner check; proposals until 14:30 (auto mode: placed if 55%+ YES; otherwise each needs your YES within 3 min); stops, targets and EXIT watched every minute; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
 During sessions (09:08-15:25 IST) I reply within seconds; at other times within about 2 minutes. Dummy money only."""
 
 

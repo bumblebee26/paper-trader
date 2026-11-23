@@ -20,7 +20,7 @@ life of one trade).
 
 | Time | What happens |
 |---|---|
-| 08:45 | Lakehouse pre-market brief (India first: India VIX, the Nifty 50's trend; the US only as support) and the **technical scanner** (Nifty 200 strict picks with indicative levels and a Swing buy button) arrive on Telegram |
+| 08:30 | Lakehouse pre-market brief (India first: India VIX, the Nifty 50's trend; the US only as support) and the **technical scanner** (Nifty 200 strict picks with indicative levels and a Swing buy button) arrive on Telegram |
 | 09:08 | Kicker starts the **morning session**: Claude reads the lakehouse data (any source missing the day it should have is left out, never replaced by an older day), sends the day plan and focus list. Risk per trade comes from India VIX (NSE's own index file, Yahoo as the backup); if neither has the last session, it is the cautious 0.75%, not the full 1% |
 | 09:20–12:25 | Every 5 minutes, a few seconds after each candle closes: check positions, scan the focus list (up to 15 names: the 36-stock watchlist plus news-radar picks from the Nifty 200), and any stock with a fresh NSE filing; propose setups. Between cycles stops and targets are checked every minute, and a fresh filing on a tradable stock starts a cycle at once. From 20 Nov a trade also closes early when its idea breaks: two 5-minute closes past its exit line (or one 0.2%+ past it), never on one close that just touches it |
 | 09:45 | Scanner check: each strict pick against the first half hour (triggered, in its entry zone, waiting, extended or invalidated) |

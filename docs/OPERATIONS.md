@@ -4,7 +4,7 @@
 
 | Time | Job | Writes |
 |---|---|---|
-| 08:45 | Lakehouse pre-market brief | Telegram |
+| 08:30 | Lakehouse pre-market brief | Telegram |
 | 09:08 | Kicker → morning session | Telegram plan, `plans/<date>.json`, journal |
 | 09:16 | GitHub cron backup (skips if already claimed) | — |
 | 09:20–12:25 | Morning cycles every 5 minutes, starting a few seconds after each candle closes (stops checked every minute between them; a fresh filing on a tradable stock starts a cycle at once). From 20 Nov a trade also closes early on a real break of its exit line (two 5-minute closes past it, or one 0.2%+ past it) | proposals, fills, exits |
