@@ -10,6 +10,7 @@ so the lakehouse can reconcile its own P&L against the S3 ledger.
 Pushed once a day (15:45 IST, guardian Lambda) so the lakehouse pipeline isn't woken
 up every few minutes during market hours.
 """
+import hashlib
 import json
 import urllib.parse
 from datetime import date, timedelta
@@ -182,3 +183,73 @@ def export_portfolio(day, push=True):
     if push:
         result["portfolio_path"] = _push(f"portfolio/date={day}/portfolio.jsonl", body)
     return result
+
+
+# ------------------------------------------------------------- pool trades --
+# Every buy and sell in the delivery pools (real swing and long-term, and every shadow pool), from their own journals
+# (journal/pools/<pool>/<date>.csv), so the lakehouse can show the trades placed and their P&L.
+#   S3:          exports/pool_trades/date=YYYY-MM-DD/trades.jsonl
+#   Databricks:  /Volumes/stocks/bronze/landing/pool_trades/date=YYYY-MM-DD/trades.jsonl
+POOL_TRADE_NUMERIC = ("qty", "price", "fees_rs", "value_rs", "pnl_rs", "cash_after")
+
+
+def _pool_trade(row, pool, kind):
+    out = {"pool": pool, "kind": kind}
+    for f in ("timestamp_ist", "event", "symbol", "reason", "note"):
+        out[f] = row.get(f) or None
+    for f in POOL_TRADE_NUMERIC:
+        v = row.get(f)
+        try:
+            out[f] = float(v) if v not in (None, "") else None
+        except ValueError:
+            out[f] = None
+    key = "|".join(str(out[k]) for k in ("pool", "timestamp_ist", "event", "symbol", "qty", "price"))
+    out["trade_id"] = hashlib.sha1(key.encode()).hexdigest()[:20]
+    return out
+
+
+def build_pool_trades(day):
+    """JSONL of the day's pool buys and sells (every pool), or None if no pool traded that day."""
+    import pools
+
+    rows = []
+    for names, kind in ((pools.POOLS, "real"), (pools.SHADOW_POOLS, "shadow")):
+        for name in names:
+            for r in storage.read_rows(f"journal/pools/{name}/{day}.csv"):
+                if r.get("event") in ("bought", "sold"):
+                    rows.append(_pool_trade(r, name, kind))
+    if not rows:
+        return None
+    return "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows)
+
+
+def export_pool_trades(day, push=True):
+    body = build_pool_trades(day)
+    if body is None:
+        return {"date": day, "pool_trades": 0}
+    storage.backend().put(f"exports/pool_trades/date={day}/trades.jsonl", body)
+    result = {"date": day, "pool_trades": body.count("\n")}
+    if push:
+        result["pool_trades_path"] = _push(f"pool_trades/date={day}/trades.jsonl", body)
+    return result
+
+
+POOL_TRADES_FROM = "2026-11-18"  # the ledger reset: the first run sends everything since then, once
+_BACKFILL_MARK = "exports/pool_trades/backfilled"
+
+
+def pool_trades_start(start):
+    """The usual start (the last few days), or the ledger reset the first time pool trades are exported."""
+    if storage.backend().get(_BACKFILL_MARK):
+        return start
+    storage.backend().put(_BACKFILL_MARK, POOL_TRADES_FROM)
+    return min(start, POOL_TRADES_FROM)
+
+
+def export_pool_trades_range(start, end, push=True):
+    """Every day from start to end, weekends included (a pool can be parked or rebalanced on any run)."""
+    d, last, out = date.fromisoformat(start), date.fromisoformat(end), []
+    while d <= last:
+        out.append(export_pool_trades(d.isoformat(), push=push))
+        d += timedelta(days=1)
+    return [r for r in out if r["pool_trades"]]

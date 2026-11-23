@@ -126,8 +126,10 @@ def guardian(event, context):
         import export
 
         ev = event or {}
-        if ev.get("start"):
-            return {"exports": export.export_range(ev["start"], ev.get("end", ev["start"]))}
+        if ev.get("start"):  # backfill: {"action": "export", "start": "2026-11-18", "end": "..."}
+            end = ev.get("end", ev["start"])
+            return {"exports": export.export_range(ev["start"], end),
+                    "pool_trades": export.export_pool_trades_range(ev["start"], end)}
         day = ev.get("date") or engine._today()
         # The last 4 days, not just today: a 👍/👎 given in the evening or at the weekend lands in that day's
         # journal after its export ran (Monday's run reaches back to Friday). Re-sending a day is harmless:
@@ -139,6 +141,11 @@ def guardian(event, context):
         except Exception as err:  # noqa: BLE001 - the journal export must not fail because of this
             log.warning("portfolio export failed: %s", err)
             out["portfolio_error"] = str(err)
+        try:
+            out["pool_trades"] = export.export_pool_trades_range(export.pool_trades_start(start), day)
+        except Exception as err:  # noqa: BLE001 - same: never fail the journal export
+            log.warning("pool trades export failed: %s", err)
+            out["pool_trades_error"] = str(err)
         return out
     raise ValueError(f"unknown action {action}")
 
