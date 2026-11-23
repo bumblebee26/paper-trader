@@ -301,6 +301,14 @@ def shadow_text(state) -> str:
     w = weekly.build(market.now_ist().date())
     lines = ["[MOCK] Tested on paper (nothing here touched real trades), this week so far:", ""]
     lines += weekly.paper_lines(w) or ["- Nothing to compare yet this week."]
+    try:
+        import families
+
+        board = families.lines(market.now_ist().date())
+    except Exception as err:  # noqa: BLE001
+        board = [f"Scoreboard unavailable ({err})."]
+    if board:
+        lines += ["", *board]
     lines += ["", "Shadow pools (since they started):"]
     import swing_tech
 

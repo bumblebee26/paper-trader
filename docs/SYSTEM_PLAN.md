@@ -387,6 +387,7 @@ Cost review: Sun 15 Nov.
 | 20 Nov | India VIX from NSE's own index file (Yahoo as the backup; cautious risk when neither has it); early exits only on a real break of the exit line, enforced by code |
 | 21 Nov | First long-term momentum shadows (top 15, top 5); on paper: 09:15 opening buy, gap fade, auto-bar ladder, score sizing, no SELLs in an uptrend, swing holding period, fill check |
 | 23 Nov | Track-record review (phase 5), including news vs watchlist picks; the selector's first picks (paper). Decided (with a council): the trailing stop stays on paper (an automatic switch was built and withdrawn the same day: its test left out the live early exit); "weaker than its sector" filter live; 5 open positions; sector caps and 15:10 kept; dynamic sector scoring, shorting weak sectors and no position cap rejected |
+| 24 Nov | Exploration set-up: every paper variant kept and grouped into families with a luck line and plain verdicts (`trader/families.py`), a ledger of every variant ever tried (`docs/VARIANTS.csv`), the pass bar and kill rules written down; trailing stop replayed with the live early exit |
 | 1 Dec | Review again: the same questions, plus how the 23 Nov changes did |
 | ~8 Dec | Scanner signal review (about 15 trading days): `gold.signal_performance` and the scanner shadow pool vs NIFTYBEES |
 | 18 Dec | Long-term go/no-go (backtest + 5 shadow weeks) |
@@ -397,8 +398,9 @@ Cost review: Sun 15 Nov.
 **Real-money go/no-go criteria (written 23 Nov, before the results are in).** The default is **no go**: over 47
 days and 2,093 backtested setups every intraday rule set lost (current rules -445R, the best model -98R), so a few
 dozen paper trades can't show an edge on their own. Intraday goes to real money only if all of these hold:
-- at least 60 intraday trades since 18 Nov, with a positive net result after all costs and slippage;
-- profit factor of at least 1.2 and an average R above 0 over those trades;
+- at least 200 intraday trades since 18 Nov (raised from 60 on 24 Nov), with a positive net result after all costs
+  and slippage; at the current pace that is about February–March 2027;
+- profit factor of at least 1.2, and the lower 95% bound of the average R above 0 over those trades;
 - the largest fall from a peak under 8R;
 - the latest walk-forward backtest of the live rules at 0R or better;
 - no reconciliation mismatch between the journal and the ledger in the last 10 trading days.

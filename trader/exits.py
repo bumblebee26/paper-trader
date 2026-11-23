@@ -19,6 +19,8 @@ candles under the current rule and four alternatives, with the same costs as rea
   early_strict  the current rule plus the early exit only on a real break: two 5-minute closes in a row
                 beyond the line, or one close at least EARLY_BREAK_PCT beyond it. Live trades use this
                 from 20 Nov (engine.monitor); both are replayed so the review can see if early exits pay
+  trailing_early  the trailing stop plus the strict early exit: the trailing stop as it would actually run live
+                (from 24 Nov; the plain "trailing" replay has no early exit, so it isn't what live trades would do)
   level_target  the current rule, but the target moves to the previous day's high (low for a short) when that
                 level sits between +0.5R and the planned target: the first resistance takes the profit (from 19 Nov)
 
@@ -35,7 +37,8 @@ import config
 import fees
 
 RULES = ("current", "breakeven", "half_and_run", "trailing", "time_stop", "no_stop", "wide_1_5", "wide_2",
-         "close_stop", "target_1_5r", "level_target", "early_any", "early_strict")
+         "close_stop", "target_1_5r", "level_target", "early_any", "early_strict", "trailing_early")
+LIVE_BASELINE = "early_strict"   # what live trades do: fixed stop and 2R target plus the strict early exit
 RULE_WORDS = {
     "current": "fixed 2R target",
     "breakeven": "stop to entry at +1R",
@@ -50,6 +53,7 @@ RULE_WORDS = {
     "level_target": "target at yesterday's high/low",
     "early_any": "early exit on any close past the line",
     "early_strict": "early exit on a real break",
+    "trailing_early": "trailing stop with the early exit (as it would run live)",
 }
 WIDE = {"wide_1_5": 1.5, "wide_2": 2.0}
 HARD_STOP_X = 2.0     # close_stop's safety net, in multiples of the planned stop distance
@@ -145,11 +149,14 @@ def replay(rule, side, qty, fill, stop, target, opened_at, bars, level=None, exi
         stop = fill - d * r * m
         r = r * m
         rule = "current"
-    early = {"early_any": False, "early_strict": True}.get(rule)
-    if early is not None:
-        rule = "current"
-        if exit_line is None:
-            early = None
+    if rule == "trailing_early":   # from 24 Nov: the trailing stop as it would run live, with the strict early exit
+        early, rule = True, "trailing"
+    else:
+        early = {"early_any": False, "early_strict": True}.get(rule)
+        if early is not None:
+            rule = "current"
+    if exit_line is None:
+        early = None
     hard_stop = fill - d * r * HARD_STOP_X if rule == "close_stop" else None
     closes_5m = _last_of_5min(bars) if rule == "close_stop" or early is not None else None
     seen_closes = []

@@ -289,6 +289,14 @@ def message(w, intraday_state):
     import model_report
 
     paper += [f"- {x}" for x in model_report.lines(days=5)]
+    import families
+
+    try:
+        board = families.lines(date.fromisoformat(w["week_end"]))
+    except Exception as err:  # noqa: BLE001 - the scoreboard must never stop the weekly report
+        board = [f"Scoreboard unavailable ({err})."]
+    if board:
+        lines += ["", *board]
     lines += ["", "Tested on paper (not used for real trades yet; /shadow any time):", *paper]
     if w["cooloffs"] or w["loss_limit_days"] or w.get("weekly_brake"):
         lines.append(f"Brakes used: {w['cooloffs']} cool-off(s), loss limit on {w['loss_limit_days']} day(s)"

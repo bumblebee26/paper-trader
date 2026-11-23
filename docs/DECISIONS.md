@@ -2,8 +2,8 @@
 
 > Every decision the system runs on today, taken from the **code**, not from the other docs: where they disagree,
 > the code is described here and the gap is listed at the end. Each line names its source, so the register
-> can be checked. The same file is in both repositories. As of **23 Nov 2026** (after paper-trader #80 and
-> lakehouse #73). Dummy money only; nothing here is investment advice.
+> can be checked. The same file is in both repositories. As of **24 Nov 2026** (after the 23 Nov review and its
+> councils: paper-trader #80, #81 and the families PR; lakehouse #73, #74). Dummy money only; nothing here is investment advice.
 
 Status words: **live** = affects the dummy-money ledgers today; **paper** = recorded and reported, never trades;
 **auto** = will turn itself on when its condition is met; **parked** = decided, waiting.
@@ -19,7 +19,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 | P5 | Earn the next step: backtest → paper (shadow) → review with you → live. Nothing paper goes live without a review | live | `docs/SYSTEM_PLAN.md` |
 | P6 | Plain words first in every message; numbers under the details | live | `engine` message builders |
 | P7 | Your 👍/👎 ratings are kept for your own review and never train the system (since 17 Nov) | live | `docs/SYSTEM_PLAN.md` phase 5 |
-| P8 | Real-money go/no-go defaults to **no go**; written criteria (60+ trades since 18 Nov net positive after costs, profit factor ≥ 1.2, average R > 0, largest fall < 8R, latest backtest of the live rules ≥ 0R, no reconciliation mismatch in 10 days) | parked | `docs/SYSTEM_PLAN.md` Risks and decisions |
+| P8 | Real-money go/no-go defaults to **no go**; written criteria (200+ trades since 18 Nov net positive after costs (60 until 24 Nov), profit factor ≥ 1.2, average R > 0, largest fall < 8R, latest backtest of the live rules ≥ 0R, no reconciliation mismatch in 10 days) | parked | `docs/SYSTEM_PLAN.md` Risks and decisions |
 
 ## 2. Money and pools
 
@@ -73,8 +73,8 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 
 | # | Decision | Status | Source |
 |---|---|---|---|
-| E1 | Fixed stop and 2R target for new trades **until the switch** (E2) | live | `config.EXIT_RULE_LIVE = "auto"` |
-| E2 | Trailing stop switches on by itself, once, when the exit trial has 15 replayed trades since 18 Nov and it is still ahead of the fixed target (13 trades on 23 Nov): no fixed target, from +1R the stop trails 1R behind the best price | auto | `EXIT_SWITCH_MIN_TRADES`, `engine.live_exit_rule`, `engine.trailing_exit` |
+| E1 | Fixed stop and 2R target for new trades, with the early exit (E3) | live | `config.EXIT_RULE_LIVE = "current"` |
+| E2 | Trailing stop (no fixed target; from +1R the stop trails 1R behind the best price) is built for live use but on only if a review sets it. An automatic switch was built and withdrawn on 23 Nov: its replay left out the live early exit; `trailing_early` now replays it as it would run | parked | `EXIT_RULE_LIVE`, `engine.trailing_exit`, `exits` `trailing_early` |
 | E3 | Early exit on a real break of the trade's exit line: two 5-minute closes past it, or one 0.2%+ past it | live | `exits.early_break`, `EARLY_BREAK_PCT` |
 | E4 | Square-off at 15:10 (guardian backup 15:12); kept at the 23 Nov review (brokers force-close MIS ~15:15–15:20) | live | `config.SQUARE_OFF` |
 | E5 | Your own trades (`/buy`, `/short`) keep the stop and target you set; they don't use the trader's allowance or sector counts but count toward the loss limit | live | `engine.execute` (`custom`), `trader/custom.py` |
@@ -93,7 +93,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 
 | # | Test | Since | Decided |
 |---|---|---|---|
-| T1 | 13 exit rules replayed on every real trade (fixed 2R, breakeven at +1R, half at +1R, trailing, 60-min time stop, no stop, 1.5x / 2x wider stops, stop on a 5-min close, 1.5R target, yesterday's level as target, early exit on any close, strict early exit) and a day profit lock | 11–20 Nov | 1 Dec review; the trailing switch is E2 |
+| T1 | 14 exit rules replayed on every real trade (fixed 2R, breakeven at +1R, half at +1R, trailing, trailing with the early exit, 60-min time stop, no stop, 1.5x / 2x wider stops, stop on a 5-min close, 1.5R target, yesterday's level as target, early exit on any close, strict early exit = the live rule) and a day profit lock; grouped into families (stop placement, at +1R, target, early exit, time) and compared with the live rule | 11–24 Nov | scoreboard (section 13) |
 | T2 | Background rules on each proposal: Nifty against by 0.3%, against the mood, after 14:00, below VWAP, stretched breakout, SELL in an uptrend (the sector rule went live, R6) | 16–21 Nov | 1 Dec review |
 | T3 | Opening-range test on the top 10 stocks in play: 5- vs 15-min range × 2R / 1.5R / level / held to 15:10, and "wait for the retest" | 16–19 Nov | 1 Dec review |
 | T4 | 09:15 opening buy of the plan's picks (double slippage, 1.2% stop); gap fade (short a 3%+ gap-up breaking its first 15 minutes' low before 11:00) | 21 Nov | 1 Dec review |
@@ -145,6 +145,20 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 | G2 | Plan first, then ask before changing anything; compact answers |
 | G3 | Reviews: 1 Dec (repeat of 23 Nov plus the new rules), ~8 Dec scanner, mid-Dec swing shadows, 18 Dec long-term and real-money go/no-go |
 | G4 | 23 Nov council decisions: trailing auto-switch, sector filter live, 5 open, sector caps and 15:10 kept; dynamic sector scoring, shorting weak sectors, no position cap and a later square-off rejected |
+
+## 13. Exploration: families, lanes and the pass bar (from 24 Nov)
+
+Every paper variant keeps running; the owner wants broad exploration. To keep chance from picking winners:
+
+| # | Decision | Source |
+|---|---|---|
+| F1 | Variants are grouped into families (exits ×5, entries ×2, filters ×3, score, selector, models, swing ×3, long-term ×2); stored names never change, reports group them | `trader/families.py` |
+| F2 | Variant ledger: every variant ever tried, with family, lane (exploring / candidate / dead / baseline / live), start and end, and its kill rule; a test keeps it in step with the code | paper-trader `docs/VARIANTS.csv`, `tests/test_families.py` |
+| F3 | Baselines: exits against what live trades do (fixed 2R + early exit); paper entries and filters against no trade; the auto bar against 55%; swing and long-term against NIFTYBEES (and the matching NSE factor index where there is one) | `families.py`, `VARIANTS.csv` |
+| F4 | Luck line: the best per-trade result a family would show by chance if no variant beat its baseline (2,000 resamples of whole trading days, so variants replaying the same trades stay correlated) | `families.luck_line` |
+| F5 | Plain verdicts: "too early" under 100 trades; then "could be luck" or "beating its baseline". **Pass bar** for a review to use a variant live: 200+ trades, above the luck line, and still above it on the weeks after it was picked. **Kill rule**: after 200 trades, the upper 95% bound of its Rs/trade against the baseline below 0 | `families.MIN_TRADES`, `PROMOTE_TRADES` |
+| F6 | Each report also shows real trades' R before and after costs, "Is Claude adding value?" (Claude's proposals vs the plain 15-min breakout on the same days) and when the real-money trade count arrives at the current pace | `families.lines` (weekly report, `/shadow`) |
+| F7 | No new exit or filter variants on the same intraday setups; new ideas must be different entries. Live rules change only at reviews (1 Dec, then monthly) | review of 23 Nov |
 
 ## Gaps found while building this register (for phase 3)
 
