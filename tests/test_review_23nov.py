@@ -1,6 +1,4 @@
-"""23 Nov review (council's version): trailing stop with its automatic switch, the sector filter live, 5 open."""
-import csv
-import io
+"""23 Nov review: the trailing stop (by setting only), the sector filter live, 5 open."""
 import unittest
 from datetime import datetime
 from unittest import mock
@@ -9,8 +7,6 @@ from helpers import Env
 
 import config
 import engine
-import exits
-import storage
 
 
 def bar(t, o, h, l, c):  # noqa: E741
@@ -42,38 +38,18 @@ class TrailingExitTest(unittest.TestCase):
         self.assertEqual(p["stop"], 101.0)
 
 
-def write_variants(day, rows):
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=["timestamp_ist", "event", "event_id", "note"])
-    w.writeheader()
-    for i, (cur, trail) in enumerate(rows):
-        w.writerow({"timestamp_ist": f"{day} 15:20:00", "event": "exit_variants", "event_id": f"ev-{day}-{i}",
-                    "note": exits.note_text({"current": cur, "trailing": trail})})
-    storage.backend().put(f"journal/{day}.csv", buf.getvalue())
-
-
-class AutoSwitchTest(unittest.TestCase):
-    def test_stays_fixed_below_fifteen_trades(self):
-        with Env(datetime(2026, 11, 24, 9, 30)) as env, mock.patch.object(config, "EXIT_RULE_LIVE", "auto"):
-            write_variants("2026-11-20", [(-50, 60)] * 13)
-            self.assertEqual(engine.live_exit_rule(engine.load()), "current")
-            self.assertFalse(env.sent)
-
-    def test_switches_once_at_fifteen_if_trailing_is_ahead_and_sticks(self):
-        with Env(datetime(2026, 11, 24, 9, 30)) as env, mock.patch.object(config, "EXIT_RULE_LIVE", "auto"):
-            write_variants("2026-11-20", [(-50, 60)] * 13)
-            write_variants("2026-11-21", [(-50, 60)] * 2)
+class ExitRuleTest(unittest.TestCase):
+    def test_fixed_target_by_default_and_no_remembered_switch(self):
+        with Env(datetime(2026, 11, 24, 9, 30)):
             st = engine.load()
-            self.assertEqual(engine.live_exit_rule(st), "trailing")
-            self.assertTrue(any("Exit rule switched" in m for m in env.sent))
-            write_variants("2026-11-24", [(500, -500)] * 5)   # later trades favour the fixed target: no switch back
-            st["exit_rule_live"]["day"] = "2026-11-23"
-            self.assertEqual(engine.live_exit_rule(st), "trailing")
+            st["exit_rule_live"] = {"day": "2026-11-23", "rule": "trailing"}   # what the withdrawn switch stored
+            self.assertEqual(config.EXIT_RULE_LIVE, "current")
+            self.assertEqual(engine.live_exit_rule(st), "current")
+            self.assertNotIn("exit_rule_live", st)
 
-    def test_no_switch_when_the_fixed_target_is_ahead(self):
-        with Env(datetime(2026, 11, 24, 9, 30)), mock.patch.object(config, "EXIT_RULE_LIVE", "auto"):
-            write_variants("2026-11-20", [(60, -50)] * 16)
-            self.assertEqual(engine.live_exit_rule(engine.load()), "current")
+    def test_trailing_only_when_set(self):
+        with Env(datetime(2026, 11, 24, 9, 30)), mock.patch.object(config, "EXIT_RULE_LIVE", "trailing"):
+            self.assertEqual(engine.live_exit_rule(engine.load()), "trailing")
 
 
 class LimitsTest(unittest.TestCase):

@@ -386,7 +386,7 @@ Cost review: Sun 15 Nov.
 | 19 Nov | Faster intraday cycles (a few seconds after each candle; stops every minute); on paper: 1.5R and yesterday's-level targets, wait-for-the-retest opening-range entries, stretched-breakout flag |
 | 20 Nov | India VIX from NSE's own index file (Yahoo as the backup; cautious risk when neither has it); early exits only on a real break of the exit line, enforced by code |
 | 21 Nov | First long-term momentum shadows (top 15, top 5); on paper: 09:15 opening buy, gap fade, auto-bar ladder, score sizing, no SELLs in an uptrend, swing holding period, fill check |
-| 23 Nov | Track-record review (phase 5), including news vs watchlist picks; the selector's first picks (paper). Decided (with a four-member council): trailing stop goes live automatically at 15 trial trades if still ahead; "weaker than its sector" filter live; 5 open positions; sector caps and 15:10 kept; dynamic sector scoring, shorting weak sectors and no position cap rejected |
+| 23 Nov | Track-record review (phase 5), including news vs watchlist picks; the selector's first picks (paper). Decided (with a council): the trailing stop stays on paper (an automatic switch was built and withdrawn the same day: its test left out the live early exit); "weaker than its sector" filter live; 5 open positions; sector caps and 15:10 kept; dynamic sector scoring, shorting weak sectors and no position cap rejected |
 | 1 Dec | Review again: the same questions, plus how the 23 Nov changes did |
 | ~8 Dec | Scanner signal review (about 15 trading days): `gold.signal_performance` and the scanner shadow pool vs NIFTYBEES |
 | 18 Dec | Long-term go/no-go (backtest + 5 shadow weeks) |
