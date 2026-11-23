@@ -7,7 +7,7 @@ import math
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 import advisor
 import brief
@@ -1427,48 +1427,12 @@ def trailing_exit(pos, bars):
     return None
 
 
-def _exit_trial_totals():
-    """The exit trial since the ledger reset, from the journal's exit_variants rows (one per replayed real trade):
-    (trades with every rule replayed, {rule: total net Rs})."""
-    start, today = date.fromisoformat(config.LEDGER_START), date.fromisoformat(_today())
-    seen, totals, d = {}, {}, start
-    while d <= today:
-        for r in storage.read_rows(f"journal/{d.isoformat()}.csv"):
-            if r.get("event") == "exit_variants" and r.get("event_id"):
-                seen[r["event_id"]] = exits.parse_note(r.get("note"))
-        d += timedelta(days=1)
-    full = [v for v in seen.values() if v and all(v.get(k) is not None for k in ("current", "trailing"))]
-    for v in full:
-        for k, x in v.items():
-            if x is not None:
-                totals[k] = totals.get(k, 0.0) + x
-    return len(full), totals
-
-
 def live_exit_rule(state) -> str:
-    """The exit rule for a new trade: config.EXIT_RULE_LIVE, or in "auto" mode the 23 Nov review's switch (see
-    config). Checked once a day; once it has switched to "trailing" it stays."""
-    mode = config.EXIT_RULE_LIVE
-    if mode in ("current", "trailing"):
-        return mode
-    cached = state.get("exit_rule_live") or {}
-    if cached.get("rule") == "trailing" or cached.get("day") == _today():
-        return cached.get("rule", "current")
-    rule = "current"
-    try:
-        n, t = _exit_trial_totals()
-        if n >= config.EXIT_SWITCH_MIN_TRADES and t.get("trailing", 0) > t.get("current", 0):
-            rule = "trailing"
-            journal("exit_rule_switch", event_id=f"exitswitch-{_today()}", note=(
-                f"trailing stop live from {_today()}: {n} trades, trailing {t['trailing']:+.0f} vs fixed target "
-                f"{t.get('current', 0):+.0f}"))
-            tg.send(f"[MOCK] Exit rule switched: new trades now use the trailing stop. Over {n} real trades "
-                    f"replayed since 18 Nov it made {inr(t['trailing'], sign=True)} vs {inr(t.get('current', 0), sign=True)} "
-                    "with the fixed 2R target (as agreed in the 23 Nov review). The fixed target keeps running on paper.")
-    except Exception as err:  # noqa: BLE001 - a failed check keeps the fixed target for today
-        log.warning("exit rule check failed: %s", err)
-    state["exit_rule_live"] = {"day": _today(), "rule": rule}
-    return rule
+    """The exit rule for a new trade: config.EXIT_RULE_LIVE ("current" = fixed stop and 2R target, or "trailing").
+    The 23 Nov automatic switch was withdrawn the same evening (council review: its evidence replayed the rules
+    without the live early exit); any remembered switch is cleared."""
+    state.pop("exit_rule_live", None)
+    return "trailing" if config.EXIT_RULE_LIVE == "trailing" else "current"
 
 
 def _midday_summary(state) -> None:

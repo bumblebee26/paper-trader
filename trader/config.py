@@ -97,12 +97,10 @@ MAX_TRADES_PER_SECTOR = _i("MAX_TRADES_PER_SECTOR", 2)    # per day
 # 23 Nov review: "no BUY on a stock weaker than its sector today (no SELL on a stronger one)" goes live; it was a
 # background rule on paper (avoided 5 trades, net Rs 741 better). 0 = back to paper only.
 LAGGING_SECTOR_LIVE = _i("LAGGING_SECTOR_LIVE", 1)
-# Exit rule for new trades. "current": fixed stop and 2R target. "trailing": no fixed target; from +1R the stop
-# follows 1R behind the best price. "auto" (23 Nov review): stays "current" until the exit trial has
-# EXIT_SWITCH_MIN_TRADES replayed trades since the ledger reset and the trailing stop is still ahead of the
-# fixed target over them, then switches to "trailing" once (sticky; a message and a journal row say when).
-EXIT_RULE_LIVE = os.environ.get("EXIT_RULE_LIVE", "auto")
-EXIT_SWITCH_MIN_TRADES = _i("EXIT_SWITCH_MIN_TRADES", 15)
+# Exit rule for new trades. "current": fixed stop and 2R target (plus the strict early exit). "trailing": no fixed
+# target; from +1R the stop follows 1R behind the best price. Changed only at a review (23 Nov: an automatic switch
+# was built and withdrawn the same day; the replay must first compare the rules with the live early exit).
+EXIT_RULE_LIVE = os.environ.get("EXIT_RULE_LIVE", "current")
 FOCUS_MAX = _i("FOCUS_MAX", 15)
 # News radar: Nifty 200 stocks beyond the watchlist may be traded if they pass the lakehouse's guardrails
 # (stocks.gold.intraday_universe: EQ series, close >= Rs 50, Rs 50 crore+ a day). A fresh NSE filing on one of

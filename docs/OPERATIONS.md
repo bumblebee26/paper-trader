@@ -81,14 +81,11 @@ and `early_strict` (only on a real break: two closes in a row past it, or one at
 past it). `early_strict` is also the live rule: the engine closes the trade (`early_exit`), and Claude no longer
 closes one itself when `invalid_if` is touched. The exit line is journaled on the `filled` row (`exit_line=` in the note).
 
-**Live exit rule, from the 23 Nov review** (`EXIT_RULE_LIVE`, default `auto`): new trades keep the fixed 2R target
-until the exit trial has `EXIT_SWITCH_MIN_TRADES` (15) replayed trades since 18 Nov and the trailing stop is still
-ahead of the fixed target over them; then they switch, once, to the trailing stop: no fixed target, and from +1R
-the stop follows 1R behind the best price (`engine.trailing_exit`, the same logic as the replay; exit reason
-`trailing_stop`). Telegram says when it switches and the journal records `exit_rule_switch`; each fill's note has
-`exit_rule=`. The early exit on a real break stays on, every trade still closes at 15:10, and your own trades keep
-the stop and target you set. The fixed 2R target goes on running on paper (`current` in `exit_variants`), so the
-1 Dec review can compare them. `EXIT_RULE_LIVE=current` or `trailing` forces one.
+**Live exit rule** (`EXIT_RULE_LIVE`, default `current`): the fixed stop and 2R target, with the strict early exit.
+`trailing` (no fixed target; from +1R the stop follows 1R behind the best price, `engine.trailing_exit`, exit reason
+`trailing_stop`) is built but used only if a review sets it. An automatic switch to it was built on 23 Nov and withdrawn
+the same evening: the replay it relied on compared the rules without the live early exit. Your own trades always keep
+the stop and target you set; each fill's note has `exit_rule=`.
 
 **More paper tests** (from 21 Nov; nothing changes a real trade): at the day report, the 09:15 opening buy of the
 morning plan's news-radar names and scanner strict picks (twice the normal slippage, stop 1.2% below, 2R target or

@@ -13,7 +13,7 @@ out of sample.
 ## Shadow (paper only)
 | Family | Versions |
 |---|---|
-| Exit rules (every real trade replayed) | the fixed 2R target (live until the switch), stop to entry at +1R, half at +1R, trailing (goes live automatically once the trial has 15 trades and it is still ahead; 23 Nov review), 60-min time stop, no stop, 1.5×/2× wider stops, stop on a 5-min close, 1.5R target, yesterday's high/low as target, early exit on any close, strict early exit, stop and target only; day profit lock |
+| Exit rules (every real trade replayed) | the fixed 2R target (live until the switch), stop to entry at +1R, half at +1R, trailing (built for live use, switched on only by a review), 60-min time stop, no stop, 1.5×/2× wider stops, stop on a 5-min close, 1.5R target, yesterday's high/low as target, early exit on any close, strict early exit, stop and target only; day profit lock |
 | Entries | opening-range test (5- and 15-min ranges; 2R, 1.5R, level, held to 15:10), wait for the retest, 09:15 opening buy (double slippage), gap fade short |
 | Background rules | first 15 minutes, after 14:00, wrong side of VWAP, weaker than its sector, stretched breakouts, SELL in an uptrend |
 | Filtering and size | auto-bar ladder (50–70%), size by score (0.5× / 1× / 1.5×), skipped proposals' outcomes |
