@@ -22,6 +22,7 @@ import engine
 import track
 import market
 import news
+import preopen
 import scanner
 import sectors
 import telegram_bot as tg
@@ -75,8 +76,11 @@ def start_day(focus: list[str], plan: dict | None = None, send_to_telegram: bool
     plan = plan or {}
     focus = [s.upper() for s in focus][:config.FOCUS_MAX]
     result = _run(engine.start_day, plan, focus)
+    # NSE's pre-open auction (09:00-09:08): saved and shown, never part of the decisions (trader/preopen.py)
+    pre = preopen.capture(set(engine.universe()) | set(DEFAULT_WATCHLIST))
     if send_to_telegram:
-        tg.send(brief.plan_message({**plan, "risk_per_trade_pct": result["risk_per_trade_pct"]}, focus))
+        tg.send(brief.plan_message({**plan, "risk_per_trade_pct": result["risk_per_trade_pct"]}, focus)
+                + "\n" + "\n".join(preopen.lines(pre)))
     return result
 
 

@@ -178,6 +178,7 @@ costs); only tested new entries can.
 | B6 | Morning brief | Already sent ~09:00; can move to 08:30 on request | brief |
 | B7 | Ranked list | The 09:25 in-play ranking's top 5 with scores goes to Telegram, labelled a ranking, not a chance of profit | `engine.in_play_message` |
 | B8 | Charting website | TradingView chart button on every proposal; chart links on the app's and dashboard's suggested lists | `links.tradingview`, lakehouse `swing_suggest` |
+| B9 | NSE pre-open auction (owner, 24 Nov) | **Information only:** at ~09:09 the session reads NSE's pre-open data (IEP, gap vs yesterday, buy/sell quantity ratio) for tradable F&O stocks, saves it to S3 `preopen/` and shows the biggest gaps in the plan message and the ratio in the 09:25 ranking. Not given to the agent or the reviewer; tested before any use. NSE may block cloud servers: then that day has none | `trader/preopen.py`, VARIANTS `preopen_imbalance` |
 
 ## Gaps found while building this register (for phase 3)
 
