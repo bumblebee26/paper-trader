@@ -19,6 +19,7 @@ import levels
 import links
 import market
 import news
+import patterns
 import pools
 import preopen
 import reviewer
@@ -1012,7 +1013,7 @@ def _short(text, limit=110) -> str:
 
 def compact_proposal(*, auto, place, symbol, side, setup, entry, stop, target, qty, risk_rs, rr, risk_pct, need,
                      free, advice, yes, ai_yes_pct, ai_reason, review, reasons, summary, invalid_if, skip_why, bar,
-                     bar_why, track_line, valid_until, news_pick=False, room_line="") -> str:
+                     bar_why, track_line, valid_until, news_pick=False, room_line="", pattern_line="") -> str:
     """The Telegram proposal: every number, reasons in one line each. The long version is behind Full reasons."""
     buy = side == "BUY"
     status = "your call" if not auto else "PLACING" if place else "SKIPPED"
@@ -1039,6 +1040,7 @@ def compact_proposal(*, auto, place, symbol, side, setup, entry, stop, target, q
         f"🎯 {target:,.2f} (+{inr(gain)}) · 🛑 {stop:,.2f} (-{inr(risk_rs)}) · R:R {rr}",
         f"Margin {inr(need)} of {inr(free)} free · risk {risk_pct}%",
         *([room_line] if room_line else []),
+        *([pattern_line] if pattern_line else []),
         "",
         f"For: {_short(pros[0] if pros else summary)}",
     ]
@@ -1057,13 +1059,18 @@ def compact_proposal(*, auto, place, symbol, side, setup, entry, stop, target, q
 
 # -------------------------------------------------------------- proposals --
 def day_levels_for(symbol):
-    """(levels, weekly RSI): previous day/week/month and 52-week highs and lows (trader/levels.py); ({}, None) if
-    the daily bars fail."""
+    """(levels, weekly RSI, chart patterns): previous day/week/month and 52-week highs and lows (trader/levels.py)
+    and daily/weekly patterns (trader/patterns.py); ({}, None, []) if the daily bars fail."""
     try:
-        bars = market.daily(symbol, "1y")
-        return levels.compute(bars, _today()), levels.weekly_rsi(bars, _today())
+        bars = market.daily(symbol, "2y")
     except Exception:  # noqa: BLE001 - a display line must never stop a proposal
-        return {}, None
+        return {}, None, []
+    try:
+        pats = patterns.find(bars, _today())
+    except Exception as err:  # noqa: BLE001
+        log.warning("patterns failed for %s: %s", symbol, err)
+        pats = []
+    return levels.compute(bars, _today()), levels.weekly_rsi(bars, _today()), pats
 
 
 def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if, news_note="none", summary="",
@@ -1099,8 +1106,9 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
                               if auto else ("", None, ""))
     place = auto and not skip_why
     valid_until = market.now_ist() + timedelta(seconds=config.APPROVAL_TIMEOUT_SEC)  # after the review
-    lv, wrsi = day_levels_for(symbol)   # shown only: never given to the agent or the reviewer, blocks nothing
+    lv, wrsi, pats = day_levels_for(symbol)   # shown only: never given to the agent or the reviewer, blocks nothing
     room_line = levels.line(lv, side, entry, stop, wrsi)
+    pattern_line = patterns.line(pats, side, entry, stop)
 
     action = action_word(side)
     if not auto:
@@ -1139,6 +1147,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         f"Entry ~{entry:,.2f} | SL {stop:,.2f} | Target {target:,.2f}",
         f"Qty {qty} | Risk Rs {risk_rs:,.0f} ({risk_pct}%) | R:R {rr}",
         *([room_line] if room_line else []),
+        *([pattern_line] if pattern_line else []),
         f"Uses {inr(need)} margin of {inr(state['balance'] - margin_used(state))} free",
         f"Invalid if: {invalid_if}",
         (f"Valid until {valid_until.strftime('%H:%M:%S')} IST. Dummy money only." if not auto
@@ -1152,7 +1161,8 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         summary=summary, invalid_if=invalid_if, skip_why=skip_why, bar=bar, bar_why=bar_why,
         track_line=track.compact(setup, yes, mood, hour, sectors.SECTOR_OF.get(symbol, "Other"), side),
         valid_until=valid_until,
-        news_pick=is_news_pick(state, symbol), room_line=room_line)
+        news_pick=is_news_pick(state, symbol), room_line=room_line,
+        pattern_line=pattern_line)
     if not auto:
         first = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
     else:
@@ -1180,7 +1190,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
                   f" | agent {ai_yes_pct if ai_yes_pct is not None else '-'}%"
                   f" | reviewer {review['verdict'] + ' ' + str(review['yes_pct']) + '%' if review else '- (' + reviewer.unavailable_reason()[:80].replace('|', '/') + ')'}"
                   f" | mood {mood or '-'} | shadow-block {','.join(advice.get('shadow') or []) or '-'}"
-                  f" | mode {'auto' if auto else 'human'} | {levels.note(lv, side, entry, stop)}"
+                  f" | mode {'auto' if auto else 'human'} | {levels.note(lv, side, entry, stop)} | {patterns.note(pats)}"
                   f" | source {'news' if is_news_pick(state, symbol) else 'watchlist'}"
                   f" | scanner {brief.scanner_status(state.get('plan'), symbol)}"
                   f" | sector {sectors.SECTOR_OF.get(symbol, 'Other')} |"))
