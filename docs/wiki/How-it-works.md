@@ -3,7 +3,7 @@
 ## A trading day (IST, Mon–Fri)
 | Time | What happens |
 |---|---|
-| 08:45 | Pre-market brief and technical scanner on Telegram (lakehouse); world-markets snapshot saved |
+| 08:30 | Pre-market brief and technical scanner on Telegram (lakehouse); world-markets snapshot saved |
 | 09:08 | Morning session starts: India VIX sets the risk per trade, Nifty 50 trend sets the bias, focus list = watchlist + news radar |
 | 09:30–14:30 | New entries allowed. The session wakes ~3 s after each 5-minute candle, scans 4 stocks at a time, proposes trades |
 | every minute | Stops, targets, your `/exit` and the trade's early-exit line are checked between candles |

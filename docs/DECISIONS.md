@@ -119,7 +119,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 | # | Decision | Source |
 |---|---|---|
 | L1 | Databricks Free Edition; three pipelines (market 37 tables, research 5, trading 25), one at a time; bronze Auto Loader → silver/gold materialized views | `pipeline/*`, `infra/databricks/pipeline.tf` |
-| L2 | Sources: NSE bhavcopy, delivery and indices (19:30), NSE F&O list, Massive (US, 11:00), FRED (off until a key is set), Yahoo pre-open snapshot (08:45), NSE / Business Standard / RBI / SEBI news (every minute in market hours), Yahoo fundamentals (Saturday), the trader's journal, portfolio and pool trades (15:45, 23:30) | lakehouse `fetchers/`, paper-trader `trader/export.py` |
+| L2 | Sources: NSE bhavcopy, delivery and indices (19:30), NSE F&O list, Massive (US, 11:00), FRED (off until a key is set), Yahoo pre-open snapshot (08:30), NSE / Business Standard / RBI / SEBI news (every minute in market hours), Yahoo fundamentals (Saturday), the trader's journal, portfolio and pool trades (15:45, 23:30) | lakehouse `fetchers/`, paper-trader `trader/export.py` |
 | L3 | Raw files kept untouched in S3 and pushed to a Databricks volume; a sync Lambda repairs gaps | lakehouse `infra/aws` |
 | L4 | Jobs run on file arrival (NSE, pre-open, trader export) with scheduled fallbacks; plain-words page summaries by `ai_summarize` | `infra/databricks/pipeline.tf`, `sql/dashboard_summary.sql` |
 | L5 | Dashboard pages: Desk, Intraday, Swing, Long term, Your calls, Global markets; every query checked with EXPLAIN in CI | `infra/databricks/dashboard.tf`, `scripts/check_sql.py` |

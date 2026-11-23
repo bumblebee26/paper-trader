@@ -12,7 +12,7 @@ Two repositories form one platform: **stocks_lakehouse** collects and analyses I
 trade approved by you on Telegram.
 
 - **stocks_lakehouse** fetches NSE, US (Massive), global (FRED) and NSE company news into S3 and Databricks,
-  builds bronze → silver → gold tables, sends the 08:45 pre-market brief and serves the dashboard.
+  builds bronze → silver → gold tables, sends the 08:30 pre-market brief and serves the dashboard.
 - **paper-trader** reads the same gold tables before the open to set the day's risk and focus list, runs two
   Claude Code sessions in GitHub Actions, and sends its journal and a portfolio snapshot back to the lakehouse
   at 15:45 for analysis and as a backup record. On Saturdays it also sends company financials for the Nifty 200,
@@ -47,8 +47,8 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 08:00 | Mon | Lakehouse | NSE F&O stock list |
 | 06:00 | Tue–Sat | Lakehouse | FRED: indices, FX, VIX, oil, rates (21-day window) |
 | every minute 09:00–15:59; every 30 min 08:00–19:30 otherwise | Mon–Fri | Lakehouse | NSE company news to the news volume (`latest.jsonl`, read by the trader within about a minute); Business Standard markets every 4 min, RBI and SEBI every 5 min |
-| 08:45 | Mon–Fri | Lakehouse | Pre-market brief (India first; global as support, live from Yahoo; sources missing their day left out) and the technical scanner to Telegram. First it saves a pre-open snapshot of 21 world markets from Yahoo to `landing/premarket/` |
-| ~08:50 | Mon–Fri | Lakehouse | The snapshot starts job `stocks-market-preopen`: market pipeline, then the dashboard summaries, so Global markets is current by about 09:00, before NSE opens |
+| 08:30 | Mon–Fri | Lakehouse | Pre-market brief (India first; global as support, live from Yahoo; sources missing their day left out) and the technical scanner to Telegram. First it saves a pre-open snapshot of 21 world markets from Yahoo to `landing/premarket/` |
+| ~08:35 | Mon–Fri | Lakehouse | The snapshot starts job `stocks-market-preopen`: market pipeline, then the dashboard summaries, so Global markets is current by about 08:45, before NSE opens |
 | 09:08 | Mon–Fri | Trader | Kicker Lambda starts the morning session; plan + focus list to Telegram |
 | 09:16 | Mon–Fri | Trader | GitHub cron backup start (skips if already running) |
 | 09:20–12:25 | Mon–Fri | Trader | Every 5 min, a few seconds after each candle closes: check positions, scan focus list, propose; you tap YES/NO. Between cycles stops and targets are checked every minute (from 20 Nov also the early exit on a real break of a trade's exit line), and a fresh filing on a tradable stock starts a cycle at once |
@@ -83,9 +83,9 @@ there are no servers.
 | Sync Lambda | lakehouse | AWS Lambda | Copies anything missing from S3 to the volume (backfills, repairs) |
 | Landing volume | lakehouse | Databricks | `/Volumes/stocks/bronze/landing/<source>/date=…/`, what the pipeline reads |
 | Pipelines `stocks-market`, `stocks-research`, `stocks-trading` | lakehouse | Databricks | Market data in and cleaned (37 tables); the heavy daily research: scanner, momentum ranks (5); paper-trader's journal, portfolio and shadows (23). Bronze streaming tables, silver and gold materialized views. One runs at a time (Free Edition) |
-| Jobs `stocks-market-close`, `stocks-market-preopen`, `stocks-market-morning`, `stocks-market-weekend`, `stocks-trading` | lakehouse | Databricks | When the NSE file lands: market → research; when the 08:45 pre-open snapshot lands: market only (world markets before NSE opens); 11:15 Tue–Sat: market only (overnight US prices); Saturday 08:00: market → research; when paper-trader's export lands: trading. Each then runs `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`). Pipeline tasks retry every 15 min if another pipeline is running |
+| Jobs `stocks-market-close`, `stocks-market-preopen`, `stocks-market-morning`, `stocks-market-weekend`, `stocks-trading` | lakehouse | Databricks | When the NSE file lands: market → research; when the 08:30 pre-open snapshot lands: market only (world markets before NSE opens); 11:15 Tue–Sat: market only (overnight US prices); Saturday 08:00: market → research; when paper-trader's export lands: trading. Each then runs `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`). Pipeline tasks retry every 15 min if another pipeline is running |
 | Dashboard | lakehouse | Databricks | Pages Desk, Intraday, Swing, Long term (each real pool vs its shadows, with a Show filter), Your calls and Global markets |
-| Pre-market Lambda | lakehouse | AWS Lambda | 08:45: saves the pre-open Yahoo snapshot (21 world markets) to the landing bucket and volume, queries gold and a few live Yahoo figures, sends two Telegram messages (the brief, India first, and the technical scanner) |
+| Pre-market Lambda | lakehouse | AWS Lambda | 08:30: saves the pre-open Yahoo snapshot (21 world markets) to the landing bucket and volume, queries gold and a few live Yahoo figures, sends two Telegram messages (the brief, India first, and the technical scanner) |
 | Trading session | paper-trader | GitHub Actions | Claude Code + paper-trader MCP tools; morning and afternoon runs |
 | Trader engine and MCP tools | paper-trader | inside the session | Ledger, risk gate, Telegram approvals, simulated fills, exits (from 20 Nov including the early exit on a real break), report with the paper tests and the selector (paper, from 23 Nov); your own orders (`/buy`, `/short`, `/swing`, `/longterm`) while a session is live |
 | Trader state bucket | paper-trader | AWS S3 | Ledger, journal, plans, reports, exports |
@@ -107,7 +107,7 @@ portfolio), and two per week on Saturdays (fundamentals and the Nifty 200 list).
 
 | Flow | From → to | Contract | When |
 |---|---|---|---|
-| Market data in | NSE (bhavcopy, delivery, indices, F&O list), Massive, FRED, the Yahoo pre-open snapshot (`premarket/`) → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 06:00, 08:45, 11:00, 19:30, Mon 08:00 |
+| Market data in | NSE (bhavcopy, delivery, indices, F&O list), Massive, FRED, the Yahoo pre-open snapshot (`premarket/`) → S3 + volume | One file per source per day under `<source>/date=YYYY-MM-DD/` | 06:00, 08:30, 11:00, 19:30, Mon 08:00 |
 | Pre-market context | gold tables + Yahoo → trader (`premarket_context`) | Read-only SQL on `data_freshness`, `technical_screen`, `nifty_after_us_moves_summary`, `unusual_volume`, `intraday_universe` (news radar, tradable list with company names for the Groww buttons), `track_record`, and India VIX from `silver.nse_index_daily` (from 20 Nov; Yahoo's India VIX only as the backup); live S&P 500, Nasdaq, Brent, USD/INR and the ADRs from Yahoo, whose Nifty 50 and S&P 500 candles also say which session each source should have | ~09:10 |
 | Company news | news volume `date=YYYY-MM-DD/latest.jsonl` → trader | Read through the Files API (today and the last day), cached 10 min; failure = "news unavailable" | every proposal, `/news` |
 | Approvals | Trader ↔ Telegram | Proposal with YES/NO buttons; no reply in 3 min = skipped; `EXIT SYMBOL` closes | 09:20–14:30 |

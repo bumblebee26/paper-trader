@@ -147,7 +147,7 @@ compared on the same days with the same costs:
 - **Trade:** the next trading day only, at the scanner's level (a breakout-only pick when the day trades through
   its trigger; a buy-on-dip pick when it dips into its entry zone); nothing is chased. Exit at the stop, T2 or
   after 15 trading days. 1% risk per trade, at most 20% of the pool in one stock, 5 holdings.
-- **Reports:** 08:45 Telegram (with delivery %, F&O status, NSE/Groww links and a Swing buy button that asks you
+- **Reports:** 08:30 Telegram (with delivery %, F&O status, NSE/Groww links and a Swing buy button that asks you
   to Confirm), 09:45 check against the first half hour, `/screen`, `/screen SYMBOL`, the scanner line in
   `/analyze`. `stocks.gold.signal_performance` shows how each signal did 5, 10 and 20 days later against
   NIFTYBEES. **Review after about 15 trading days (~8 Dec):** keep, tighten or drop each filter.
@@ -313,7 +313,7 @@ Rs 16 per sell plus slippage.
 
 | When | What you get |
 |---|---|
-| 08:45 | Pre-market brief |
+| 08:30 | Pre-market brief |
 | 09:08 | Day plan and focus list |
 | During sessions | Proposals (suggestion, reviewer, plain words, market check, news), fills, exits, alerts |
 | ~15:20 | Day report (with the day's paper tests and, from 23 Nov, the selector's picks for tomorrow) |
@@ -329,8 +329,8 @@ leaderboard, holdings), Intraday (real vs every exit rule, model and the opening
 Show filter; daily P&L, by setup and hour, model tests on ~200 stocks; from 21 Nov the auto-bar ladder and sizing,
 paper fills vs the real minute and the selector), Swing and Long term (real pool vs shadow pools
 vs NIFTYBEES with a Show filter; scanner, momentum ranks, company quality), Your calls (your 👍/👎 vs what happened:
-right %, liked vs disliked results, you vs the trader, by week and setup) and Global markets (current by about 09:00
-from the 08:45 pre-open snapshot; today's read written
+right %, liked vs disliked results, you vs the trader, by week and setup) and Global markets (current by about 08:45
+from the 08:30 pre-open snapshot; today's read written
 from the data with fixed rules, world moves, who India's open follows, after-US-moves table, NSE breadth, ADRs). Money pages start at the 18 Nov ledger reset. Ask Genie on the
 dashboard answers questions in plain words.
 
