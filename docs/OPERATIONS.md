@@ -41,7 +41,8 @@ when it finds no prices.
 | Weekly brake | Week's loss reaches 8R: risk per trade halved until Monday | `WEEKLY_LOSS_LIMIT_R`, `WEEKLY_BRAKE_FACTOR` |
 | Cost filter | Blocks a trade whose round-trip costs (brokerage, STT, exchange and SEBI fees, GST, stamp duty) and slippage exceed 30% of its risk at full size (stops tighter than about 0.9% of the price, about 1.2% at VIX ≥ 30); trades made smaller by the weekly brake or the room left aren't penalised for it | `MAX_COST_SHARE_PCT` |
 | Cool-off | 30 min without new proposals after 3 losses in a row | `COOLOFF_AFTER_LOSSES`, `COOLOFF_MIN` |
-| Open positions | 3 in total, 1 per sector | `MAX_OPEN_POSITIONS`, `MAX_OPEN_PER_SECTOR` |
+| Open positions | 5 in total (3 until 23 Nov), 1 per sector; together their stops must fit under the daily loss limit (above) | `MAX_OPEN_POSITIONS`, `MAX_OPEN_PER_SECTOR` |
+| Sector strength | From 24 Nov: no BUY on a stock weaker than its sector today (no SELL on one stronger), by more than 0.3% since the open; blocked before the reviewer is asked | `LAGGING_SECTOR_LIVE` (0 = paper only) |
 | Trades per sector | 2 a day | `MAX_TRADES_PER_SECTOR` |
 | Position size | 1% risk (less when VIX is high), and at most 30% of the balance as margin | `RISK_PER_TRADE_PCT`, `MAX_POSITION_MARGIN_PCT` |
 | Focus list | up to 15 stocks, at least 6 sectors | `FOCUS_MAX`, morning prompt in `trader/session_ctl.py` |
@@ -79,6 +80,15 @@ the weekly report compares each rule with the current one on the trades it has a
 and `early_strict` (only on a real break: two closes in a row past it, or one at least `EARLY_BREAK_PCT` (0.2%)
 past it). `early_strict` is also the live rule: the engine closes the trade (`early_exit`), and Claude no longer
 closes one itself when `invalid_if` is touched. The exit line is journaled on the `filled` row (`exit_line=` in the note).
+
+**Live exit rule, from the 23 Nov review** (`EXIT_RULE_LIVE`, default `auto`): new trades keep the fixed 2R target
+until the exit trial has `EXIT_SWITCH_MIN_TRADES` (15) replayed trades since 18 Nov and the trailing stop is still
+ahead of the fixed target over them; then they switch, once, to the trailing stop: no fixed target, and from +1R
+the stop follows 1R behind the best price (`engine.trailing_exit`, the same logic as the replay; exit reason
+`trailing_stop`). Telegram says when it switches and the journal records `exit_rule_switch`; each fill's note has
+`exit_rule=`. The early exit on a real break stays on, every trade still closes at 15:10, and your own trades keep
+the stop and target you set. The fixed 2R target goes on running on paper (`current` in `exit_variants`), so the
+1 Dec review can compare them. `EXIT_RULE_LIVE=current` or `trailing` forces one.
 
 **More paper tests** (from 21 Nov; nothing changes a real trade): at the day report, the 09:15 opening buy of the
 morning plan's news-radar names and scanner strict picks (twice the normal slippage, stop 1.2% below, 2R target or

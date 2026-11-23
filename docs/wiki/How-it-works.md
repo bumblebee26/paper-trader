@@ -16,7 +16,7 @@
 
 ## The life of one trade
 1. **Claude finds a setup** (opening-range breakout, VWAP reclaim/rejection, yesterday's high/low break) and writes the case: entry, stop, target, an exit line, at most three reasons including one honest risk.
-2. **Code checks the risk gate**: kill switch, pause, loss limits, max 3 open / 10 a day, sector caps, reward ≥ 1.5× risk, margin. A failure is journaled and nothing is sent.
+2. **Code checks the risk gate**: kill switch, pause, loss limits, max 5 open / 10 a day, sector caps, the stock not weaker than its sector (from 24 Nov), reward ≥ 1.5× risk, margin. A failure is journaled and nothing is sent.
 3. **Code sizes it**: about 1% of the pool lost if the stop is hit.
 4. **Three scores** are averaged into the suggestion: live market checks, Claude's own view and an independent reviewer (a second Claude that never sees the pitch).
 5. **Auto mode** places it only if the suggestion clears the bar; manual mode waits for your YES.

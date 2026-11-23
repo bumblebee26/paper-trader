@@ -7,7 +7,7 @@ import math
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import advisor
 import brief
@@ -942,6 +942,7 @@ EXIT_PLAIN = {
     "user_exit": "You asked to exit, so it was closed at the market price.",
     "early_exit": "The idea broke: two 5-minute closes past its exit line (or one at least 0.2% past it), so it "
                   "was closed before the stop.",
+    "trailing_stop": "It ran past +1R and then pulled back to its trailing stop, so the gain was locked in.",
 }
 
 
@@ -1040,6 +1041,12 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     risk_pct = round(risk_rs / state["balance"] * 100, 2)
     need = qty * entry / config.INTRADAY_LEVERAGE
     advice = advisor.assess(state, symbol, side, entry, stop, target, rr, ai_yes_pct, setup=setup)
+    if config.LAGGING_SECTOR_LIVE and "lagging_sector" in (advice.get("shadow") or []):
+        why = (f"{'weaker' if side == 'BUY' else 'stronger'} than its sector today: no "
+               f"{'BUY' if side == 'BUY' else 'SELL'} against the sector (live from 24 Nov)")
+        journal("blocked_by_risk_gate", symbol=symbol, setup=setup, side=side, entry=entry,
+                stop=stop, target=target, rr=rr, note=why)
+        return {"status": "blocked", "reason": why}
     t_checks = market.now_ist()
     review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"])
     t_review = market.now_ist()
@@ -1270,10 +1277,11 @@ def execute(state, pid):
         state["trades_today"] += 1
         sec = sectors.sector(p["symbol"])
         state.setdefault("sector_trades", {})[sec] = state["sector_trades"].get(sec, 0) + 1
+    rule = "current" if custom else live_exit_rule(state)   # your own trades keep your stop and target
     state["positions"][p["symbol"]] = {
         "side": p["side"], "qty": p["qty"], "fill_price": fill, "stop": p["stop"],
         "target": p["target"], "opened_at": _now(), "setup": p["setup"], "proposal_id": pid,
-        "exit_line": p.get("exit_line"),
+        "exit_line": p.get("exit_line"), "exit_rule": rule, "initial_stop": p["stop"],
     }
     p["status"] = "filled"
     keep = (rating_buttons(state, pid, p.get("feedback")) if p.get("mode") == "auto"
@@ -1283,13 +1291,16 @@ def execute(state, pid):
         did = f"Bought {p['qty']} {p['symbol']} @ {fill:,.2f}: will sell by 15:10"
     else:
         did = f"Shorted {p['qty']} {p['symbol']} @ {fill:,.2f}: sold first, will buy back by 15:10"
-    tg.send(f"[MOCK] {did}.\n🎯 {p['target']:,.2f} · 🛑 {p['stop']:,.2f} · EXIT {p['symbol']} closes it now.\n"
+    aim = (f"🎯 {p['target']:,.2f} first objective, then a trailing stop" if rule == "trailing"
+           else f"🎯 {p['target']:,.2f}")
+    tg.send(f"[MOCK] {did}.\n{aim} · 🛑 {p['stop']:,.2f} · EXIT {p['symbol']} closes it now.\n"
             f"{ledger_line(state)}")
     journal("filled", proposal_id=pid, risk_rs=p["risk_rs"], fees_rs=entry_fees,
             symbol=p["symbol"], setup=p["setup"], side=p["side"], entry=p["entry"],
             stop=p["stop"], target=p["target"], qty=p["qty"], fill_price=fill,
             user_reply="CUSTOM" if custom else "YES",
-            note=f"quote time {ts}" + (f";exit_line={p['exit_line']}" if p.get("exit_line") else ""))
+            note=f"quote time {ts}" + (f";exit_line={p['exit_line']}" if p.get("exit_line") else "")
+                 + f";exit_rule={rule}")
     return {"status": "filled", "fill_price": fill, "qty": p["qty"]}
 
 
@@ -1349,6 +1360,9 @@ def monitor(state):
         opened = pos["opened_at"][:16]
         bars = [b for b in market.candles(sym, "1m", 1) if b["time"] > opened]
         hit = None
+        if pos.get("exit_rule") == "trailing":
+            hit = trailing_exit(pos, bars)
+            bars = []
         for b in bars:
             if pos["side"] == "BUY":
                 if b["low"] <= pos["stop"]:
@@ -1385,6 +1399,76 @@ def monitor(state):
             tg.edit(p["message_id"], p["text"] + "\n\n-> Expired with no reply (3 minutes). Not placed, no money used.")
             journal("expired", proposal_id=pid, symbol=p["symbol"], setup=p["setup"], user_reply="none")
     return {"events": events, "account": account(state)}
+
+
+def trailing_exit(pos, bars):
+    """The live trailing stop (exit rule "trailing"), the same way exits.replay runs it: no fixed target; once the
+    trade is +1R the stop follows 1R behind the best price and never moves back. Replayed from the opening stop on
+    every check, so a restart can't lose the trail. Updates pos["stop"] (open risk and messages use it); returns
+    (price, reason) when the stop is hit, else None."""
+    d = 1 if pos["side"] == "BUY" else -1
+    fill, stop = float(pos["fill_price"]), float(pos.get("initial_stop") or pos["stop"])
+    r = abs(fill - stop)
+    one_r_price, best, trailing, cur = fill + d * r, fill, False, stop
+    for b in bars:
+        adverse = b["low"] if d == 1 else b["high"]
+        favorable = b["high"] if d == 1 else b["low"]
+        if (adverse - cur) * d <= 0:
+            pos["stop"] = round(cur, 2)
+            price = min(b["open"], cur) if d == 1 else max(b["open"], cur)
+            return price, ("trailing_stop" if trailing else "stop_loss")
+        best = max(best, favorable) if d == 1 else min(best, favorable)
+        if trailing or (favorable - one_r_price) * d >= 0:
+            trailing = True
+            trail = best - d * r
+            if (trail - cur) * d > 0:
+                cur = trail
+    pos["stop"] = round(cur, 2)
+    return None
+
+
+def _exit_trial_totals():
+    """The exit trial since the ledger reset, from the journal's exit_variants rows (one per replayed real trade):
+    (trades with every rule replayed, {rule: total net Rs})."""
+    start, today = date.fromisoformat(config.LEDGER_START), date.fromisoformat(_today())
+    seen, totals, d = {}, {}, start
+    while d <= today:
+        for r in storage.read_rows(f"journal/{d.isoformat()}.csv"):
+            if r.get("event") == "exit_variants" and r.get("event_id"):
+                seen[r["event_id"]] = exits.parse_note(r.get("note"))
+        d += timedelta(days=1)
+    full = [v for v in seen.values() if v and all(v.get(k) is not None for k in ("current", "trailing"))]
+    for v in full:
+        for k, x in v.items():
+            if x is not None:
+                totals[k] = totals.get(k, 0.0) + x
+    return len(full), totals
+
+
+def live_exit_rule(state) -> str:
+    """The exit rule for a new trade: config.EXIT_RULE_LIVE, or in "auto" mode the 23 Nov review's switch (see
+    config). Checked once a day; once it has switched to "trailing" it stays."""
+    mode = config.EXIT_RULE_LIVE
+    if mode in ("current", "trailing"):
+        return mode
+    cached = state.get("exit_rule_live") or {}
+    if cached.get("rule") == "trailing" or cached.get("day") == _today():
+        return cached.get("rule", "current")
+    rule = "current"
+    try:
+        n, t = _exit_trial_totals()
+        if n >= config.EXIT_SWITCH_MIN_TRADES and t.get("trailing", 0) > t.get("current", 0):
+            rule = "trailing"
+            journal("exit_rule_switch", event_id=f"exitswitch-{_today()}", note=(
+                f"trailing stop live from {_today()}: {n} trades, trailing {t['trailing']:+.0f} vs fixed target "
+                f"{t.get('current', 0):+.0f}"))
+            tg.send(f"[MOCK] Exit rule switched: new trades now use the trailing stop. Over {n} real trades "
+                    f"replayed since 18 Nov it made {inr(t['trailing'], sign=True)} vs {inr(t.get('current', 0), sign=True)} "
+                    "with the fixed 2R target (as agreed in the 23 Nov review). The fixed target keeps running on paper.")
+    except Exception as err:  # noqa: BLE001 - a failed check keeps the fixed target for today
+        log.warning("exit rule check failed: %s", err)
+    state["exit_rule_live"] = {"day": _today(), "rule": rule}
+    return rule
 
 
 def _midday_summary(state) -> None:
@@ -1841,7 +1925,7 @@ def _shadow_exit_lines(summary) -> list:
     t = summary["exit_rules_rs"]
     base = t["current"]
     parts = [f"{exits.RULE_WORDS[k]} {inr(v - base, sign=True)}" for k, v in t.items() if k != "current"]
-    lines = [f"Exit rules on trial ({summary['exit_rules_trades']} trades, vs current rules {inr(base, sign=True)}): "
+    lines = [f"Exit rules on trial ({summary['exit_rules_trades']} trades, vs the fixed 2R target {inr(base, sign=True)}): "
              + ", ".join(parts)]
     lock = summary.get("profit_lock")
     if lock:

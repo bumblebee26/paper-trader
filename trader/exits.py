@@ -37,7 +37,7 @@ import fees
 RULES = ("current", "breakeven", "half_and_run", "trailing", "time_stop", "no_stop", "wide_1_5", "wide_2",
          "close_stop", "target_1_5r", "level_target", "early_any", "early_strict")
 RULE_WORDS = {
-    "current": "current rules",
+    "current": "fixed 2R target",
     "breakeven": "stop to entry at +1R",
     "half_and_run": "sell half at +1R",
     "trailing": "trailing stop",

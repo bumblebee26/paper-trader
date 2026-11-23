@@ -323,7 +323,7 @@ def paper_lines(w) -> list:
                 continue
             diff = ex["totals"][k] - (ex.get("base") or {}).get(k, base)
             parts.append(f"{exits.RULE_WORDS[k]} {_inr(diff, sign=True)}" + (f" ({n} trades)" if n < ex["trades"] else ""))
-        lines.append(f"- Exit rules on trial ({ex['trades']} trades; current rules {_inr(base, sign=True)}): "
+        lines.append(f"- Exit rules on trial ({ex['trades']} trades; fixed 2R target {_inr(base, sign=True)}): "
                      + ", ".join(parts) + ". Decided after 15+ trades; one week is mostly noise.")
     lock = w.get("profit_lock") or {}
     if lock.get("days"):

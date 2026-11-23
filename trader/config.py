@@ -79,7 +79,8 @@ LEDGER_START = os.environ.get("LEDGER_START", "2026-11-18")
 # Swing rules failed their backtest (9 Nov 2026): the swing pool holds this index fund instead.
 SWING_PARK_SYMBOL = os.environ.get("SWING_PARK_SYMBOL", "NIFTYBEES")  # "" = keep the cash idle
 RISK_PER_TRADE_PCT = _f("RISK_PER_TRADE_PCT", 1.0)
-MAX_OPEN_POSITIONS = _i("MAX_OPEN_POSITIONS", 3)
+MAX_OPEN_POSITIONS = _i("MAX_OPEN_POSITIONS", 5)         # 23 Nov review: 3 -> 5; total open risk stays under the daily
+                                                          # loss limit (loss_room counts every open stop)
 MAX_TRADES_PER_DAY = _i("MAX_TRADES_PER_DAY", 10)        # 0 = no daily limit
 # Loss limits in "R": one trade's planned risk today (balance x today's risk %, so it follows VIX).
 DAILY_LOSS_LIMIT_R = _f("DAILY_LOSS_LIMIT_R", 4.0)        # day's loss incl. open risk; 4R = Rs 1,600 (Rs 1,200 at VIX >= 20)
@@ -93,6 +94,15 @@ COOLOFF_MIN = _i("COOLOFF_MIN", 30)                       # minutes without new 
 MAX_POSITION_MARGIN_PCT = _f("MAX_POSITION_MARGIN_PCT", 30.0)  # one trade's margin, % of balance
 MAX_OPEN_PER_SECTOR = _i("MAX_OPEN_PER_SECTOR", 1)
 MAX_TRADES_PER_SECTOR = _i("MAX_TRADES_PER_SECTOR", 2)    # per day
+# 23 Nov review: "no BUY on a stock weaker than its sector today (no SELL on a stronger one)" goes live; it was a
+# background rule on paper (avoided 5 trades, net Rs 741 better). 0 = back to paper only.
+LAGGING_SECTOR_LIVE = _i("LAGGING_SECTOR_LIVE", 1)
+# Exit rule for new trades. "current": fixed stop and 2R target. "trailing": no fixed target; from +1R the stop
+# follows 1R behind the best price. "auto" (23 Nov review): stays "current" until the exit trial has
+# EXIT_SWITCH_MIN_TRADES replayed trades since the ledger reset and the trailing stop is still ahead of the
+# fixed target over them, then switches to "trailing" once (sticky; a message and a journal row say when).
+EXIT_RULE_LIVE = os.environ.get("EXIT_RULE_LIVE", "auto")
+EXIT_SWITCH_MIN_TRADES = _i("EXIT_SWITCH_MIN_TRADES", 15)
 FOCUS_MAX = _i("FOCUS_MAX", 15)
 # News radar: Nifty 200 stocks beyond the watchlist may be traded if they pass the lakehouse's guardrails
 # (stocks.gold.intraday_universe: EQ series, close >= Rs 50, Rs 50 crore+ a day). A fresh NSE filing on one of
