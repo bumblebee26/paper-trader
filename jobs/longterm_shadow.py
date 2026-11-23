@@ -54,10 +54,14 @@ def inr(x, sign=False):
     return engine.inr(x, sign=sign)
 
 
-def week(today, cands, nifty):
-    """One shadow week. cands: rows of longterm_candidates; nifty: [(date, close)] newest first."""
+REAL_POOL = "long_term"   # auto mode (pool_auto.py): the real pool follows the same rules; off until the 18 Dec review
+
+
+def week(today, cands, nifty, pool=POOL):
+    """One week of the quality rules on `pool` (the shadow, or the real pool in auto mode). cands: rows of
+    longterm_candidates; nifty: [(date, close)] newest first."""
     num = lambda v: float(v) if v not in (None, "") else None  # noqa: E731
-    p = pools.load(POOL)
+    p = pools.load(pool)
     meta = p.setdefault("meta", {})
     price = {c["symbol"]: num(c["close"]) for c in cands if num(c["close"])}
     picks = [c for c in cands if str(c["is_pick"]).lower() == "true"]
@@ -96,7 +100,7 @@ def week(today, cands, nifty):
         sym, px = c["symbol"], price.get(c["symbol"])
         if not px:
             continue
-        target = pools.capital(POOL) * float(c["target_weight_pct"] or 9) / 100
+        target = pools.capital(pool) * float(c["target_weight_pct"] or 9) / 100
         qty = math.floor(target / (px * (1 + config.SLIPPAGE_PCT / 100) * (1 + config.DELIVERY_COST_PCT / 100)))
         out = pools.buy(p, sym, qty, px, reason="weekly pick", industry=c.get("industry"))
         if out["status"] == "bought":
@@ -107,14 +111,15 @@ def week(today, cands, nifty):
     pools.save(p)
 
     eq = pools.equity(p)
-    ret = (eq / pools.capital(POOL) - 1) * 100
+    ret = (eq / pools.capital(pool) - 1) * 100
     nret = (n_close / meta["start_nifty"] - 1) * 100 if n_close and meta.get("start_nifty") else None
     snap = {"date": today, "week": meta["weeks"], "equity": round(eq, 2), "return_pct": round(ret, 2),
             "nifty_return_pct": round(nret, 2) if nret is not None else None, "nifty_below_high_pct": dip,
             "moves": moves, "holdings": {s: {"qty": h["qty"], "last_price": h.get("last_price")} for s, h in p["holdings"].items()},
-            "picks": [c["symbol"] for c in picks]}
-    storage.put_json(f"shadow/longterm/{today}.json", snap)
-    storage.put_json("shadow/longterm/latest.json", snap)   # for /shadow
+            "picks": [c["symbol"] for c in picks], "pool": pool}
+    folder = "longterm" if pool == POOL else "longterm_auto"
+    storage.put_json(f"shadow/{folder}/{today}.json", snap)
+    storage.put_json(f"shadow/{folder}/latest.json", snap)   # for /shadow
     return snap
 
 
@@ -202,10 +207,13 @@ def momentum_message(s):
 
 
 def message(s):
-    lines = [f"[MOCK] Long-term pool, shadow week {s['week']} (nothing real is bought)", ""]
-    lines += ["This week I would:"] + [f"- {m}" for m in s["moves"]] if s["moves"] else ["Nothing to do this week."]
+    real = s.get("pool") == REAL_POOL
+    lines = [f"[MOCK] Long-term pool, auto mode week {s['week']} (quality picks; dummy money)" if real
+             else f"[MOCK] Long-term pool, shadow week {s['week']} (nothing real is bought)", ""]
+    lines += ([("This week:" if real else "This week I would:")] + [f"- {m}" for m in s["moves"]] if s["moves"]
+              else ["Nothing to do this week."])
     held = ", ".join(s["holdings"]) or "nothing yet"
-    lines += ["", f"Shadow pool now: {inr(s['equity'])} ({s['return_pct']:+.2f}%), holding {held}."]
+    lines += ["", f"{'Pool' if real else 'Shadow pool'} now: {inr(s['equity'])} ({s['return_pct']:+.2f}%), holding {held}."]
     if s["nifty_return_pct"] is not None:
         lines.append(f"NIFTYBEES since the first shadow week: {s['nifty_return_pct']:+.2f}%.")
     lines.append(f"Nifty is {s['nifty_below_high_pct']}% below its 52-week high"
@@ -217,9 +225,19 @@ def message(s):
 def main(argv):
     today = market.now_ist().strftime("%Y-%m-%d")
     nifty = sql(NIFTY_SQL)
-    s = week(today, sql(CANDIDATES_SQL), nifty)
+    import pool_auto
+
+    cands = sql(CANDIDATES_SQL)
+    s = week(today, cands, nifty)
     texts = [message(s)]
     print(json.dumps(s, indent=1))
+    if pool_auto.on(REAL_POOL):
+        if pools.breaker_on():
+            texts.append("[MOCK] Long-term pool, auto mode: no buys this week (portfolio circuit breaker is on).")
+        else:
+            r = week(today, cands, nifty, pool=REAL_POOL)
+            texts.append(message(r))
+            print(json.dumps(r, indent=1))
     try:
         ranks = sql(MOM_SQL)
         for pool in MOM_VARIANTS:

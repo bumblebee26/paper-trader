@@ -84,9 +84,8 @@ def guardian(event, context):
         out = pools.park("swing")
         if out["status"] == "bought":
             tg.send(f"[MOCK] Swing pool: bought {out['qty']} NIFTYBEES at Rs {out['fill']:,.2f} "
-                    f"(cash left Rs {out['cash_left']:,.0f}).\nIn plain words: the swing rules failed their backtest, "
-                    "so as you decided, this Rs 60,000 now simply follows the Nifty 50 until a better swing idea "
-                    "passes a test. /portfolio shows how it's doing.")
+                    f"(cash left Rs {out['cash_left']:,.0f}).\nIn plain words: the pool's idle cash follows the Nifty 50 "
+                    "until the auto rules (momentum + news) buy a stock with it. /portfolio shows how it's doing.")
         return out
     if action == "swing_shadow":
         import custom

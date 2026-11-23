@@ -13,6 +13,7 @@ within about 2 minutes.
 | `/short SYMBOL [qty] [sl X] [tgt Y]` | Your own intraday short (sell first, buy back by 15:10) |
 | `/swing buy\|sell SYMBOL [qty] [sl X] [tgt Y]` | Your own swing trade (delivery) |
 | `/longterm buy\|sell SYMBOL [qty]` (`/lt`) | Your own long-term trade |
+| `/swing auto on\|off`, `/longterm auto on\|off` | Auto mode for the pool: it follows its rules by itself, with a message for every buy and sell (swing: momentum + news, on from 24 Nov; long-term: quality picks, off until the 18 Dec review) |
 | `/analyze SYMBOL` | The live checks on any NSE stock: intraday, swing, long-term |
 | `/screen [SYMBOL]` | Today's technical scanner, or one stock |
 | `/news SYMBOL` | The company's latest NSE filings |

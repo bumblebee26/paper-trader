@@ -27,8 +27,8 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 |---|---|---|---|
 | M1 | Rs 2,00,000 in three pools, each with its own ledger: intraday Rs 40,000, swing Rs 60,000, long-term Rs 1,00,000. A pool never spends another's cash | live | `config.STARTING_CAPITAL`, `SWING_CAPITAL`, `LONG_TERM_CAPITAL`; `trader/pools.py` |
 | M2 | Ledger reset 17 Nov: every pool and shadow pool restarted from its cash on 18 Nov; history kept | live | `config.LEDGER_START`, `jobs/reset_ledger.py` |
-| M3 | Swing pool parked in NIFTYBEES (its rules failed two backtests); idle cash re-parked at 15:14; your own `/swing buy` is paid by selling NIFTYBEES | live | `config.SWING_PARK_SYMBOL`, `pools.park`, guardian `park` |
-| M4 | Long-term pool in cash, shadow mode until the 18 Dec go/no-go; buying from 21 Dec if approved | parked | `docs/SYSTEM_PLAN.md` phase 4 |
+| M3 | Swing pool in **auto mode** from 24 Nov (owner's decision): follows the momentum + news rules (6 stocks, 2% risk, 2×ATR trailing stop, 20 days), buys paid by selling NIFTYBEES; idle cash re-parked in NIFTYBEES at 15:14; stocks bought by hand are taken over by the rules; `/swing auto off` stops it | live | `pool_auto.py`, `swing_momentum.py` (`REAL_POOL`), `pools.park` |
+| M4 | Long-term pool in cash; auto mode (weekly quality picks, Saturdays) is built but off until the 18 Dec go/no-go approves it (`/longterm auto on`) | parked | `pool_auto.py`, `jobs/longterm_shadow.py` (`REAL_POOL`) |
 | M5 | Portfolio circuit breaker: all pools combined 12% below their peak stops new buys until `/resume` | live | `pools.breaker_on`, 15:40 snapshot |
 
 ## 3. Intraday: how trades are found
@@ -106,7 +106,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 
 | # | Decision | Status | Source |
 |---|---|---|---|
-| W1 | Real swing pool parked in NIFTYBEES (M3); your own swing trades allowed with stops/targets checked at 15:50 | live | `pools`, `guardian swing_shadow` |
+| W1 | Real swing pool in auto mode (M3), measured against NIFTYBEES; your own swing trades allowed, and taken over by the auto rules | live | `pools`, `swing_momentum`, guardian 15:50 |
 | W2 | Swing shadow 1, news breakouts: filing within 2 days + 20-day high on 2x volume; 5-day-low stop, 2R target, 10-day exit; 1% risk, 5 holdings | paper | `trader/swing_shadow.py`, `gold.swing_signals` |
 | W3 | Swing shadow 2, technical scanner: six filters (trend, RSI 50–65, MACD, ADX, volume, R:R); next-day entry at its level; stop, T2 or 15 days | paper | `trader/swing_tech.py`, `gold.technical_screen`; review ~8 Dec |
 | W4 | Swing shadow 3, momentum + news: top of `gold.momentum_ranks`, 6 holdings, 2% risk, 2×ATR trailing, 20 days; concentrated copy 3 holdings, 3% risk, no sector cap | paper | `trader/swing_momentum.py` |

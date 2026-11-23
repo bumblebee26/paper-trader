@@ -140,7 +140,7 @@ class ParkTest(unittest.TestCase):
             env.prices["NIFTYBEES"] = 290.0
             text = engine.portfolio_text(engine.load())
             self.assertIn("Swing:", text)
-            self.assertIn("held in NIFTYBEES", text)
+            self.assertIn("the rest in NIFTYBEES", text)
             self.assertIn("+Rs", text)
 
     def test_no_price_no_buy(self):

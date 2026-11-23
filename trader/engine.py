@@ -281,6 +281,7 @@ Commands (with or without the /):
 /buy SYMBOL [qty] [sl X] [tgt Y]  your own intraday buy (defaults: 1% stop, 2x target, a normal trade's size); /short the same for a short
 /swing buy|sell SYMBOL [qty] [sl X] [tgt Y]  your own swing trade (delivery; paid from the pool's NIFTYBEES if needed)
 /longterm buy|sell SYMBOL [qty]  your own long-term trade (also /lt). Every order asks you to Confirm first and is marked custom
+/swing auto on|off, /longterm auto on|off  the pool follows its rules by itself (swing: momentum + news, on; long-term: quality picks, off until the 18 Dec review)
 /shadow  everything tested on paper: exit rules, background rules, skipped trades, news vs watchlist picks, the swing and long-term shadow pools
 /stop  kill switch: no new proposals at all until /resume (open positions still managed)
 /pause  no new proposals for the day; open positions are still managed. After 14:30, at weekends or on holidays it applies to the next trading day
