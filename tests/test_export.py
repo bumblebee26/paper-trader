@@ -119,3 +119,49 @@ class PortfolioExportTest(unittest.TestCase):
             self.assertEqual((h["pool"], h["symbol"], h["sector"], h["last_price"]), ("swing", "NIFTYBEES", "Index fund", 285.0))
             self.assertGreater(h["pnl"], 0)
             self.assertEqual(out["portfolio_rows"], 4)
+
+
+class PoolTradesExportTest(unittest.TestCase):
+    def _write(self, pool, day, rows):
+        import csv
+        import io
+        import pools
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=pools.JOURNAL_COLUMNS)
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: r.get(c, "") for c in pools.JOURNAL_COLUMNS})
+        storage.backend().put(f"journal/pools/{pool}/{day}.csv", buf.getvalue())
+
+    def test_buys_and_sells_from_every_pool(self):
+        with Env():
+            self._write("swing", "2026-11-18", [
+                {"timestamp_ist": "2026-11-18 15:20:00", "pool": "swing", "event": "bought", "symbol": "NIFTYBEES",
+                 "qty": "200", "price": "289.5", "fees_rs": "12.3", "value_rs": "57900", "reason": "park"}])
+            self._write("swing_mom_shadow", "2026-11-18", [
+                {"timestamp_ist": "2026-11-18 15:21:00", "event": "sold", "symbol": "TCS", "qty": "3",
+                 "price": "4100", "pnl_rs": "-85.4", "reason": "stop"},
+                {"timestamp_ist": "2026-11-18 15:22:00", "event": "breaker", "note": "ignored"}])
+            with mock.patch.object(export, "_push", return_value="/Volumes/x") as push:
+                out = export.export_pool_trades("2026-11-18")
+            self.assertEqual(push.call_args.args[0], "pool_trades/date=2026-11-18/trades.jsonl")
+            rows = [json.loads(x) for x in push.call_args.args[1].splitlines()]
+            self.assertEqual(out["pool_trades"], 2)
+            by_pool = {r["pool"]: r for r in rows}
+            self.assertEqual(by_pool["swing"]["kind"], "real")
+            self.assertEqual(by_pool["swing"]["qty"], 200.0)
+            self.assertIsNone(by_pool["swing"]["pnl_rs"])
+            self.assertEqual(by_pool["swing_mom_shadow"]["kind"], "shadow")
+            self.assertEqual(by_pool["swing_mom_shadow"]["pnl_rs"], -85.4)
+            self.assertEqual(len({r["trade_id"] for r in rows}), 2)
+
+    def test_no_trades_no_file(self):
+        with Env():
+            with mock.patch.object(export, "_push") as push:
+                self.assertEqual(export.export_pool_trades("2026-11-19"), {"date": "2026-11-19", "pool_trades": 0})
+            push.assert_not_called()
+
+    def test_first_run_backfills_from_the_ledger_reset_once(self):
+        with Env():
+            self.assertEqual(export.pool_trades_start("2026-11-20"), "2026-11-18")
+            self.assertEqual(export.pool_trades_start("2026-11-20"), "2026-11-20")

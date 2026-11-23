@@ -58,7 +58,7 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | 15:10 | Mon–Fri | Trader | Square-off, then day report to Telegram, with the day's paper tests (opening-range test; from 21 Nov the 09:15 opening buy, the gap fade and each fill vs the real minute) and, from 23 Nov, the selector's picks for tomorrow |
 | 15:12 / 15:40 | Mon–Fri | Trader | Guardian backstops: square-off and report if the session didn't |
 | 15:14 | Mon–Fri | Trader | Guardian puts the swing pool's idle cash into NIFTYBEES |
-| 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` and portfolio snapshot to `landing/portfolio/`; job `stocks-trading` builds the trading and portfolio tables |
+| 15:45 | Mon–Fri | Trader → Lakehouse | Journal export to `landing/trades/` portfolio snapshot to `landing/portfolio/` and pool buys/sells to `landing/pool_trades/`; job `stocks-trading` builds the trading and portfolio tables |
 | 15:50 | Mon–Fri | Trader | Swing shadow tests: news breakouts from `gold.swing_signals`, the scanner's strict picks from `gold.technical_indicators`, and momentum + news from `gold.momentum_ranks` with its concentrated copy (top 3), bought and sold on paper, vs NIFTYBEES; stops and targets on your own swing trades checked |
 | 16:10 | Mon–Fri | Trader (GitHub job) | Shadow models: volatility stop, trade filter, early cut and let winners run, plus stop variants, the 1.5R and yesterday's-level targets and skipping stretched breakouts (from 19 Nov), trained walk-forward on the 5-minute setups of every stock in `gold.intraday_universe`; today's real trades replayed under each (paper only) |
 | 17:55 | Fri | Trader | Weekly report to Telegram (from 21 Nov with the auto-bar ladder, score sizing, the selector and the swing holding-period study) |
@@ -115,6 +115,7 @@ portfolio), and two per week on Saturdays (fundamentals and the Nifty 200 list).
 | Ledger | Trader ↔ S3 `state/ledger.json` | Read, change, write back on every tool call; versioned 30 days | all session |
 | Journal export | Trader → `landing/trades/date=YYYY-MM-DD/events.jsonl` | One line per event with unique `event_id` + `proposal_id`; last line `ledger_snapshot` | 15:45 |
 | Portfolio snapshot | Trader → `landing/portfolio/date=YYYY-MM-DD/portfolio.jsonl` | One `pool` row per pool (capital, cash, holdings value, equity) and one `holding` row per holding; newest file per day wins | 15:45 |
+| Pool trades | Trader → `landing/pool_trades/date=YYYY-MM-DD/trades.jsonl` | One row per buy or sell in every delivery pool (real swing and long-term, and the shadow pools): qty, price, value, fees, P&L, reason; `trade_id` is unique | 15:45, 23:30 |
 | Long-term picks | `gold.longterm_candidates`, `gold.momentum_ranks` → shadow job | Read-only SQL: rank, `is_pick`, `target_weight_pct`, `reasons`, last close; long-term momentum rank (`lt_rank`) with 6- and 12-month returns | Sat 10:15 |
 | Swing signals | `gold.swing_signals`, `gold.technical_indicators`, `gold.momentum_ranks` → guardian | Read-only SQL: yesterday's news breakouts with their stop; yesterday's scanner strict picks with entry zone, trigger, stop and T2; the top 12 swing momentum ranks with ATR | 15:50 |
 | Model universe | `gold.intraday_universe` → shadow models job | Read-only SQL: the tradable stocks (`eligible`) | 16:10 |
