@@ -20,6 +20,7 @@ import links
 import market
 import news
 import pools
+import preopen
 import reviewer
 import sectors
 import storage
@@ -846,13 +847,13 @@ def rank_in_play(state, pause=0.0) -> list:
     state["in_play"] = ranked[:20]
     journal("in_play", note=" ".join(f"{r['symbol']}:{r['rvol']}x" for r in ranked[:config.FOCUS_MAX]))
     try:
-        tg.send(in_play_message(ranked))
+        tg.send(in_play_message(ranked, pre=preopen.today()))
     except Exception as err:  # noqa: BLE001 - the ranking matters more than the message
         log.warning("In-play message failed: %s", err)
     return ranked[:config.FOCUS_MAX]
 
 
-def in_play_message(ranked, top=5) -> str:
+def in_play_message(ranked, top=5, pre=None) -> str:
     """The 09:25 ranking (from 24 Nov, the friend's suggestion B7): the top 5 with their scores. A score is opening
     activity, not a chance of profit."""
     lines = [f"[MOCK] Stocks in play, {config.IN_PLAY_AT} (ranked by opening activity; a ranking, not a chance of "
@@ -860,7 +861,8 @@ def in_play_message(ranked, top=5) -> str:
     for i, r in enumerate(ranked[:top], 1):
         extra = [f"gap {r['gap_pct']:+.1f}%"] + (["news"] if r.get("news") else []) \
             + ([f"scanner {r['scanner']}"] if r.get("scanner") else [])
-        lines.append(f"{i}. {r['symbol']} score {r['score']:g} ({r['rvol']:g}x usual volume, {', '.join(extra)})")
+        lines.append(f"{i}. {r['symbol']} score {r['score']:g} ({r['rvol']:g}x usual volume, {', '.join(extra)})"
+                     + preopen.note(pre, r["symbol"]))
     lines.append(f"Focus list now: top {config.FOCUS_MAX} (/plan). Proposals still need their setup and checks.")
     return "\n".join(lines)
 
