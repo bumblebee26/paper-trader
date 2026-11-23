@@ -146,6 +146,12 @@ def guardian(event, context):
         except Exception as err:  # noqa: BLE001 - same: never fail the journal export
             log.warning("pool trades export failed: %s", err)
             out["pool_trades_error"] = str(err)
+        try:
+            import expiry
+
+            out["expiry"] = expiry.check(date.fromisoformat(day))
+        except Exception as err:  # noqa: BLE001 - reminders must never stop the export
+            log.warning("expiry check failed: %s", err)
         return out
     raise ValueError(f"unknown action {action}")
 
