@@ -23,7 +23,8 @@ SHADOW_POOLS = ("long_term_shadow", "swing_shadow", "swing_tech_shadow", "swing_
                 "swing_mom_conc_shadow", "long_term_mom_conc_shadow")  # paper copies of a pool's rules: tracked, never in the portfolio totals
 LIMITS = {
     # max holdings, max % of the pool in one stock, max holdings per sector, max % of the pool per sector
-    "swing": {"max_holdings": 5, "max_position_pct": 25.0, "max_per_sector": 2, "max_sector_pct": 100.0},
+    # swing from 24 Nov: auto mode follows the momentum rules (6 stocks sized to ~1/6 each) plus the NIFTYBEES park
+    "swing": {"max_holdings": 7, "max_position_pct": 25.0, "max_per_sector": 2, "max_sector_pct": 100.0},
     "long_term": {"max_holdings": 12, "max_position_pct": 15.0, "max_per_sector": 99, "max_sector_pct": 25.0},
     "long_term_shadow": {"max_holdings": 12, "max_position_pct": 15.0, "max_per_sector": 99, "max_sector_pct": 25.0},
     "swing_shadow": {"max_holdings": 5, "max_position_pct": 20.5, "max_per_sector": 2, "max_sector_pct": 100.0},
@@ -256,11 +257,18 @@ def reset_breaker():
 
 def summary_lines(intraday_state):
     lines = []
+    import pool_auto
+
     for name, label, phase in (("swing", "Swing", "rules on hold; to be held in NIFTYBEES"),
                                ("long_term", "Long-term", "shadow mode until the 18 Dec review")):
         p = refresh_prices(load(name))
         eq = equity(p)
-        if list(p["holdings"]) == [s for s in p["holdings"] if s in INDEX_FUNDS] and p["holdings"]:
+        if pool_auto.on(name) and name == "swing":
+            stocks = [s for s in p["holdings"] if s not in INDEX_FUNDS]
+            gain = eq - p["capital"]
+            state = (f"auto mode, momentum + news: {', '.join(stocks) or 'no stocks yet'}; the rest in NIFTYBEES "
+                     f"({'+' if gain >= 0 else '-'}Rs {abs(gain):,.0f})")
+        elif list(p["holdings"]) == [s for s in p["holdings"] if s in INDEX_FUNDS] and p["holdings"]:
             sym = next(iter(p["holdings"]))
             h = p["holdings"][sym]
             gain = eq - p["capital"]

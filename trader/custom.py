@@ -56,6 +56,10 @@ def parse(parts):
         return "analyze", {"symbol": parts[1], "view": view}
     if cmd in ("BUY", "SHORT"):
         return _order("intraday", "BUY" if cmd == "BUY" else "SELL", parts[1:])
+    if cmd in POOLS and len(parts) >= 2 and parts[1] == "AUTO":
+        if len(parts) < 3 or parts[2] not in ("ON", "OFF"):
+            return "error", f"Send /{cmd.lower()} auto on or /{cmd.lower()} auto off."
+        return "auto", {"pool": POOLS[cmd], "on": parts[2] == "ON"}
     if cmd in POOLS:
         if len(parts) < 3 or parts[1] not in ("BUY", "SELL"):
             return "error", f"Send /{cmd.lower()} buy SYMBOL [qty] or /{cmd.lower()} sell SYMBOL [qty]."

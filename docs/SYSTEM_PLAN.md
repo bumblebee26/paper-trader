@@ -47,8 +47,8 @@ strategy's losses never hide inside another's gains. A pool never spends another
 | Pool | Holds for | Dummy capital | Status | Ledger |
 |---|---|---|---|---|
 | Intraday | Minutes to hours, closed by 15:10 | Rs 40,000 | Trading (P&L since 9 Nov kept when resized) | `state/ledger.json` |
-| Swing | 3 to 20 trading days | Rs 60,000 | Rules on hold; held in NIFTYBEES (bought 10 Nov 15:14) | `state/pools/swing.json` |
-| Long-term | Months to years | Rs 1,00,000 | Shadow mode; real buying from 21 Dec if approved | `state/pools/long_term.json` (shadow: `long_term_shadow.json`) |
+| Swing | 3 to 20 trading days | Rs 60,000 | From 24 Nov auto mode: follows the momentum + news rules (6 stocks), idle cash in NIFTYBEES | `state/pools/swing.json` |
+| Long-term | Months to years | Rs 1,00,000 | Shadow mode; auto mode (quality picks) built, switched on only if the 18 Dec review approves | `state/pools/long_term.json` (shadow: `long_term_shadow.json`) |
 
 Side effects of the smaller intraday pool: a trade risks about Rs 400, so fees of Rs 40 to 60 a trade weigh
 more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follows VIX), see Phase 1.
@@ -387,7 +387,7 @@ Cost review: Sun 15 Nov.
 | 20 Nov | India VIX from NSE's own index file (Yahoo as the backup; cautious risk when neither has it); early exits only on a real break of the exit line, enforced by code |
 | 21 Nov | First long-term momentum shadows (top 15, top 5); on paper: 09:15 opening buy, gap fade, auto-bar ladder, score sizing, no SELLs in an uptrend, swing holding period, fill check |
 | 23 Nov | Track-record review (phase 5), including news vs watchlist picks; the selector's first picks (paper). Decided (with a council): the trailing stop stays on paper (an automatic switch was built and withdrawn the same day: its test left out the live early exit); "weaker than its sector" filter live; 5 open positions; sector caps and 15:10 kept; dynamic sector scoring, shorting weak sectors and no position cap rejected |
-| 24 Nov | Exploration set-up: every paper variant kept and grouped into families with a luck line and plain verdicts (`trader/families.py`), a ledger of every variant ever tried (`docs/VARIANTS.csv`), the pass bar and kill rules written down; trailing stop replayed with the live early exit |
+| 24 Nov | Swing pool auto mode: the real Rs 60,000 follows the momentum + news rules by itself (Telegram message for every move; idle cash stays in NIFTYBEES; a stock bought by hand is taken over); long-term auto mode built, off until the 18 Dec review. Exploration set-up: every paper variant kept and grouped into families with a luck line and plain verdicts (`trader/families.py`), a ledger of every variant ever tried (`docs/VARIANTS.csv`), the pass bar and kill rules written down; trailing stop replayed with the live early exit |
 | 1 Dec | Review again: the same questions, plus how the 23 Nov changes did |
 | ~8 Dec | Scanner signal review (about 15 trading days): `gold.signal_performance` and the scanner shadow pool vs NIFTYBEES |
 | 18 Dec | Long-term go/no-go (backtest + 5 shadow weeks) |

@@ -14,6 +14,10 @@ news-breakout and scanner shadows so all three can be compared on the same days 
 A concentrated copy (state/pools/swing_mom_conc_shadow.json, from 18 Nov) runs the same signals, entries and exits
 with 3 holdings, up to a third of the pool in one stock, 3% at risk per trade and no sector cap, so the December
 review can see whether concentrating on the top ranks pays more than spreading across six.
+From 24 Nov the REAL swing pool follows the same rules in auto mode (pool "swing", pool_auto.py): same signals,
+entries, stops and exits, 6 stocks; its idle cash stays in NIFTYBEES, which is sold at the day's open to pay for a buy.
+A stock already in the pool without these rules' stop (e.g. a buy you placed yourself) is taken over: stop 2 x ATR
+under its cost, trailing from then on, out after 20 trading days from when it was bought.
 Daily candles decide exits. Delivery costs and slippage as in the real pools. Runs with the other swing shadows in
 the guardian at 15:50 IST (action "swing_shadow"); no Claude.
 """
@@ -29,8 +33,11 @@ from swing_shadow import _previous_trading_day, _rs, _today_bar, _trading_days_b
 POOL = "swing_mom_shadow"
 CONC_POOL = "swing_mom_conc_shadow"
 # pool -> (label, % of the pool at risk per trade, most of the pool in one stock, snapshot folder)
+REAL_POOL = "swing"
+REAL_STOCKS = 6                                               # the real pool's stocks (NIFTYBEES not counted)
 VARIANTS = {
     POOL: ("momentum + news", 2.0, 16.5, "swing_mom"),          # 6 holdings must fit in one pool
+    REAL_POOL: ("momentum + news (real pool, auto)", 2.0, 16.5, "swing_auto"),
     CONC_POOL: ("momentum + news, concentrated (top 3)", 3.0, 32.5, "swing_mom_conc"),
 }
 SIGNALS_SQL = """
@@ -45,11 +52,57 @@ ATR_X = 2.0
 HOLD_DAYS = 20
 
 
+def _atr(sym, today, n=14):
+    """ATR(14) from daily candles up to today (Yahoo); None if unavailable."""
+    bars = [b for b in market.daily(sym, "3mo") if b["time"][:10] <= today and b.get("close")]
+    if len(bars) < n + 1:
+        return None
+    trs = [max(b["high"] - b["low"], abs(b["high"] - a["close"]), abs(b["low"] - a["close"]))
+           for a, b in zip(bars[-n - 1:-1], bars[-n:])]
+    return round(sum(trs) / n, 2)
+
+
+def _adopt(p, today, moves):
+    """Real pool: put any stock without these rules' stop under them (a buy placed by hand before auto mode)."""
+    for sym, h in p["holdings"].items():
+        if sym in pools.INDEX_FUNDS or h.get("atr"):
+            continue
+        try:
+            atr = _atr(sym, today)
+        except Exception as err:  # noqa: BLE001 - try again tomorrow
+            log.warning("ATR for %s unavailable: %s", sym, err)
+            atr = None
+        if not atr:
+            continue
+        h.update(atr=atr, stop=round(float(h["avg_cost"]) - ATR_X * atr, 2), origin="auto",
+                 high_close=float(h.get("last_price") or h["avg_cost"]))
+        h.pop("target", None)
+        moves.append(f"TAKEN OVER {sym}: now managed by the auto rules (stop {h['stop']:,.2f}, trails 2x ATR, "
+                     f"out after {HOLD_DAYS} trading days)")
+
+
+def _fund(p, today, value, moves):
+    """Real pool: sell enough NIFTYBEES at today's open to pay for a buy of `value`."""
+    park = config.SWING_PARK_SYMBOL
+    need = value * (1 + (config.DELIVERY_COST_PCT + config.SLIPPAGE_PCT) / 100) - p["cash"]
+    h = p["holdings"].get(park) if park else None
+    if need <= 0 or not h:
+        return
+    bar = _today_bar(park, today)
+    px = bar["open"] if bar else (h.get("last_price") or h["avg_cost"])
+    qty = min(h["qty"], math.ceil(need * 1.01 / (px * (1 - (config.DELIVERY_COST_PCT + config.SLIPPAGE_PCT) / 100))))
+    out = pools.sell(p, park, qty=qty, price=px, reason="pays for a momentum buy")
+    moves.append(f"SELL {out['qty']} {park} at Rs {out['fill']:,.2f} to pay for it")
+
+
 def daily(today, signals, pool=POOL):
     _, risk_pct, max_position_pct, folder = VARIANTS[pool]
     p = pools.load(pool)
     meta = p.setdefault("meta", {})
     moves = []
+    real = pool == REAL_POOL
+    if real:
+        _adopt(p, today, moves)
     bench = _today_bar("NIFTYBEES", today)
     meta.setdefault("start_date", today)
     if "start_bench" not in meta and bench:
@@ -58,6 +111,8 @@ def daily(today, signals, pool=POOL):
     # 1) exits on today's candle: the trailing stop, then the 20-day limit; then raise the trail on today's close
     for sym in list(p["holdings"]):
         h = p["holdings"][sym]
+        if sym in pools.INDEX_FUNDS or "stop" not in h or "atr" not in h:
+            continue                                     # the NIFTYBEES park, or a stock not yet taken over
         bar = _today_bar(sym, today)
         if not bar:
             continue
@@ -77,7 +132,8 @@ def daily(today, signals, pool=POOL):
     prev = _previous_trading_day(today)
     recent = set(meta.get("recent", {}))
     for s in sorted([s for s in signals if s["d"] == prev], key=lambda s: int(s["swing_rank"])):
-        if len(p["holdings"]) >= pools.LIMITS[pool]["max_holdings"]:
+        stocks = [s for s in p["holdings"] if s not in pools.INDEX_FUNDS]
+        if len(stocks) >= (REAL_STOCKS if real else pools.LIMITS[pool]["max_holdings"]):
             break
         sym = s["symbol"]
         if sym in p["holdings"] or sym in recent or not s.get("atr14"):
@@ -92,6 +148,8 @@ def daily(today, signals, pool=POOL):
         if qty < 1:
             moves.append(f"SKIP {sym}: one share (Rs {entry:,.0f}) is too big for the pool's limits")
             continue
+        if real:
+            _fund(p, today, qty * entry, moves)
         out = pools.buy(p, sym, qty, entry, reason=f"momentum rank {s['swing_rank']}", stop=round(stop, 2),
                         atr=round(atr, 2), high_close=entry, signal_date=prev)
         if out["status"] != "bought":
@@ -154,16 +212,21 @@ def run(send=True):
     except Exception as err:  # noqa: BLE001 - exits still run without new ranks
         log.warning("momentum ranks unavailable: %s", err)
         signals = []
+    import pool_auto
+
     out = {}
     for pool, (label, *_rest) in VARIANTS.items():
+        if pool == REAL_POOL and not pool_auto.on(REAL_POOL):
+            continue
         snap = daily(today, signals, pool)
         out[pool] = snap
         if send and snap["moves"]:
-            tg.send("\n".join([f"[MOCK] Swing shadow, {label} (nothing real is bought):",
-                               *[f"- {m}" for m in snap["moves"]], *lines(snap)]))
+            head = (f"[MOCK] Swing pool, auto mode ({label.split(' (')[0]} rules; dummy money):" if pool == REAL_POOL
+                    else f"[MOCK] Swing shadow, {label} (nothing real is bought):")
+            tg.send("\n".join([head, *[f"- {m}" for m in snap["moves"]], *lines(snap)]))
     return out
 
 
 def all_lines():
-    """One line per momentum variant, for the reports."""
-    return [x for pool in VARIANTS for x in lines(summary(pool))]
+    """One line per momentum shadow, for the reports (the real pool is in the pools section)."""
+    return [x for pool in VARIANTS if pool != REAL_POOL for x in lines(summary(pool))]

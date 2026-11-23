@@ -195,6 +195,10 @@ def poll(state, wait=0) -> None:
                     asks.append(f"analyze:{data['symbol']}:{data['view'] or ''}")
                 elif kind == "order":
                     asks.append("order:" + json.dumps(data, separators=(",", ":")))
+                elif kind == "auto":
+                    import pool_auto
+
+                    asks.append("say:" + pool_auto.set_mode(data["pool"], data["on"]))
                 else:
                     asks.append("say:" + data)
             elif len(parts) == 2 and cmd == "EXIT":
