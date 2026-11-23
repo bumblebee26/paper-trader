@@ -59,3 +59,6 @@ swing_breakout_55d,Swing: rules backtest,backtest,dead,2026-11-09,2026-11-09,clo
 swing_tuned_16,Swing: rules backtest,backtest,dead,2026-11-09,2026-11-09,16 tuned versions of the swing rules,best +8.3% in sample; -3.8% on unseen months
 ratings_training,Learning,track record,dead,2026-11-12,2026-11-17,the owner's ratings training the trader,retired 17 Nov (ratings kept for review only)
 trailing_auto_switch,Exit: at +1R,engine,dead,2026-11-23,2026-11-23,automatic switch to the trailing stop at 15 trades,withdrawn: tested without the live early exit
+room_1r,Filter: room to the next level,backtest,exploring,2026-11-24,,skip when the nearest level is under 1R away (replaces 'stretched' only if better),backtest on the 2019-2026 setups: not better than 'stretched' after costs
+breakout_52w,Swing: 52-week-high breakout,backtest,exploring,2026-11-24,,buy a daily close above the 52-week high; exit 2xATR stop or trailing,backtest 2019-2024 then 2025-26 held back: not above NIFTYBEES after costs
+rally_range,Entry: rally then range then breakout,backtest,exploring,2026-11-24,,a stock up ~5% that ranges 1-2% then breaks out (on the share; no options),backtest on the 2019-2026 history: average R after costs not above 0
