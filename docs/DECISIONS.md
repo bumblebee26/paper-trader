@@ -161,6 +161,24 @@ Every paper variant keeps running; the owner wants broad exploration. To keep ch
 | F6 | Each report also shows real trades' R before and after costs, "Is Claude adding value?" (Claude's proposals vs the plain 15-min breakout on the same days) and when the real-money trade count arrives at the current pace | `families.lines` (weekly report, `/shadow`) |
 | F7 | No new exit or filter variants on the same intraday setups; new ideas must be different entries. Live rules change only at reviews (1 Dec, then monthly) | review of 23 Nov |
 
+## 14. Suggestions from a friend's review (24 Nov; council verdict, owner approved)
+
+A friend reviewed a skipped proposal ("UNSURE 52%; auto skipped: needs over 60%") and suggested eight ideas. The skip
+came mostly from the bar being raised to 60% by +5 penalties (09:00 hour, IT sector, losing buys); the "already
+rallied" check is protective. No idea below fixes the main issue (the intraday setups are about break-even before
+costs); only tested new entries can.
+
+| # | Idea | Decision | Where |
+|---|---|---|---|
+| B1 | Daily, weekly, monthly levels | **Shown, not a filter.** Each proposal shows the nearest level in its direction (previous day / week / month high or low, 52-week high or low; completed bars only) and the room to it in R; the journal note keeps `room=..R@level`. Not given to the agent or the reviewer. A "skip under 1R of room" filter is backtested on the 2,093 setups and replaces "stretched" only if it beats it | `trader/levels.py`, VARIANTS `room_1r` |
+| B2 | Chart patterns | **One objective rule first:** 52-week-high breakout on daily bars, a swing entry family against NIFTYBEES after costs, 2025-26 held back. More patterns only if it passes | VARIANTS `breakout_52w` |
+| B3 | RSI / MACD | Already used (daily scanner). Weekly RSI shown on proposals, information only | `levels.weekly_rsi` |
+| B4 | No clear goal | **Goal page** and a short goal section in the trader's instructions; untested outside ideas don't go in. The agent's YES rate is compared two weeks before and after 25 Nov | `docs/GOAL.md`, `prompts/trading_rules.md` |
+| B5 | 10-20 minute options trades | **No options** (thin stock options, large lots, 1-3% spreads, option STT, decay, no data feed). The trigger "rallied ~5%, ranges 1-2%, then breaks out" is tested on the share itself as a new paper entry family | VARIANTS `rally_range` |
+| B6 | Morning brief | Already sent ~09:00; can move to 08:30 on request | brief |
+| B7 | Ranked list | The 09:25 in-play ranking's top 5 with scores goes to Telegram, labelled a ranking, not a chance of profit | `engine.in_play_message` |
+| B8 | Charting website | TradingView chart button on every proposal; chart links on the app's and dashboard's suggested lists | `links.tradingview`, lakehouse `swing_suggest` |
+
 ## Gaps found while building this register (for phase 3)
 
 | Where | Says | Code / reality |

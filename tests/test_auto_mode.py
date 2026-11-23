@@ -100,7 +100,7 @@ class AutoModeTest(unittest.TestCase):
         engine.execute(st, r["proposal_id"])
         self.assertIn("-> Placed @", env.edits[-1])
         rows = [[b[0] for b in row] for row in env.edit_buttons[-1]]
-        self.assertEqual(rows, [["👍 good call", "👎 bad call", "EXIT"], ["📈 Groww", "NSE quote", "ℹ️ Full reasons"]])
+        self.assertEqual(rows, [["👍 good call", "👎 bad call", "EXIT"], ["📈 Groww", "📊 Chart", "NSE quote", "ℹ️ Full reasons"]])
         msg_id = st["proposals"][r["proposal_id"]]["message_id"]
         env.react(msg_id, "👎")
         env.react(msg_id, "🔥")                                  # other emoji: ignored
@@ -306,10 +306,12 @@ class LinksTest(unittest.TestCase):
                           "adani-ports-and-special-economic-zone-ltd", "state-bank-of-india", "mahindra-mahindra-ltd"])
         for sym, slug in links.GROWW.items():                    # the checked addresses follow the same pattern
             self.assertRegex(slug, r"^[a-z0-9-]+$", sym)
-        row = links.buttons("GODREJIND", "abc")                  # no company name known: NSE only
-        self.assertEqual([b[0] for b in row], ["NSE quote", "ℹ️ Full reasons"])
+        row = links.buttons("GODREJIND", "abc")                  # no company name known: no Groww
+        self.assertEqual([b[0] for b in row], ["📊 Chart", "NSE quote", "ℹ️ Full reasons"])
+        self.assertEqual(links.tradingview("M&M"), "https://www.tradingview.com/chart/?symbol=NSE%3AM_M")
+        self.assertEqual(links.tradingview("BAJAJ-AUTO"), "https://www.tradingview.com/chart/?symbol=NSE%3ABAJAJ_AUTO")
         kb = tg._keyboard([[("👍", "fb:like:abc")], row])
-        self.assertEqual(kb["inline_keyboard"][1][0], {"text": "NSE quote",
+        self.assertEqual(kb["inline_keyboard"][1][1], {"text": "NSE quote",
                                                        "url": "https://www.nseindia.com/get-quotes/equity?symbol=GODREJIND"})
         self.assertEqual(kb["inline_keyboard"][0][0], {"text": "👍", "callback_data": "fb:like:abc"})
 

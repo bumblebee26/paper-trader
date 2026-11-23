@@ -1,4 +1,4 @@
-"""Live-quote links for a stock, shown as buttons under each proposal.
+"""Live-quote links for a stock, shown as buttons under each proposal (from 24 Nov also a TradingView chart).
 
 Groww's stock pages are named after the company, not the NSE symbol: "Avanti Feeds Ltd." is
 groww.in/stocks/avanti-feeds-ltd. The 36 watchlist stocks are listed here (checked by hand); any other tradable
@@ -82,7 +82,14 @@ def nse(symbol):
     return f"https://www.nseindia.com/get-quotes/equity?symbol={quote(symbol.upper(), safe='')}"
 
 
+def tradingview(symbol):
+    """TradingView chart (daily, weekly and monthly views, drawing tools). TradingView writes NSE symbols with '_'
+    for '&' and '-': M&M -> NSE:M_M, BAJAJ-AUTO -> NSE:BAJAJ_AUTO."""
+    tv = re.sub(r"[&-]", "_", symbol.upper())
+    return f"https://www.tradingview.com/chart/?symbol={quote('NSE:' + tv, safe='')}"
+
+
 def buttons(symbol, pid):
-    """The second row of buttons: Groww (if known), NSE quote, and the full reasons."""
+    """The second row of buttons: Groww (if known), TradingView chart, NSE quote, and the full reasons."""
     row = [("📈 Groww", url)] if (url := groww(symbol)) else []
-    return row + [("NSE quote", nse(symbol)), ("ℹ️ Full reasons", f"info:{pid}")]
+    return row + [("📊 Chart", tradingview(symbol)), ("NSE quote", nse(symbol)), ("ℹ️ Full reasons", f"info:{pid}")]
