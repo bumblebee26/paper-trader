@@ -175,7 +175,7 @@ costs); only tested new entries can.
 | B3 | RSI / MACD | Already used (daily scanner). Weekly RSI shown on proposals, information only | `levels.weekly_rsi` |
 | B4 | No clear goal | **Goal page** and a short goal section in the trader's instructions; untested outside ideas don't go in. The agent's YES rate is compared two weeks before and after 25 Nov | `docs/GOAL.md`, `prompts/trading_rules.md` |
 | B5 | 10-20 minute options trades | **No options** (thin stock options, large lots, 1-3% spreads, option STT, decay, no data feed). The trigger "rallied ~5%, ranges 1-2%, then breaks out" is tested on the share itself as a new paper entry family | VARIANTS `rally_range` |
-| B6 | Morning brief | Already sent ~09:00; can move to 08:30 on request | brief |
+| B6 | Morning brief | Moved from 08:45 to 08:30 (owner, 24 Nov); on NSE holidays it says "closed today" and has no buy buttons | lakehouse `fetchers/premarket.py`, `nse_holidays.py` |
 | B7 | Ranked list | The 09:25 in-play ranking's top 5 with scores goes to Telegram, labelled a ranking, not a chance of profit | `engine.in_play_message` |
 | B8 | Charting website | TradingView chart button on every proposal; chart links on the app's and dashboard's suggested lists | `links.tradingview`, lakehouse `swing_suggest` |
 | B9 | NSE pre-open auction (owner, 24 Nov) | **Information only:** at ~09:09 the session reads NSE's pre-open data (IEP, gap vs yesterday, buy/sell quantity ratio) for tradable F&O stocks, saves it to S3 `preopen/` and shows the biggest gaps in the plan message and the ratio in the 09:25 ranking. Not given to the agent or the reviewer; tested before any use. NSE may block cloud servers: then that day has none | `trader/preopen.py`, VARIANTS `preopen_imbalance` |
@@ -191,15 +191,9 @@ changes from them directly. Still to do: the "under 1R of room" filter (B1) on t
 
 Results (24 Nov run): nothing beat NIFTYBEES in either period; on 2025-2026 five of six lost money. Momentum +32.2% / -19.1%, scanner +1.5% / -15.2%, 52-week high +29.6% / -14.1%, bull flag +62.4% / -12.2%, double bottom -46.0% / -32.3%, rally-range -21.0% / +4.9% (2020-24 / 2025-26; NIFTYBEES +106.3% / +10.8%). Report: the Claude doc "History backtests: NSE 2019-2026".
 
-## Gaps found while building this register (for phase 3)
+## Gaps found while building this register
 
-| Where | Says | Code / reality |
-|---|---|---|
-| `SYSTEM_PLAN.md` header | "As of 19 Nov 2026" | 23 Nov |
-| `SYSTEM_PLAN.md` Risk framework | 3 open; no sector filter; exits not mentioned | 5 open; sector filter live; trailing auto-switch |
-| `SYSTEM_PLAN.md` Phase 1 table | Exit rules "fixed stop and 2R target … decided at a review" | auto-switch to trailing at 15 trades |
-| `SYSTEM_PLAN.md` Principle 2 | automatic exits: stop, target, 15:10, early exit | plus the trailing stop |
-| `SYSTEM_PLAN.md` Decisions table | Intraday loss limit "Rs 4,000 (9 Nov)" first | 4R = Rs 1,600 today (history row; reword) |
-| `PLATFORM.md` Components | guardian 15:45 exports journal + portfolio | also pool trades |
-| `PLATFORM.md` constraints | AWS services list | Lambda function URL now used; CloudFront blocked pending verification |
-| Swing pool | "rules on hold" | your own swing buys are allowed (one placed 23 Nov) |
+All fixed in Phase 3 step 6 (24 Nov): SYSTEM_PLAN.md (as-of date, swing auto mode, risk table with 5 open and the
+sector filter, the trailing stop on paper, principle 2 with auto mode, the loss-limit history row), PLATFORM.md (pool
+trades export, the phone app on a Lambda function URL, CloudFront pending AWS verification) and ARCHITECTURE.md (swing
+pool, history backtests, the information-only levels, patterns and pre-open feed).

@@ -4,7 +4,7 @@
 > is in [paper-trader](https://github.com/bumblebee26/paper-trader/blob/main/docs/SYSTEM_PLAN.md) and
 > [stocks_lakehouse](https://github.com/bumblebee26/stocks_lakehouse/blob/main/docs/SYSTEM_PLAN.md); change
 > both together. For how the running system fits together, see [PLATFORM.md](PLATFORM.md).
-> As of 19 Nov 2026. Each section says what is **built** and what is still **planned**.
+> As of 24 Nov 2026. Each section says what is **built** and what is still **planned**.
 
 Everything is dummy money. Nothing here is investment advice; it is a system for learning how these
 strategies behave.
@@ -30,9 +30,10 @@ strategies are compared from the same day; the trade history, track record and r
 
 1. **Dummy money only.** No broker, demat or bank link. Real money would need a separate decision and SEBI's
    retail algo rules (see Risks).
-2. **You approve every buy and sell** on Telegram. Automatic exits are limited to rules set in advance
-   (stop-loss, target, the 15:10 intraday square-off, from 20 Nov the early exit when a trade's idea really
-   breaks, and for pools, rules you agreed to).
+2. **You approve every buy and sell** on Telegram, unless you switch a pool to auto mode (intraday `/auto`;
+   the swing pool's auto mode from 24 Nov, `/swing auto off` stops it): then its written rules act and every
+   move is reported. Automatic exits are limited to rules set in advance (stop-loss, target, the 15:10 intraday
+   square-off, from 20 Nov the early exit when a trade's idea really breaks, and for pools, rules you agreed to).
 3. **Plain words first.** Every proposal opens with a suggestion and a plain-English summary; numbers sit
    under Details.
 4. **Independent review.** A second agent, which never sees the proposer's pitch, argues against every trade.
@@ -62,7 +63,7 @@ more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follow
 | Weekly brake | none | Week down 8R: half-size trades until Monday |
 | Costs | Rs 20 per order + 0.05% slippage | From 16 Nov, every order also pays STT (0.025% on sells), exchange and SEBI fees, GST and stamp duty (0.003% on buys), as on a contract note: about 0.26% of the position per round trip with slippage |
 | Cost filter | none | No trade whose costs exceed 30% of its risk (in practice a stop of about 0.9% or more) |
-| Exit rules | fixed stop and 2R target | Same, with alternatives and a day profit lock on trial in the background (reports; decided at a review); from 19 Nov also a nearer 1.5R target, and yesterday's high (low for a short) as the target when it comes before 2R. From 20 Nov, live: an early exit when the trade's exit line (the price that breaks its idea) breaks for real, two 5-minute closes past it or one 0.2%+ past it, enforced by code (one close just past the line was usually noise) |
+| Exit rules | fixed stop and 2R target | Same, with alternatives and a day profit lock on trial in the background (reports; decided at a review); from 19 Nov also a nearer 1.5R target, and yesterday's high (low for a short) as the target when it comes before 2R. From 20 Nov, live: an early exit when the trade's exit line (the price that breaks its idea) breaks for real, two 5-minute closes past it or one 0.2%+ past it, enforced by code (one close just past the line was usually noise). A trailing stop is built but stays on paper (23 Nov council); `EXIT_RULE_LIVE` switches it |
 | Cool-off | none | 30 minutes without new proposals after 3 losses in a row |
 | Watchlist | 16 stocks, mostly banks and IT | 36 stocks across 11 sectors (`trader/sectors.py`) |
 | Focus list each morning | up to 10 | up to 15, at least 6 sectors; from 16 Nov re-ranked at 09:25 by opening relative volume (the first 10 minutes vs the usual), the "stocks in play" |
@@ -88,12 +89,19 @@ more. From 11 Nov the loss limits are set in "R" (one trade's risk, which follow
 Planned later: one-tap reason buttons on YES/NO, modelled interest on idle cash, business headlines from
 publishers, a macro event calendar (RBI, Budget, Fed).
 
-## Phase 3: swing pool (on hold)
+## Phase 3: swing pool (auto mode from 24 Nov)
 
-**Result:** the rules failed. On 15 May 2025 to 6 Nov 2026 every version lost money while NIFTYBEES made 3%
+**Now:** from 24 Nov the real Rs 60,000 follows the momentum + news rules by itself (the third shadow test
+below; `trader/pool_auto.py`, `/swing auto off` stops it), idle cash in NIFTYBEES. The same day a backtest on NSE
+2019-2026 (`backtest/history.py`, DECISIONS section 15) found those rules, price only, behind simply holding
+NIFTYBEES: +32.2% vs +106.3% on 2020-2024 and -19.1% vs +10.8% on the held-back 2025-2026. The owner kept auto
+mode on (dummy money); the 1 Dec review weighs it. The scanner picks, 52-week-high breakouts, double bottoms,
+bull flags and rally-range breakouts did no better.
+
+**First rules (9 Nov): failed.** The rules failed. On 15 May 2025 to 6 Nov 2026 every version lost money while NIFTYBEES made 3%
 (pullbacks -4%, breakouts -18%). A second try tuned 16 versions on May 2025 to April 2026; the best made
 +8.3% there but lost 3.8% on the unseen months May to November 2026 (5 trades) while NIFTYBEES made 4.1%.
-As agreed, swing is dropped for now and its Rs 60,000 is held in NIFTYBEES.
+As agreed then, swing was dropped and its Rs 60,000 held in NIFTYBEES (until auto mode on 24 Nov).
 
 The rules, kept for a retry (`backtest/swing.py`):
 
@@ -296,12 +304,12 @@ their rules run as plain code in GitHub Actions, which keeps Claude usage to the
 
 ## Risk framework
 
-| Limit | Intraday | Swing (on hold) | Long-term |
+| Limit | Intraday | Swing (auto mode, momentum rules) | Long-term |
 |---|---|---|---|
-| Risk per trade | 1% (less when VIX is high) | 1% | sized by weight |
-| Largest position | 30% of balance as margin | 25% of pool | 15% (trim above 18%) |
-| Positions | 3 open, 10 trades a day | 5 | 10 picks (ledger allows up to 12) |
-| Per sector | 1 open, 2 trades a day | 2 | 2 picks per industry |
+| Risk per trade | 1% (less when VIX is high) | 2% | sized by weight |
+| Largest position | 30% of balance as margin | 1/6 of pool | 15% (trim above 18%) |
+| Positions | 5 open, 10 trades a day | 6 stocks (+ NIFTYBEES) | 10 picks (ledger allows up to 12) |
+| Per sector | 1 open, 2 trades a day; no trade with a stock weaker than its sector (live 23 Nov) | 2 | 2 picks per industry |
 | Loss brake | 4R a day incl. open risk; 8R a week halves risk; 30-min cool-off after 3 losses | — | Sells what stops qualifying |
 | Whole portfolio | Circuit breaker at 12% below the peak of all pools combined; `/resume` to restart | | |
 
@@ -388,6 +396,7 @@ Cost review: Sun 15 Nov.
 | 21 Nov | First long-term momentum shadows (top 15, top 5); on paper: 09:15 opening buy, gap fade, auto-bar ladder, score sizing, no SELLs in an uptrend, swing holding period, fill check |
 | 23 Nov | Track-record review (phase 5), including news vs watchlist picks; the selector's first picks (paper). Decided (with a council): the trailing stop stays on paper (an automatic switch was built and withdrawn the same day: its test left out the live early exit); "weaker than its sector" filter live; 5 open positions; sector caps and 15:10 kept; dynamic sector scoring, shorting weak sectors and no position cap rejected |
 | 24 Nov | Swing pool auto mode: the real Rs 60,000 follows the momentum + news rules by itself (Telegram message for every move; idle cash stays in NIFTYBEES; a stock bought by hand is taken over); long-term auto mode built, off until the 18 Dec review. Exploration set-up: every paper variant kept and grouped into families with a luck line and plain verdicts (`trader/families.py`), a ledger of every variant ever tried (`docs/VARIANTS.csv`), the pass bar and kill rules written down; trailing stop replayed with the live early exit |
+| 24 Nov (later) | Market holiday (Guru Nanak Jayanti) handled: brief at 08:30 says "closed today" with no buy buttons; app holiday card and dashboard "Market today" box. A friend's suggestions, with a council: price levels, weekly RSI, chart patterns and the NSE pre-open auction shown on proposals (information only, never a filter), TradingView chart buttons, the 09:25 top 5, a goal page. NSE history 2019-2026 loaded (1,948 days); history backtests: no swing idea beat NIFTYBEES. App: suggested trades, your ratings, time ranges, Mumbai fuel prices |
 | 1 Dec | Review again: the same questions, plus how the 23 Nov changes did |
 | ~8 Dec | Scanner signal review (about 15 trading days): `gold.signal_performance` and the scanner shadow pool vs NIFTYBEES |
 | 18 Dec | Long-term go/no-go (backtest + 5 shadow weeks) |
@@ -418,7 +427,7 @@ Long-term and swing keep their own criteria above. Any go starts at the same poo
 | Decision (9 Nov 2026) | Choice |
 |---|---|
 | Pool sizes | Rs 2 lakh: intraday Rs 40,000, swing Rs 60,000, long-term Rs 1,00,000 |
-| Intraday loss limit | Rs 4,000 (9 Nov); 4R incl. open risk, 8R weekly brake, cost filter (11 Nov) |
+| Intraday loss limit | 4R a day incl. open risk (Rs 1,200–1,600 with VIX), 8R weekly brake, cost filter (from 11 Nov; Rs 4,000 from 9 to 11 Nov) |
 | Swing exits | Automatic on rules set at entry |
 | Swing after failed backtests | Hold the Rs 60,000 in NIFTYBEES |
 | Long-term universe | Nifty 200 |
