@@ -180,6 +180,15 @@ costs); only tested new entries can.
 | B8 | Charting website | TradingView chart button on every proposal; chart links on the app's and dashboard's suggested lists | `links.tradingview`, lakehouse `swing_suggest` |
 | B9 | NSE pre-open auction (owner, 24 Nov) | **Information only:** at ~09:09 the session reads NSE's pre-open data (IEP, gap vs yesterday, buy/sell quantity ratio) for tradable F&O stocks, saves it to S3 `preopen/` and shows the biggest gaps in the plan message and the ratio in the 09:25 ranking. Not given to the agent or the reviewer; tested before any use. NSE may block cloud servers: then that day has none | `trader/preopen.py`, VARIANTS `preopen_imbalance` |
 
+## 15. History backtests (Phase 3 step 4, 24 Nov)
+
+`backtest/history.py`, run by the "History backtests" workflow on the lakehouse's NSE prices 2019-2026 (1,948
+days): momentum (the live swing auto rules, price only), the scanner's strict picks, the 52-week-high breakout (B2),
+double bottom and bull flag breakouts (chart patterns), and rally-range-breakout on daily bars (B5). Judged on
+2020-2024 and once on the held-back 2025-2026; "beats NIFTYBEES" needs more than holding NIFTYBEES over the same days
+and the low end of the average R's 95% range above 0. Results go to the 1 Dec and 18 Dec reviews; nothing live
+changes from them directly. Still to do: the "under 1R of room" filter (B1) on the intraday setups.
+
 ## Gaps found while building this register (for phase 3)
 
 | Where | Says | Code / reality |
