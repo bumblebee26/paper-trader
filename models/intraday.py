@@ -17,6 +17,7 @@ import math
 import config
 import exits
 import fees
+import levels
 import stretch
 
 ONE_R_RS = 400.0                 # ~1% of the intraday pool; results are reported in R, so the size cancels out
@@ -62,10 +63,14 @@ def signals(bars, nifty=None):
         flat += [(d, i) for i in range(len(days[d]))]
     pos = {k: n for n, k in enumerate(flat)}
     all_bars = [days[d][i] for d, i in flat]
+    # daily candles from the cached 5-minute ones, for the "room to the next level" check (trader/levels.py)
+    daily = [{"time": x, "high": max(b["high"] for b in days[x]), "low": min(b["low"] for b in days[x]),
+              "close": days[x][-1]["close"]} for x in order]
     for di, d in enumerate(order):
         if di == 0:
             continue
         t, prev = days[d], days[order[di - 1]]
+        lv = levels.compute(daily[:di], d)
         pdh, pdl, prev_close = max(b["high"] for b in prev), min(b["low"] for b in prev), prev[-1]["close"]
         prev_ranges = [_pct(max(b["high"] for b in days[x]), min(b["low"] for b in days[x]))
                        for x in order[max(0, di - 5):di]]
@@ -112,9 +117,17 @@ def signals(bars, nifty=None):
                 out.append({"date": d, "time": hm, "setup": setup, "side": side, "entry": entry, "stop": stop,
                             "target": entry + (2 if side == "BUY" else -2) * per_share, "i": i, "features": feats,
                             "pdh": pdh, "pdl": pdl,
-                            "stretched": is_stretched(setup, side, t, i, vw[i], prev_ranges)})
+                            "stretched": is_stretched(setup, side, t, i, vw[i], prev_ranges),
+                            "room_r": room_r(lv, side, entry, stop)})
                 fired_today += 1
     return out
+
+
+def room_r(lv, side, entry, stop):
+    """R to the nearest earlier level in the trade's direction (previous day/week/month, 52-week from the cached
+    days); None when clear of every level or unknown."""
+    r = levels.room(lv, side, entry, stop)
+    return r["r"] if r else None
 
 
 def is_stretched(setup, side, t, i, vwap, prev_ranges):
@@ -397,5 +410,8 @@ def signal_from_trade(bars, nifty, trade):
     sig = {"date": d, "time": _hhmm(t[i]), "setup": setup, "side": trade["side"], "entry": entry, "stop": stop,
            "target": float(trade["target"]), "i": i, "features": feats,
            "pdh": max(b["high"] for b in prev), "pdl": min(b["low"] for b in prev),
-           "stretched": is_stretched(setup, trade["side"], t, i, vw[i], prev_ranges)}
+           "stretched": is_stretched(setup, trade["side"], t, i, vw[i], prev_ranges),
+           "room_r": room_r(levels.compute([{"time": x, "high": max(b["high"] for b in days[x]),
+                                             "low": min(b["low"] for b in days[x]), "close": days[x][-1]["close"]}
+                                            for x in order[:di]], d), trade["side"], entry, stop)}
     return label_signal(sig, t)

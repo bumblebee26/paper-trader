@@ -161,9 +161,13 @@ class WalkForward(unittest.TestCase):
         self.assertEqual(min(d["date"] for d in dec), days[12])
         s = walkforward.summarise(dec)
         for rule in ("current", "filter", "early_cut", "let_run", "combined", "no_stop", "wide_2", "close_stop",
-                     "target_1_5r", "level_target", "skip_stretched"):
+                     "target_1_5r", "level_target", "skip_stretched", "skip_low_room"):
             self.assertIn(rule, s)
         self.assertEqual(s["current"]["signals"], len(dec))
+        self.assertTrue(any("room_r" in d for d in self.data))
+        low = [d for d in self.data if d.get("room_r") is not None and d["room_r"] < 1 and d["date"] >= days[12]]
+        self.assertGreaterEqual(sum(x["r"]["skip_low_room"] == 0.0 for x in dec), len(low))
+        self.assertTrue(all(x["r"]["skip_low_room"] in (0.0, x["r"]["current"]) for x in dec))
 
     def test_real_trade_scored_like_a_signal(self):
         sig = next(d for d in self.data if d["setup"].startswith("ORB"))

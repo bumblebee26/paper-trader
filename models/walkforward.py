@@ -178,7 +178,10 @@ def decide(d, m, sig_names, cp_names, lr_names, vol_stop_fn):
             "r": {**d["results"], "filter": d["results"]["current"] if take else 0.0, "vol_stop": vol_r,
                   "early_cut": cut, "let_run": run, "combined": combined,
                   # background rule on trial (trader/stretch.py): skip breakouts that already ran a long way
-                  "skip_stretched": 0.0 if d.get("stretched") else d["results"]["current"]}}
+                  "skip_stretched": 0.0 if d.get("stretched") else d["results"]["current"],
+                  # friend's suggestion B1 (24 Nov): skip when the nearest level is under 1R away
+                  "skip_low_room": 0.0 if (d.get("room_r") is not None and d["room_r"] < 1)
+                  else d["results"]["current"]}}
 
 
 def summarise(decisions):
@@ -189,7 +192,8 @@ def summarise(decisions):
         vals = [(d["date"], d["r"][rule]) for d in decisions if d["r"].get(rule) is not None]
         if not vals:
             continue
-        traded = [v for _, v in vals if not (rule in ("filter", "combined", "skip_stretched") and v == 0.0)]
+        skips = ("filter", "combined", "skip_stretched", "skip_low_room")
+        traded = [v for _, v in vals if not (rule in skips and v == 0.0)]
         per_day = {}
         for day, v in vals:
             per_day[day] = per_day.get(day, 0.0) + v
