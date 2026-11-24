@@ -144,7 +144,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 |---|---|
 | G1 | You merge PRs unless you say "merge", "auto merge" or "push this change"; security-scan suppressions are your decision |
 | G2 | Plan first, then ask before changing anything; compact answers |
-| G3 | Reviews: 1 Dec (repeat of 23 Nov plus the new rules; also: should swing auto mode buy the scanner's strict picks too? From 24 Nov their buttons say 'Hand buy ... (outside auto rules)'); and swing auto mode itself: its rules trailed NIFTYBEES on the 2019-2026 history (+32.2% vs +106.3% on 2020-24, -19.1% vs +10.8% on 2025-26; section 15). Owner kept it on until then (24 Nov); and replacing the 'stretched' filter with 'skip when the next level is under 1R away' (walk-forward 24 Nov, 2,182 setups over 48 days: -305R vs -383R for stretched and -478R with no filter; average -0.211R vs -0.255R and -0.219R, so it beats stretched but the setups still lose), ~8 Dec scanner, mid-Dec swing shadows, 18 Dec long-term and real-money go/no-go |
+| G3 | Reviews: 1 Dec (repeat of 23 Nov plus the new rules; also: should swing auto mode buy the scanner's strict picks too? From 24 Nov their buttons say 'Hand buy ... (outside auto rules)'); and swing auto mode itself: its rules trailed NIFTYBEES on the 2019-2026 history (+32.2% vs +106.3% on 2020-24, -19.1% vs +10.8% on 2025-26; section 15). Owner kept it on until then (24 Nov); and replacing the 'stretched' filter with 'skip when the next level is under 1R away' (walk-forward 24 Nov, 2,182 setups over 48 days: -305R vs -383R for stretched and -478R with no filter; average -0.211R vs -0.255R and -0.219R, so it beats stretched but the setups still lose), ~8 Dec scanner, mid-Dec swing shadows, 18 Dec long-term and real-money go/no-go (bring: long-term momentum trailed NIFTYBEES on 2025-26, top 15 +4.7% and top 5 -24.6% vs +10.8%; drift band not adopted; section 16) |
 | G4 | 23 Nov council decisions: trailing auto-switch, sector filter live, 5 open, sector caps and 15:10 kept; dynamic sector scoring, shorting weak sectors, no position cap and a later square-off rejected |
 
 ## 13. Exploration: families, lanes and the pass bar (from 24 Nov)
@@ -192,7 +192,7 @@ changes from them directly. Still to do: the "under 1R of room" filter (B1) on t
 
 Results (24 Nov run): nothing beat NIFTYBEES in either period; on 2025-2026 five of six lost money. Momentum +32.2% / -19.1%, scanner +1.5% / -15.2%, 52-week high +29.6% / -14.1%, bull flag +62.4% / -12.2%, double bottom -46.0% / -32.3%, rally-range -21.0% / +4.9% (2020-24 / 2025-26; NIFTYBEES +106.3% / +10.8%). Report: the Claude doc "History backtests: NSE 2019-2026".
 
-## Ideas taken from the trader-skill pack (24 Nov)
+## 16. Ideas taken from the trader-skill pack (24 Nov)
 
 The owner asked to bring in what helps from github.com/Jakeschincariol/trader-skill (US-market skills: SEC filings,
 NYSE, Alpaca). The pack itself isn't installed: its data and broker parts don't apply to NSE dummy trading. Three ideas
@@ -205,6 +205,12 @@ were rebuilt in our own code; a fourth (after-tax P&L) was dropped by the owner.
 - Drift band (`backtest/history.py` run_lt, "History backtests" with only = lt): the long-term momentum shadows with
   and without bringing a drifted holding back to its equal weight (2 points for the top 15, 5 for the top 5). Nothing
   live changes; the result goes to the 18 Dec long-term review, and a live shadow only if it beats the current rules.
+
+  Result (24 Nov run, NSE 2019-2026, Rs 1 lakh, costs included; 2020-24 / held-back 2025-26; NIFTYBEES +106.3% /
+  +10.8%): top 15 +388.0% / +4.7% (band +308.0% / +4.6%); top 5 +436.5% / -24.6%, deepest fall 42.2% (band +342.7% /
+  -20.5%, fall 37.9%). The band cuts the winners momentum lives on and doesn't fix 2025-26: not adopted, no live
+  shadow. The bigger point for 18 Dec: both momentum versions trailed NIFTYBEES on the held-back years, and the top 5
+  lost a quarter of its value.
 - (Lakehouse) the long-term quality picks' tests with their margins: dashboard and phone app.
 
 ## Gaps found while building this register
