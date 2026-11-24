@@ -182,7 +182,7 @@ def confirm(send=True, now=None):
         if button and r.get("stop") is not None and r.get("target2") is not None:
             data = f"sw:{r['symbol']}:{r['stop']:.2f}:{r['target2']:.2f}"
             if len(data.encode()) <= 64:
-                buttons.append([(f"Swing buy {r['symbol']} (asks first)", data)])
+                buttons.append([(f"Hand buy {r['symbol']} (outside auto rules, asks first)", data)])
     lines.append("A triggered or in-zone pick with strong opening volume is the scanner's plan working; the rest wait.")
     if send:
         tg.send("\n".join(lines), buttons=buttons or None)

@@ -144,7 +144,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 |---|---|
 | G1 | You merge PRs unless you say "merge", "auto merge" or "push this change"; security-scan suppressions are your decision |
 | G2 | Plan first, then ask before changing anything; compact answers |
-| G3 | Reviews: 1 Dec (repeat of 23 Nov plus the new rules), ~8 Dec scanner, mid-Dec swing shadows, 18 Dec long-term and real-money go/no-go |
+| G3 | Reviews: 1 Dec (repeat of 23 Nov plus the new rules; also: should swing auto mode buy the scanner's strict picks too? From 24 Nov their buttons say 'Hand buy ... (outside auto rules)'), ~8 Dec scanner, mid-Dec swing shadows, 18 Dec long-term and real-money go/no-go |
 | G4 | 23 Nov council decisions: trailing auto-switch, sector filter live, 5 open, sector caps and 15:10 kept; dynamic sector scoring, shorting weak sectors, no position cap and a later square-off rejected |
 
 ## 13. Exploration: families, lanes and the pass bar (from 24 Nov)
