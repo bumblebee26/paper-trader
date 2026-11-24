@@ -188,10 +188,6 @@ def features(t, i, vw, side, entry, per_share, setup, prev_close, prev_ranges, o
     return f
 
 
-def feature_names(sig):
-    return sorted(sig["features"])
-
-
 # ------------------------------------------------------------- simulation --
 def qty_for(entry, per_share):
     cap = BALANCE_RS * config.MAX_POSITION_MARGIN_PCT / 100 * config.INTRADAY_LEVERAGE / entry
