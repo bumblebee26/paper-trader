@@ -144,7 +144,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 |---|---|
 | G1 | You merge PRs unless you say "merge", "auto merge" or "push this change"; security-scan suppressions are your decision |
 | G2 | Plan first, then ask before changing anything; compact answers |
-| G3 | Reviews: 1 Dec (repeat of 23 Nov plus the new rules; also: should swing auto mode buy the scanner's strict picks too? From 24 Nov their buttons say 'Hand buy ... (outside auto rules)'), ~8 Dec scanner, mid-Dec swing shadows, 18 Dec long-term and real-money go/no-go |
+| G3 | Reviews: 1 Dec (repeat of 23 Nov plus the new rules; also: should swing auto mode buy the scanner's strict picks too? From 24 Nov their buttons say 'Hand buy ... (outside auto rules)'); and swing auto mode itself: its rules trailed NIFTYBEES on the 2019-2026 history (+32.2% vs +106.3% on 2020-24, -19.1% vs +10.8% on 2025-26; section 15). Owner kept it on until then (24 Nov), ~8 Dec scanner, mid-Dec swing shadows, 18 Dec long-term and real-money go/no-go |
 | G4 | 23 Nov council decisions: trailing auto-switch, sector filter live, 5 open, sector caps and 15:10 kept; dynamic sector scoring, shorting weak sectors, no position cap and a later square-off rejected |
 
 ## 13. Exploration: families, lanes and the pass bar (from 24 Nov)
@@ -188,6 +188,8 @@ double bottom and bull flag breakouts (chart patterns), and rally-range-breakout
 2020-2024 and once on the held-back 2025-2026; "beats NIFTYBEES" needs more than holding NIFTYBEES over the same days
 and the low end of the average R's 95% range above 0. Results go to the 1 Dec and 18 Dec reviews; nothing live
 changes from them directly. Still to do: the "under 1R of room" filter (B1) on the intraday setups.
+
+Results (24 Nov run): nothing beat NIFTYBEES in either period; on 2025-2026 five of six lost money. Momentum +32.2% / -19.1%, scanner +1.5% / -15.2%, 52-week high +29.6% / -14.1%, bull flag +62.4% / -12.2%, double bottom -46.0% / -32.3%, rally-range -21.0% / +4.9% (2020-24 / 2025-26; NIFTYBEES +106.3% / +10.8%). Report: the Claude doc "History backtests: NSE 2019-2026".
 
 ## Gaps found while building this register (for phase 3)
 
