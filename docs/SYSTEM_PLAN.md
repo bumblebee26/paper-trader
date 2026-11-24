@@ -322,7 +322,7 @@ Rs 16 per sell plus slippage.
 | When | What you get |
 |---|---|
 | 08:30 | Pre-market brief |
-| 09:08 | Day plan and focus list |
+| ~09:10 | Day plan and focus list, with the pre-open auction (session from 08:55) |
 | During sessions | Proposals (suggestion, reviewer, plain words, market check, news), fills, exits, alerts |
 | ~15:20 | Day report (with the day's paper tests and, from 23 Nov, the selector's picks for tomorrow) |
 | Fri 17:55 | Weekly report |

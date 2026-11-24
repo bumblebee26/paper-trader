@@ -4,7 +4,7 @@
 # 23:30, so ratings given in the evening (or at the weekend, picked up Monday) reach the lakehouse.
 locals {
   kicks = {
-    morning   = "cron(8 9 ? * MON-FRI *)"
+    morning   = "cron(55 8 ? * MON-FRI *)" # 08:55 from 25 Nov (was 09:08): plan before the pre-open auction ends; rollback = cron(8 9 ...)
     afternoon = "cron(27 12 ? * MON-FRI *)"
   }
 

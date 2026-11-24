@@ -25,6 +25,7 @@ import news
 import preopen
 import scanner
 import sectors
+import storage
 import telegram_bot as tg
 from http_client import log
 
@@ -76,12 +77,78 @@ def start_day(focus: list[str], plan: dict | None = None, send_to_telegram: bool
     plan = plan or {}
     focus = [s.upper() for s in focus][:config.FOCUS_MAX]
     result = _run(engine.start_day, plan, focus)
-    # NSE's pre-open auction (09:00-09:08): saved and shown, never part of the decisions (trader/preopen.py)
-    pre = preopen.capture(set(engine.universe()) | set(DEFAULT_WATCHLIST))
+    text = brief.plan_message({**plan, "risk_per_trade_pct": result["risk_per_trade_pct"]}, focus)
+    # NSE's pre-open auction (09:00-09:08): saved and shown, never part of the decisions (trader/preopen.py).
+    # Before its final read (PREOPEN_FINAL_AT) the plan is held and wait_for_open sends both together.
+    if market.now_ist() < _clock(config.PREOPEN_FINAL_AT):
+        storage.put_json(PLAN_PENDING_KEY, {"day": market.now_ist().strftime("%Y-%m-%d"),
+                                            "text": text if send_to_telegram else None})
+        result["plan_message"] = "held: call wait_for_open, which sends it with the pre-open auction at ~09:10"
+        return result
+    pre = preopen.capture(_preopen_symbols())
     if send_to_telegram:
-        tg.send(brief.plan_message({**plan, "risk_per_trade_pct": result["risk_per_trade_pct"]}, focus)
-                + "\n" + "\n".join(preopen.lines(pre)))
+        tg.send(text + "\n" + "\n".join(preopen.lines(pre)))
     return result
+
+
+PLAN_PENDING_KEY = "state/plan_pending.json"
+
+
+def _clock(hhmmss):
+    parts = [int(x) for x in hhmmss.split(":")] + [0]
+    return market.now_ist().replace(hour=parts[0], minute=parts[1], second=parts[2], microsecond=0)
+
+
+def _preopen_symbols():
+    return set(engine.universe()) | set(DEFAULT_WATCHLIST)
+
+
+def _wait_until(target):
+    """Sleep until `target` IST while answering Telegram (commands, /plan) and keeping the heartbeat."""
+    while market.now_ist() < target:
+        left = (target - market.now_ist()).total_seconds()
+        state = engine.load()
+        try:
+            tg.poll(state, wait=max(1, min(10, int(left))))
+            engine.answer_requests(state)
+        except Exception:  # noqa: BLE001 - network blip: just sleep
+            time.sleep(max(1, min(10, left)))
+        finally:
+            engine.save(state)
+        engine.heartbeat()
+
+
+@mcp.tool()
+def wait_for_open() -> dict:
+    """Morning only, after start_day: wait through NSE's pre-open auction without polling prices. At 09:04 it saves an
+    indicative pre-open read (not sent); after the random close (~09:09:30) it reads the final one and sends the day
+    plan with the biggest gaps. Returns at once if that has already happened. Information only."""
+    now = market.now_ist()
+    final_at = _clock(config.PREOPEN_FINAL_AT)
+    out = {"indicative": None, "final": None}
+    if now < _clock(config.PREOPEN_INDICATIVE_AT):
+        _wait_until(_clock(config.PREOPEN_INDICATIVE_AT))
+    if market.now_ist() < final_at:
+        out["indicative"] = len(preopen.capture(_preopen_symbols(), kind="indicative"))
+        _wait_until(final_at)
+    pending = storage.get_json(PLAN_PENDING_KEY) or {}
+    if pending.get("day") != market.now_ist().strftime("%Y-%m-%d"):
+        out["time_ist"] = market.now_ist().strftime("%H:%M:%S")
+        out["plan"] = "already sent"
+        return out
+    pre = {}
+    for attempt in range(3):                      # NSE can be slow to publish the final book, or block a request
+        pre = preopen.capture(_preopen_symbols())
+        if pre:
+            break
+        time.sleep(20)
+    out["final"] = len(pre)
+    if pending.get("text"):
+        tg.send(pending["text"] + "\n" + "\n".join(preopen.lines(pre)))
+    storage.put_json(PLAN_PENDING_KEY, {})
+    out["time_ist"] = market.now_ist().strftime("%H:%M:%S")
+    out["plan"] = "sent"
+    return out
 
 
 @mcp.tool()

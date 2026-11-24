@@ -39,7 +39,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 | I2 | Universe: 36-stock watchlist across 11 sectors, plus news radar (any Nifty 200 stock passing guardrails: main-board EQ, Rs 50+, Rs 50 crore+ a day; up to 12 flagged names in the morning, up to 5 extra during the day on a fresh NSE filing) | live | `trader/sectors.py`, `config.NEWS_FOCUS_MAX`, `stocks.gold.intraday_universe` |
 | I3 | Focus list: up to 15 stocks, at least 6 sectors; re-ranked at 09:25 by opening relative volume ("stocks in play"); scanner strict picks +1 | live | `config.FOCUS_MAX`, `IN_PLAY_AT`, `IN_PLAY_BARS` |
 | I4 | Cycle: a few seconds after each 5-minute candle closes; stops checked every minute; a fresh filing starts a cycle at once | live | `config.WAKE_AFTER_CLOSE_SEC`, `MONITOR_EVERY_SEC` |
-| I5 | Sessions: Claude Code (Opus) in GitHub Actions, morning (kicker 09:08, cron backup 09:16) and afternoon (12:27 / 12:36), up to 4 h each | live | `trading-session.yml`, `infra/aws/schedules.tf` |
+| I5 | Sessions: Claude Code (Opus) in GitHub Actions, morning (kicker 08:55 from 25 Nov, was 09:08; cron backup 09:00, was 09:16) and afternoon (12:27 / 12:36), up to 4 h each | live | `trading-session.yml`, `infra/aws/schedules.tf` |
 | I6 | Pre-market plan: risk from India VIX (NSE's own index file first, Yahoo backup), bias from Nifty 50's trend; US markets as support only; a source missing its session is left out and named, never replaced by an older day | live | `trader/brief.py`, `stocks.silver.nse_index_daily` |
 | I7 | Entry window 09:30–14:30 on NSE trading days (holidays from NSE's own list) | live | `config.ENTRY_START/END`, `trader/nse_calendar.py` |
 
@@ -179,6 +179,7 @@ costs); only tested new entries can.
 | B7 | Ranked list | The 09:25 in-play ranking's top 5 with scores goes to Telegram, labelled a ranking, not a chance of profit | `engine.in_play_message` |
 | B8 | Charting website | TradingView chart button on every proposal; chart links on the app's and dashboard's suggested lists | `links.tradingview`, lakehouse `swing_suggest` |
 | B9 | NSE pre-open auction (owner, 24 Nov) | **Information only:** at ~09:09 the session reads NSE's pre-open data (IEP, gap vs yesterday, buy/sell quantity ratio) for tradable F&O stocks, saves it to S3 `preopen/` and shows the biggest gaps in the plan message and the ratio in the 09:25 ranking. Not given to the agent or the reviewer; tested before any use. NSE may block cloud servers: then that day has none | `trader/preopen.py`, VARIANTS `preopen_imbalance` |
+| B10 | Start earlier (owner, council 24 Nov) | Kicker 08:55, backup 09:00. The plan is held until the final pre-open read after the random close (~09:09:30) and sent with it; a 09:04 indicative read is saved, never sent; nothing is read from NSE before 09:00 (the page still shows yesterday's). The 09:25 message adds an opening read (Nifty gap kept or faded, stocks up from their open, opening range vs a usual day, India VIX change); every stock's opening numbers and pre-open reads go to S3 `opening/` for tests (do gap-aligned ORBs beat gap-against ones? does a buy/sell ratio over 1.5x point the right way?). Entries still from 09:30. Rollback: the kicker cron in `schedules.tf` | `server.wait_for_open`, `engine.opening_read` |
 
 ## 15. History backtests (Phase 3 step 4, 24 Nov)
 

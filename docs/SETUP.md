@@ -144,6 +144,6 @@ Within about 3 minutes Telegram shows:
 ## Part F: Turn on exact-time starts
 
 On `dev`, set `dispatch_enabled = true` in `infra/aws/project.auto.tfvars`, push, open a PR, merge.
-From then on sessions start at 09:08 and 12:27 IST; GitHub's cron stays as a backup.
+From then on sessions start at 08:55 and 12:27 IST; GitHub's cron stays as a backup.
 
 The first real session is the next weekday morning.

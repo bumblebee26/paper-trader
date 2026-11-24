@@ -109,6 +109,10 @@ NEWS_FOCUS_MAX = _i("NEWS_FOCUS_MAX", 5)
 # Stocks in play: at IN_PLAY_AT the focus list is re-ranked by opening relative volume (the first 10 minutes'
 # volume vs the same 10 minutes on the last ~14 days), so the day's most active names are the ones scanned.
 IN_PLAY_AT = os.environ.get("IN_PLAY_AT", "09:25")
+# The NSE pre-open auction (from 25 Nov; the morning session starts at 08:55): an indicative read while orders can still
+# change (saved, never sent) and the final read after the random close (07-08 min past 9), sent with the day plan.
+PREOPEN_INDICATIVE_AT = os.environ.get("PREOPEN_INDICATIVE_AT", "09:04:00")
+PREOPEN_FINAL_AT = os.environ.get("PREOPEN_FINAL_AT", "09:09:30")
 IN_PLAY_BARS = _i("IN_PLAY_BARS", 2)                      # 5-minute bars from 09:15 = the first 10 minutes
 # Cycle speed (from 19 Nov): wake a few seconds after each 5-minute candle closes and go as soon as Yahoo shows the
 # next candle (so the closed one is final; at most CANDLE_WAIT_MAX_SEC after the close; was a fixed 20 seconds).

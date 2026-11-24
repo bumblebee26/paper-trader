@@ -49,8 +49,9 @@ afternoon. All times IST; every step is scheduled, nothing needs you except the 
 | every minute 09:00–15:59; every 30 min 08:00–19:30 otherwise | Mon–Fri | Lakehouse | NSE company news to the news volume (`latest.jsonl`, read by the trader within about a minute); Business Standard markets every 4 min, RBI and SEBI every 5 min |
 | 08:30 | Mon–Fri | Lakehouse | Pre-market brief (India first; global as support, live from Yahoo; sources missing their day left out) and the technical scanner to Telegram. First it saves a pre-open snapshot of 21 world markets from Yahoo to `landing/premarket/` |
 | ~08:35 | Mon–Fri | Lakehouse | The snapshot starts job `stocks-market-preopen`: market pipeline, then the dashboard summaries, so Global markets is current by about 08:45, before NSE opens |
-| 09:08 | Mon–Fri | Trader | Kicker Lambda starts the morning session; plan + focus list to Telegram |
-| 09:16 | Mon–Fri | Trader | GitHub cron backup start (skips if already running) |
+| 08:55 | Mon–Fri | Trader | Kicker Lambda starts the morning session (09:08 until 24 Nov); the plan waits for the pre-open auction |
+| 09:00 | Mon–Fri | Trader | GitHub cron backup start (skips if already running) |
+| ~09:10 | Mon–Fri | Trader | Plan + focus list + NSE pre-open gaps to Telegram (indicative read at 09:04 saved only) |
 | 09:20–12:25 | Mon–Fri | Trader | Every 5 min, a few seconds after each candle closes: check positions, scan focus list, propose; you tap YES/NO. Between cycles stops and targets are checked every minute (from 20 Nov also the early exit on a real break of a trade's exit line), and a fresh filing on a tradable stock starts a cycle at once |
 | 09:45 | Mon–Fri | Trader | Guardian: the scanner's strict picks checked against the first half hour |
 | 11:00 | Tue–Sat | Lakehouse | Massive: previous US session, all US stocks (history only; the free plan releases it ~10:30 IST) |

@@ -293,8 +293,8 @@ Commands (with or without the /):
 YES / NO  answer the latest proposal (or tap its buttons)
 /help  this list (also /prompts, /commands, or ask "what can you do?")
 
-On its own (Mon-Fri IST): 08:30 brief and technical scanner (lakehouse); 09:08 day plan; 09:45 scanner check; proposals until 14:30 (auto mode: placed if 55%+ YES; otherwise each needs your YES within 3 min); stops, targets and EXIT watched every minute; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
-During sessions (09:08-15:25 IST) I reply within seconds; at other times within about 2 minutes. Dummy money only."""
+On its own (Mon-Fri IST): 08:30 brief and technical scanner (lakehouse); ~09:10 day plan with the pre-open auction; 09:45 scanner check; proposals until 14:30 (auto mode: placed if 55%+ YES; otherwise each needs your YES within 3 min); stops, targets and EXIT watched every minute; 15:10 square-off; ~15:20 day report; 15:45 journal to the lakehouse; Friday ~17:55 weekly report.
+During sessions (08:55-15:25 IST) I reply within seconds; at other times within about 2 minutes. Dummy money only."""
 
 
 def shadow_text(state) -> str:
@@ -346,7 +346,7 @@ def shadow_text(state) -> str:
 def _plan_text(state) -> str:
     plan = state.get("plan")
     if not plan:
-        return "[MOCK] No plan yet today. It is set at the start of the morning session (09:08 IST)."
+        return "[MOCK] No plan yet today. It is set at the start of the morning session (08:55 IST) and sent at ~09:10."
     import brief
 
     text = brief.plan_message({**plan, "risk_per_trade_pct": state.get("day_risk_pct")}, state.get("focus", []))
@@ -813,7 +813,13 @@ def opening_rvol(symbol, bars=None):
     rvol = sum(b["volume"] for b in now_bars) / (sum(usual) / len(usual))
     prev_close = days[past[-1]][-1]["close"]
     gap = (now_bars[0]["open"] - prev_close) / prev_close * 100 if prev_close else 0.0
-    return {"symbol": symbol, "rvol": round(rvol, 2), "gap_pct": round(gap, 2)}
+    # from 25 Nov, logged for later tests: the first 10 minutes' move and the opening range against a usual day's range
+    first10 = (now_bars[-1]["close"] / now_bars[0]["open"] - 1) * 100 if now_bars[0]["open"] else 0.0
+    day_ranges = [max(b["high"] for b in days[d]) - min(b["low"] for b in days[d]) for d in past]
+    usual_range = sum(day_ranges) / len(day_ranges) if day_ranges else 0.0
+    or_width = max(b["high"] for b in now_bars) - min(b["low"] for b in now_bars)
+    return {"symbol": symbol, "rvol": round(rvol, 2), "gap_pct": round(gap, 2), "first10_pct": round(first10, 2),
+            "or_vs_day_range": round(or_width / usual_range, 2) if usual_range else None}
 
 
 def rank_in_play(state, pause=0.0) -> list:
@@ -847,18 +853,74 @@ def rank_in_play(state, pause=0.0) -> list:
     state["focus"] = list(dict.fromkeys([*top, *[s for s in state["positions"] if s not in top]]))
     state["in_play"] = ranked[:20]
     journal("in_play", note=" ".join(f"{r['symbol']}:{r['rvol']}x" for r in ranked[:config.FOCUS_MAX]))
+    pre = preopen.today()
+    read = opening_read(ranked)
+    try:   # every stock's opening numbers with its pre-open reads, for later tests (information only)
+        storage.put_json(f"opening/{_today()}.json", {
+            "read": read, "stocks": [{**r, "rank": i + 1, "preopen": pre.get(r["symbol"]),
+                                      "preopen_indicative": preopen.today("indicative").get(r["symbol"])}
+                                     for i, r in enumerate(ranked)]})
+    except Exception as err:  # noqa: BLE001
+        log.warning("Opening log failed: %s", err)
     try:
-        tg.send(in_play_message(ranked, pre=preopen.today()))
+        tg.send(in_play_message(ranked, pre=pre, read=read))
     except Exception as err:  # noqa: BLE001 - the ranking matters more than the message
         log.warning("In-play message failed: %s", err)
     return ranked[:config.FOCUS_MAX]
 
 
-def in_play_message(ranked, top=5, pre=None) -> str:
+def opening_read(ranked) -> dict:
+    """The first 10 minutes (from 25 Nov, information only): did Nifty keep or fade its gap, how many ranked stocks
+    are up from their open, the median opening range against a usual day's range, and India VIX's change."""
+    out = {}
+    try:
+        bars = market.candles("^NSEI", "5m", 5)
+        days = {}
+        for b in bars:
+            days.setdefault(b["time"][:10], []).append(b)
+        order = sorted(days)
+        today = [b for b in days[order[-1]] if b["time"][11:16] >= "09:15"][:config.IN_PLAY_BARS]
+        prev_close = days[order[-2]][-1]["close"]
+        if len(today) == config.IN_PLAY_BARS and prev_close:
+            gap = (today[0]["open"] / prev_close - 1) * 100
+            move = (today[-1]["close"] / today[0]["open"] - 1) * 100
+            out["nifty_gap_pct"], out["nifty_first10_pct"] = round(gap, 2), round(move, 2)
+            out["nifty_gap"] = ("kept" if gap * move > 0 else "faded") if abs(gap) >= 0.1 else "flat open"
+    except Exception as err:  # noqa: BLE001
+        log.warning("Opening read (Nifty) failed: %s", err)
+    moves = [r["first10_pct"] for r in ranked if r.get("first10_pct") is not None]
+    if moves:
+        out["up_from_open"] = f"{sum(m > 0 for m in moves)}/{len(moves)}"
+    widths = sorted(r["or_vs_day_range"] for r in ranked if r.get("or_vs_day_range"))
+    if widths:
+        out["median_or_vs_day_range"] = widths[len(widths) // 2]
+    try:
+        vix = market.daily_raw("^INDIAVIX", "5d")
+        if len(vix) >= 2 and vix[-2]["close"]:
+            out["india_vix_change_pct"] = round((vix[-1]["close"] / vix[-2]["close"] - 1) * 100, 1)
+    except Exception as err:  # noqa: BLE001
+        log.warning("Opening read (VIX) failed: %s", err)
+    return out
+
+
+def in_play_message(ranked, top=5, pre=None, read=None) -> str:
     """The 09:25 ranking (from 24 Nov, the friend's suggestion B7): the top 5 with their scores. A score is opening
-    activity, not a chance of profit."""
+    activity, not a chance of profit. From 25 Nov it starts with the opening read (information only)."""
     lines = [f"[MOCK] Stocks in play, {config.IN_PLAY_AT} (ranked by opening activity; a ranking, not a chance of "
              "profit):"]
+    if read:
+        bits = []
+        if "nifty_gap_pct" in read:
+            bits.append(f"Nifty opened {read['nifty_gap_pct']:+.2f}% and moved {read['nifty_first10_pct']:+.2f}% in "
+                        f"10 min ({read['nifty_gap']})")
+        if read.get("up_from_open"):
+            bits.append(f"{read['up_from_open']} stocks up from their open")
+        if read.get("median_or_vs_day_range") is not None:
+            bits.append(f"opening range {read['median_or_vs_day_range']:.0%} of a usual day's range")
+        if read.get("india_vix_change_pct") is not None:
+            bits.append(f"India VIX {read['india_vix_change_pct']:+.1f}%")
+        if bits:
+            lines.append("Opening read: " + "; ".join(bits) + ".")
     for i, r in enumerate(ranked[:top], 1):
         extra = [f"gap {r['gap_pct']:+.1f}%"] + (["news"] if r.get("news") else []) \
             + ([f"scanner {r['scanner']}"] if r.get("scanner") else [])
