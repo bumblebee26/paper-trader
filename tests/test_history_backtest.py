@@ -69,6 +69,25 @@ class Signals(unittest.TestCase):
                                                          {"date": "2020-12-31", "close": 130}]})
         self.assertEqual(s2["verdict"], "could be luck")
 
+    def test_prices_load_in_batches(self):
+        from unittest import mock
+
+        import run_history
+        import run_swing
+        syms = [{"symbol": f"S{k:03d}"} for k in range(60)]
+        calls = []
+
+        def fake(sql, max_wait=600):
+            if "percentile_approx" in sql:
+                return syms
+            calls.append(sql)
+            return [{"symbol": "S000", "d": "2019-01-01", "open": "1", "high": "1", "low": "1", "close": "1",
+                     "prev_close": "1", "volume": "1"}]
+        with mock.patch.object(run_swing, "sql_all", side_effect=fake):
+            data = run_history.load_data()
+        self.assertEqual(len(calls), 3)                     # 61 stocks (with NIFTYBEES) in batches of 25
+        self.assertEqual(len(data["S000"]), 3)
+
 
 if __name__ == "__main__":
     unittest.main()
