@@ -37,7 +37,7 @@ KEEP_DAYS = 250
 UNIVERSE_SQL = "SELECT symbol FROM stocks.gold.intraday_universe WHERE eligible ORDER BY symbol"
 RULE_ORDER = ("current", "filter", "vol_stop", "early_cut", "let_run", "combined", "no_stop", "wide_1_5", "wide_2",
               "close_stop", "trailing", "half_and_run", "breakeven", "time_stop", "target_1_5r", "level_target",
-              "skip_stretched")
+              "skip_stretched", "skip_low_room")
 RULE_WORDS = {
     "current": "current rules", "filter": "model: trade filter", "vol_stop": "model: volatility stop",
     "early_cut": "model: early cut", "let_run": "model: let winners run", "combined": "models combined",
@@ -46,6 +46,7 @@ RULE_WORDS = {
     "breakeven": "stop to entry at +1R", "time_stop": "60-minute time stop",
     "target_1_5r": "target 1.5R", "level_target": "target at yesterday's high/low",
     "skip_stretched": "skip stretched breakouts",
+    "skip_low_room": "skip when the next level is under 1R away",
 }
 
 
