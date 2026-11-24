@@ -1,8 +1,8 @@
 # Mock intraday trading session: Claude Code drives the paper-trader MCP tools, you approve on Telegram.
 #
 # Triggers (all times IST, Mon-Fri):
-#   AWS kicker Lambda (exact time): 09:08 morning, 12:27 afternoon  -> workflow_dispatch
-#   GitHub cron backup (can run late): 09:16 morning, 12:36 afternoon
+#   AWS kicker Lambda (exact time): 08:55 morning (09:08 until 24 Nov), 12:27 afternoon  -> workflow_dispatch
+#   GitHub cron backup (can run late): 09:00 morning, 12:36 afternoon
 # Each phase runs once per day: the first trigger claims it in S3, later ones skip.
 #
 # Required GitHub settings (docs/SETUP.md, part D):
@@ -21,7 +21,7 @@ on:
         options: [auto, morning, afternoon, test]
         default: auto
   schedule:
-    - cron: "46 3 * * 1-5" # 09:16 IST morning backup
+    - cron: "30 3 * * 1-5" # 09:00 IST morning backup (before the 09:15 open)
     - cron: "6 7 * * 1-5"  # 12:36 IST afternoon backup
 
 permissions:
@@ -105,7 +105,7 @@ jobs:
           tools="$tools,mcp__paper-trader__propose_trade,mcp__paper-trader__wait_for_decision"
           tools="$tools,mcp__paper-trader__execute_approved_trade,mcp__paper-trader__monitor_positions"
           tools="$tools,mcp__paper-trader__close_position,mcp__paper-trader__notify,mcp__paper-trader__company_news"
-          tools="$tools,mcp__paper-trader__wait_for_next_candle,mcp__paper-trader__end_of_day_report"
+          tools="$tools,mcp__paper-trader__wait_for_next_candle,mcp__paper-trader__wait_for_open,mcp__paper-trader__end_of_day_report"
           claude -p "$(python trader/session_ctl.py prompt "$PHASE")" \
             --append-system-prompt-file prompts/trading_rules.md \
             --mcp-config "$RUNNER_TEMP/mcp.json" \

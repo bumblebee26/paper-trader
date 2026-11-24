@@ -19,7 +19,9 @@ PHASES = {
             "Morning session. 1) Call premarket_context. 2) Pick a focus list of at most 15 NSE symbols from "
             "default_watchlist spread across at least 6 sectors (no more than 3 from one sector), add up to 3 scanner.strict picks and up to 3 unusual_volume_nse names "
             "with clear volume (>=2x) and price >= 100, and prefer names whose ADR moved strongly. 3) Call start_day(focus, plan) with the "
-            "plan from step 1. 4) Call wait_for_next_candle(session_end='{end}') until 09:20 has passed. "
+            "plan from step 1. 4) Call wait_for_open() once (it waits through NSE's pre-open auction and sends the "
+            "plan at ~09:10; no prices before the 09:15 open). Then call wait_for_next_candle(session_end='{end}') "
+            "until 09:20 has passed. "
             "If run_cycle shows no Nifty candle dated today by 09:30, it is a holiday: notify 'No market "
             "today' and stop. 5) Loop: run_cycle, handle candidates per the rules, "
             "wait_for_next_candle(session_end='{end}'), until session_over. If positions are still open then, "
@@ -75,7 +77,7 @@ def main(argv):
             if phase == "morning" and engine.claim_session("holiday_notice"):  # tell the user once
                 nxt = market.next_trading_day_after(now)
                 tg.send(f"[MOCK] No market today: NSE is closed for {name}. No sessions today; "
-                        f"the next one starts {nxt:%a %d %b} at 09:08.")
+                        f"the next one starts {nxt:%a %d %b} at 08:55.")
             return 3
         if not engine.claim_session(phase):
             print(f"{phase} already ran today, skipping")

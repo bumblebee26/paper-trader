@@ -6,7 +6,7 @@
 
 | Step | Arrow | What happens |
 |---|---|---|
-| **1–2** | Scheduler → kicker → session | At 09:08 and 12:27 IST the kicker starts `trading-session.yml` through the GitHub API. GitHub's own cron (09:16, 12:36) is the backup; a phase runs once per day. |
+| **1–2** | Scheduler → kicker → session | At 08:55 (09:08 until 24 Nov) and 12:27 IST the kicker starts `trading-session.yml` through the GitHub API. GitHub's own cron (09:00, 12:36) is the backup; a phase runs once per day. |
 | **3** | Session → lakehouse gold | `premarket_context` reads the lakehouse's gold tables over SQL; `start_day` turns them into today's risk and focus list. |
 | **4** | Yahoo → session | 1-minute and 5-minute NSE candles for scanning, fills and exits. Each cycle starts as soon as Yahoo shows the next 5-minute candle (about 3 s after the close, at most 25 s); while waiting, stops and targets are checked on 1-minute candles every minute. |
 | **5–6** | Session ↔ Telegram | Proposals with YES/NO buttons; your replies and `EXIT SYMBOL` messages come back through long polling. |
@@ -36,7 +36,7 @@ would have made.
 
 | Component | What it does |
 |---|---|
-| **Trading session** (GitHub Actions) | Morning (09:08–12:25) and afternoon (12:27–15:25) runs. Claude Code uses the MCP tools in `trader/server.py`; rules in `prompts/trading_rules.md`. |
+| **Trading session** (GitHub Actions) | Morning (08:55–12:25: plan held until `wait_for_open` reads the final pre-open auction at ~09:09:30) and afternoon (12:27–15:25) runs. Claude Code uses the MCP tools in `trader/server.py`; rules in `prompts/trading_rules.md`. |
 | **MCP tools** | `premarket_context`, `start_day`, `run_cycle`, `propose_trade`, `wait_for_decision`, `execute_approved_trade`, `wait_for_next_candle`, `end_of_day_report` and a few helpers. |
 | **Engine** (`trader/engine.py`) | Dummy ledger, risk gate, sizing, approvals with expiry, simulated fills with slippage and a contract note's charges (`trader/fees.py`), stop/target exits, square-off, report. From 20 Nov each proposal carries an `exit_line` (the price that breaks the idea, between stop and entry); the engine closes early (`early_exit`) only on a real break: two 5-minute closes past it, or one at least 0.2% past it (`exits.early_break`). Claude no longer closes a trade itself because `invalid_if` was touched. Every rule that matters is enforced in code, not left to Claude. |
 | **Brief** (`trader/brief.py`) | Reads the lakehouse gold tables and a few live Yahoo figures and turns them into the day plan, India first: risk per trade from India VIX (from 20 Nov NSE's own index file, `stocks.silver.nse_index_daily`, first; Yahoo's `^INDIAVIX` only as the backup; neither has the last session → the cautious 0.75x, not the full default), bias from the Nifty 50's trend (NIFTYBEES vs its 20/50/200-day averages) and a 2%+ US "global shock", the technical scanner's picks, unusual-volume names, ADR moves (evidence for those five stocks only), and the news radar's picks and tradable list from `stocks.gold.intraday_universe`. Freshness rule: the dates of Yahoo's Nifty 50 and S&P 500 daily candles say which session each source should have; a source without it is left out (`missing`), holidays are listed, an older day is never used. |

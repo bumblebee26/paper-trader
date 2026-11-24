@@ -1,7 +1,9 @@
 """NSE pre-open auction (from 24 Nov 2026; information only).
 
 09:00-09:08 IST NSE collects orders and sets each stock's opening price (the IEP, indicative equilibrium price).
-At the morning session's start_day (~09:09) this reads NSE's pre-open data for F&O stocks (most of the Nifty 200),
+From 25 Nov the morning session starts at 08:55 and its wait_for_open tool reads NSE's pre-open data for F&O stocks
+(most of the Nifty 200) twice: at 09:04 (indicative, orders can still change; saved only, never sent) and after the
+random close at ~09:09:30 (final; sent with the day plan). Before 09:00 nothing is read. It
 keeps the tradable ones and records, per stock: IEP, gap vs yesterday's close and the buy/sell quantity ratio. It is
 saved to S3 (preopen/YYYY-MM-DD.json) and shown in the plan message and the 09:25 ranking. It is NOT given to the
 trading agent or the reviewer and changes no decision until a backtest shows it helps (docs/DECISIONS.md section
@@ -42,16 +44,21 @@ def parse(payload, tradable=None) -> dict:
         buy, sell = _num(pre.get("totalBuyQuantity")), _num(pre.get("totalSellQuantity"))
         out[sym] = {"iep": iep, "prev_close": prev, "gap_pct": round((iep / prev - 1) * 100, 2),
                     "buy_qty": buy, "sell_qty": sell,
-                    "buy_sell": round(buy / sell, 2) if buy and sell else None}
+                    "buy_sell": round(buy / sell, 2) if buy and sell else None,
+                    "matched_qty": _num(meta.get("finalQuantity") or pre.get("finalQuantity"))}
     return out
 
 
-def key(day=None) -> str:
-    return f"preopen/{day or market.now_ist().strftime('%Y-%m-%d')}.json"
+def key(day=None, kind="final") -> str:
+    day = day or market.now_ist().strftime("%Y-%m-%d")
+    return f"preopen/{day}.json" if kind == "final" else f"preopen/{day}_{kind}.json"
 
 
-def capture(tradable=None, fetch=None) -> dict:
-    """Read NSE's pre-open data and save it; {} if NSE can't be read."""
+def capture(tradable=None, fetch=None, kind="final") -> dict:
+    """Read NSE's pre-open data and save it under `kind` ('final' or 'indicative'); {} if NSE can't be read or the
+    auction hasn't started (before 09:00 IST the page still shows yesterday's)."""
+    if market.now_ist().strftime("%H:%M") < "09:00":
+        return {}
     try:
         payload = (fetch or (lambda: get_json(URL, headers=HEADERS, retries=2, timeout=15)))()
     except Exception as err:  # noqa: BLE001 - information only: never block the session
@@ -59,15 +66,15 @@ def capture(tradable=None, fetch=None) -> dict:
         return {}
     stocks = parse(payload, tradable)
     if stocks:
-        storage.put_json(key(), {"read_at": market.now_ist().strftime("%Y-%m-%d %H:%M:%S"), "source": URL,
+        storage.put_json(key(kind=kind), {"read_at": market.now_ist().strftime("%Y-%m-%d %H:%M:%S"), "source": URL,
                                  "stocks": stocks})
     return stocks
 
 
-def today() -> dict:
+def today(kind="final") -> dict:
     """Today's saved pre-open data ({} if none)."""
     try:
-        return (storage.get_json(key()) or {}).get("stocks") or {}
+        return (storage.get_json(key(kind=kind)) or {}).get("stocks") or {}
     except Exception:  # noqa: BLE001
         return {}
 
