@@ -21,6 +21,22 @@ import run_swing  # noqa: E402
 import storage  # noqa: E402
 
 
+BATCH = 25   # stocks per query: 8 years of 250 stocks is over Databricks' 25 MB inline result limit
+
+
+def load_data():
+    """Like run_swing.load_data, in batches of BATCH stocks."""
+    symbols = sorted({r["symbol"] for r in run_swing.sql_all(run_swing.UNIVERSE_SQL)} | {"NIFTYBEES"})
+    f = lambda v: float(v) if v not in (None, "") else None  # noqa: E731
+    data = {}
+    for k in range(0, len(symbols), BATCH):
+        quoted = ",".join("'" + s.replace("'", "") + "'" for s in symbols[k:k + BATCH])
+        for r in run_swing.sql_all(run_swing.BARS_SQL.format(symbols=quoted)):
+            data.setdefault(r["symbol"], []).append(
+                (r["d"], f(r["open"]), f(r["high"]), f(r["low"]), f(r["close"]), f(r["prev_close"]), f(r["volume"])))
+    return data
+
+
 def table(results):
     lines = ["| Idea | Period | Return | NIFTYBEES | Deepest fall | Trades | Won | Avg R | Avg R, low end | Verdict |",
              "|---|---|---|---|---|---|---|---|---|---|"]
@@ -49,7 +65,7 @@ def main(argv):
     if "--only" in argv:
         only = argv[argv.index("--only") + 1].split(",")
     t0 = time.monotonic()
-    data = run_swing.load_data()
+    data = load_data()
     print(f"Loaded {len(data)} symbols in {time.monotonic() - t0:.0f}s", flush=True)
     results = history.run_all(data, only)
     print(f"Ran in {time.monotonic() - t0:.0f}s", flush=True)
