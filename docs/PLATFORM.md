@@ -82,9 +82,10 @@ there are no servers.
 | S3 landing bucket | lakehouse | AWS S3 | Permanent, untouched raw archive (private, encrypted, versioned) |
 | Sync Lambda | lakehouse | AWS Lambda | Copies anything missing from S3 to the volume (backfills, repairs) |
 | Landing volume | lakehouse | Databricks | `/Volumes/stocks/bronze/landing/<source>/date=…/`, what the pipeline reads |
-| Pipelines `stocks-market`, `stocks-research`, `stocks-trading` | lakehouse | Databricks | Market data in and cleaned (37 tables); the heavy daily research: scanner, momentum ranks (5); paper-trader's journal, portfolio and shadows (23). Bronze streaming tables, silver and gold materialized views. One runs at a time (Free Edition) |
+| Pipelines `stocks-market`, `stocks-research`, `stocks-trading` | lakehouse | Databricks | Market data in and cleaned (39 tables, NSE trading holidays included); the heavy daily research: scanner, momentum ranks (5); paper-trader's journal, portfolio, shadows and pool trades (25). Bronze streaming tables, silver and gold materialized views. One runs at a time (Free Edition) |
 | Jobs `stocks-market-close`, `stocks-market-preopen`, `stocks-market-morning`, `stocks-market-weekend`, `stocks-trading` | lakehouse | Databricks | When the NSE file lands: market → research; when the 08:30 pre-open snapshot lands: market only (world markets before NSE opens); 11:15 Tue–Sat: market only (overnight US prices); Saturday 08:00: market → research; when paper-trader's export lands: trading. Each then runs `sql/dashboard_summary.sql` (plain-words page summaries, `ai_summarize`). Pipeline tasks retry every 15 min if another pipeline is running |
 | Dashboard | lakehouse | Databricks | Pages Desk, Intraday, Swing, Long term (each real pool vs its shadows, with a Show filter), Your calls and Global markets |
+| Phone app | lakehouse | AWS Lambda + S3 | `app/index.html` and `desk.json` (the dashboard's own SQL, plus Yahoo history, NSE holidays and Mumbai fuel prices from CarDekho) written by the `app_export` Lambda about five times a weekday, served by the `app_web` Lambda function URL behind a secret path (SSM `/stocks/desk-app-url`). Holiday card, suggested trades, time ranges |
 | Pre-market Lambda | lakehouse | AWS Lambda | 08:30: saves the pre-open Yahoo snapshot (21 world markets) to the landing bucket and volume, queries gold and a few live Yahoo figures, sends two Telegram messages (the brief, India first, and the technical scanner) |
 | Trading session | paper-trader | GitHub Actions | Claude Code + paper-trader MCP tools; morning and afternoon runs |
 | Trader engine and MCP tools | paper-trader | inside the session | Ledger, risk gate, Telegram approvals, simulated fills, exits (from 20 Nov including the early exit on a real break), report with the paper tests and the selector (paper, from 23 Nov); your own orders (`/buy`, `/short`, `/swing`, `/longterm`) while a session is live |
@@ -185,6 +186,7 @@ does about it.
 | A job lasts at most 6 h; cron can start late or not at all | GitHub Actions | Morning + afternoon sessions; kicker Lambda starts them on time, cron as backup |
 | Branch rules only on public repos (free plan) | GitHub | Both repos public; no secrets in code |
 | Serverless compute quota | Databricks Free Edition | Files land a few times a day; the trader exports once at 15:45, not per trade |
+| CloudFront needs account verification | AWS (case open for 538498973473) | The phone app is served by a Lambda function URL instead; `var.app_use_cloudfront` switches back once verified |
 | Usage limits shared with your chats | Claude Pro/Max | One `run_cycle` + one wait per 5 min; guardian squares off if a session stops |
 | Prices unofficial, may lag minutes | Yahoo Finance | Accepted for mock trading; tested from GitHub runners |
 
