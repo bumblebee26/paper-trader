@@ -221,7 +221,8 @@ def run_cycle() -> dict:
     account line and any candidates. Use this instead of separate monitor/scan calls.
     news_alerts: fresh NSE filings on tradable stocks since the last cycle; those stocks are added to the
     scan (up to 5 extra); named headlines (category media) count too. market_news: new RBI / SEBI items, context for
-    the whole market only. stocks_in_play (once, at 09:25): the focus list re-ranked by opening relative volume. Read the filing before proposing: news says which stock may move, not which way."""
+    the whole market only. held_news: new filings on stocks the swing / long-term pools hold (already sent to
+    Telegram; information only). stocks_in_play (once, at 09:25): the focus list re-ranked by opening relative volume. Read the filing before proposing: news says which stock may move, not which way."""
     t_start = market.now_ist()
     state = engine.load()
     try:
@@ -230,6 +231,11 @@ def run_cycle() -> dict:
         in_play = engine.rank_in_play(state, pause=SCAN_PAUSE_SEC) if engine.in_session_hours() else []
         alerts = engine.news_alerts(state) if mon["account"]["entry_window_open"] else []
         market_news = engine.market_news(state) if mon["account"]["entry_window_open"] else []
+        try:
+            held_news = engine.held_news(state) if market.is_trading_day(market.now_ist()) else []
+        except Exception as err:  # noqa: BLE001 - the news feed being down never stops a cycle
+            log.warning("holdings news skipped: %s", err)
+            held_news = []
         focus = list(dict.fromkeys((state.get("focus") or DEFAULT_WATCHLIST) + (state.get("focus_news") or [])))
         nifty = scanner.nifty_context() if mon["account"]["entry_window_open"] else None
         if nifty is not None:
@@ -250,6 +256,8 @@ def run_cycle() -> dict:
         out["stocks_in_play"] = in_play   # today's focus list from here on: the most unusually active names
     if market_news:
         out["market_news"] = market_news   # RBI / SEBI: whole-market context, never a stock signal on its own
+    if held_news:
+        out["held_news"] = held_news   # already sent to Telegram; filings on swing / long-term holdings, info only
     if alerts:
         out["news_alerts"] = alerts   # their stocks are in this cycle's scan; trades on them count as 'news'
     if acct["entry_window_open"]:

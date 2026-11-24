@@ -126,6 +126,7 @@ MIN_STOCK_PRICE = _f("MIN_STOCK_PRICE", 50.0)          # no penny stocks
 NEWS_RADAR_CATEGORIES = ("results", "order", "mna", "management", "rating", "regulatory", "pledge", "insider",
                          "dividend_split_bonus", "board_meeting", "media")
 MIN_RR = _f("MIN_RR", 1.5)
+HELD_NEWS_MAX = _i("HELD_NEWS_MAX", 5)   # most filings per message in the holdings news alert
 INTRADAY_LEVERAGE = _f("INTRADAY_LEVERAGE", 5.0)
 SLIPPAGE_PCT = _f("SLIPPAGE_PCT", 0.05)
 # Delivery (swing, long-term): STT 0.1% + exchange, stamp duty and GST, per side; depository charge per sell

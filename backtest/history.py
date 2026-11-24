@@ -325,3 +325,148 @@ def run_all(data, strategies=None):
             trades, curve = run(series, name, a, b)
             out[name][label] = judge(trades, curve, series)
     return out
+
+
+# ------------------------------------------------------ long-term momentum and the drift band (24 Nov 2026) --
+# The live long-term momentum shadows (jobs/longterm_shadow.py momentum_month): on the first trading day of each
+# month, rank by lt_score = the average z-score (across the universe) of 6- and 12-month return / 1-year volatility
+# (NSE's Momentum 30 method), sell what left the top KEEP, buy the top TOP not held at equal weights, keep 2% cash;
+# holdings are otherwise never re-weighted. The band variants (an idea from the trader-skill rebalancer) also bring
+# any holding more than BAND percentage points away from its equal weight back to it, sells first. Pool Rs 1 lakh,
+# same costs. Judged on return vs NIFTYBEES, deepest fall, and how much trading (and cost) the band adds.
+LT_CAPITAL, LT_CASH_PCT = 100_000.0, 2.0
+LT_VARIANTS = {   # name -> (label, top, keep, band in points or None)
+    "lt_mom": ("Long-term momentum, top 15 (live shadow)", 15, 30, None),
+    "lt_mom_band": ("Long-term momentum, top 15 + 2-point drift band", 15, 30, 2.0),
+    "lt_mom_conc": ("Long-term momentum, top 5 (live shadow)", 5, 10, None),
+    "lt_mom_conc_band": ("Long-term momentum, top 5 + 5-point drift band", 5, 10, 5.0),
+}
+
+
+def lt_ranks(series, idx, d, bench="NIFTYBEES"):
+    """{symbol: rank} by lt_score on day d (stocks with a year of history), best = 1."""
+    rows = []
+    for s, bars in series.items():
+        i = idx[s].get(d)
+        if s == bench or i is None or i < 252:
+            continue
+        closes = [b["close"] for b in bars[i - 252:i + 1]]
+        rets = [closes[k] / closes[k - 1] - 1 for k in range(1, len(closes)) if closes[k - 1]]
+        if len(rets) < 200:
+            continue
+        mean = sum(rets) / len(rets)
+        vol = math.sqrt(sum((r - mean) ** 2 for r in rets) / (len(rets) - 1)) * math.sqrt(252)
+        if not vol or not closes[0] or not closes[-127]:
+            continue
+        rows.append((s, (closes[-1] / closes[-127] - 1) / vol, (closes[-1] / closes[0] - 1) / vol))
+    if len(rows) < 20:
+        return {}
+
+    def z(k):
+        vals = [r[k] for r in rows]
+        m = sum(vals) / len(vals)
+        sd = math.sqrt(sum((v - m) ** 2 for v in vals) / (len(vals) - 1)) or 1.0
+        return {r[0]: (r[k] - m) / sd for r in rows}
+    z6, z12 = z(1), z(2)
+    order = sorted(rows, key=lambda r: -(z6[r[0]] + z12[r[0]]) / 2)
+    return {r[0]: n + 1 for n, r in enumerate(order)}
+
+
+def run_lt(series, variant, start, end):
+    """Daily curve and trades of one long-term momentum variant between start and end."""
+    _, top, keep, band = LT_VARIANTS[variant]
+    idx = {s: {b["date"]: i for i, b in enumerate(bars)} for s, bars in series.items()}
+    dates = sorted({b["date"] for bars in series.values() for b in bars if start <= str(b["date"]) <= end})
+    slip = SLIP / 100
+    cash, held, trades, curve, last = LT_CAPITAL, {}, [], [], {}
+
+    def px(s, d, field):
+        i = idx[s].get(d)
+        return series[s][i][field] if i is not None else None
+
+    def trade(s, qty, price, d, why):
+        nonlocal cash
+        if qty == 0:
+            return
+        fill = price * (1 + slip if qty > 0 else 1 - slip)
+        gross = abs(qty) * fill
+        fees = gross * COST_PCT / 100 + (DP if qty < 0 else 0)
+        cash += -gross - fees if qty > 0 else gross - fees
+        held[s] = held.get(s, 0) + qty
+        if held[s] <= 0:
+            held.pop(s)
+        trades.append({"date": d, "symbol": s, "qty": qty, "value": round(gross, 2), "fees": round(fees, 2),
+                       "why": why})
+
+    prev = None
+    for d in dates:
+        for s in held:
+            c = px(s, d, "close")
+            if c:
+                last[s] = c
+        if prev is not None and str(d)[:7] != str(prev)[:7]:
+            ranks = lt_ranks(series, idx, prev)          # yesterday's close, traded at today's open
+            if ranks:
+                opens = {s: px(s, d, "open") or last.get(s) for s in set(held) | {s for s, r in ranks.items() if r <= top}}
+                for s in list(held):
+                    if ranks.get(s, 10 ** 6) > keep and opens.get(s):
+                        trade(s, -held[s], opens[s], d, "left the top")
+                eq = cash + sum(q * (opens.get(s) or last.get(s, 0)) for s, q in held.items())
+                tgt = eq * (1 - LT_CASH_PCT / 100) / top
+                if band is not None:
+                    for s in sorted(held, key=lambda s: -(held[s] * opens[s]) if opens.get(s) else 0):
+                        o = opens.get(s)
+                        if not o:
+                            continue
+                        drift = (held[s] * o - tgt) / eq * 100
+                        if abs(drift) > band:
+                            q = math.floor((tgt - held[s] * o) / o) if drift < 0 else -math.floor((held[s] * o - tgt) / o)
+                            if q > 0:
+                                q = min(q, math.floor(cash / (o * (1 + slip) * (1 + COST_PCT / 100))))
+                            if q < 0:
+                                trade(s, q, o, d, "drift band")
+                    for s in list(held):   # top-ups after the sells, so the cash is there
+                        o = opens.get(s)
+                        if o and (tgt - held[s] * o) / eq * 100 > band:
+                            q = min(math.floor((tgt - held[s] * o) / (o * (1 + slip) * (1 + COST_PCT / 100))),
+                                    math.floor(cash / (o * (1 + slip) * (1 + COST_PCT / 100))))
+                            if q > 0:
+                                trade(s, q, o, d, "drift band")
+                for s in sorted((s for s, r in ranks.items() if r <= top and s not in held), key=ranks.get):
+                    if len(held) >= top:
+                        break
+                    o = opens.get(s)
+                    if not o:
+                        continue
+                    q = min(math.floor(tgt / (o * (1 + slip) * (1 + COST_PCT / 100))),
+                            math.floor(cash / (o * (1 + slip) * (1 + COST_PCT / 100))))
+                    if q > 0:
+                        trade(s, q, o, d, "new in the top")
+                        last[s] = px(s, d, "close") or o
+        curve.append((d, cash + sum(q * last.get(s, 0) for s, q in held.items())))
+        prev = d
+    return trades, curve
+
+
+def judge_lt(trades, curve, series, bench="NIFTYBEES"):
+    if not curve:
+        return {}
+    bb = {b["date"]: b["close"] for b in series.get(bench, [])}
+    days = [d for d, _ in curve if d in bb]
+    bench_ret = round((bb[days[-1]] / bb[days[0]] - 1) * 100, 1) if len(days) > 1 else None
+    ret = round((curve[-1][1] / LT_CAPITAL - 1) * 100, 1)
+    avg_eq = sum(v for _, v in curve) / len(curve)
+    years = max(len(curve) / 252, 0.1)
+    return {"start": str(curve[0][0]), "end": str(curve[-1][0]), "return_pct": ret, "niftybees_pct": bench_ret,
+            "max_drawdown_pct": swing.max_drawdown([v for _, v in curve]), "trades": len(trades),
+            "band_trades": sum(t["why"] == "drift band" for t in trades),
+            "turnover_pct_a_year": round(sum(t["value"] for t in trades) / avg_eq / years * 100, 0),
+            "costs_rs": round(sum(t["fees"] for t in trades), 0),
+            "verdict": "beats NIFTYBEES" if bench_ret is not None and ret > bench_ret else "no"}
+
+
+def run_lt_all(data=None, series=None, variants=None):
+    series = series if series is not None else prepare(data)
+    return {v: {label: judge_lt(*run_lt(series, v, a, b), series) for label, (a, b) in PERIODS.items()}
+            for v in variants or LT_VARIANTS}
+

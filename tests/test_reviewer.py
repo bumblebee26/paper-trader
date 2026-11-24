@@ -75,6 +75,18 @@ class ReviewerTest(unittest.TestCase):
             engine.propose(st, "ICICIBANK", "BUY", "VWAP reclaim", 1580.0, 1575.0, 1590.0, ["a"], "x")
             self.assertIn("Today's closed trades: BUY HDFCBANK (ORB long) stop_loss", run.prompts[-1])
 
+    def test_limit_margins_are_in_the_facts(self):
+        run = FakeRun('{"yes_pct": 55, "verdict": "UNSURE", "why": "x"}')
+        with Env() as env, on(), mock.patch.object(subprocess, "run", run):
+            env.prices["HDFCBANK"] = 1600.0
+            st = engine.load()
+            engine.propose(st, "HDFCBANK", "BUY", "ORB long", 1600.0, 1592.0, 1616.0, ["a"], "x")
+            prompt = run.prompts[-1]
+            self.assertIn("Limits (it passed every one; how close it is to each):", prompt)
+            self.assertIn("Gain/loss ratio 2 vs at least 1.5: passes by +0.50", prompt)
+            self.assertIn("Open positions 0 of", prompt)
+            self.assertIn("Room under the daily loss limit:", prompt)
+
     def test_failures_never_block(self):
         for run in (FakeRun("", code=1), FakeRun("garbage"),
                     FakeRun(raise_=subprocess.TimeoutExpired("claude", 90))):
