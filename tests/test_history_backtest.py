@@ -91,3 +91,36 @@ class Signals(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LongTermBand(unittest.TestCase):
+    """Long-term momentum with and without the drift band (24 Nov): ranks favour the risers, the band adds trades
+    and costs, and cash never goes negative."""
+
+    def setUp(self):
+        n = 700
+        data = {"NIFTYBEES": series(walk(n, 0.0003, 1), start=date(2019, 1, 1))}
+        for k in range(30):
+            data[f"S{k:02d}"] = series(walk(n, 0.0015 if k < 10 else -0.0005, 50 + k, vol=0.02),
+                                       start=date(2019, 1, 1))
+        self.series = history.prepare(data)
+        self.idx = {s: {b["date"]: i for i, b in enumerate(bars)} for s, bars in self.series.items()}
+
+    def test_ranks_favour_the_risers(self):
+        d = self.series["S00"][-1]["date"]
+        ranks = history.lt_ranks(self.series, self.idx, d)
+        top10 = {s for s, r in ranks.items() if r <= 10}
+        self.assertGreaterEqual(len(top10 & {f"S{k:02d}" for k in range(10)}), 7)
+        self.assertNotIn("NIFTYBEES", ranks)
+
+    def test_band_trades_more_and_cash_stays_positive(self):
+        start, end = str(self.series["S00"][300]["date"]), str(self.series["S00"][-1]["date"])
+        plain_t, plain_c = history.run_lt(self.series, "lt_mom_conc", start, end)
+        band_t, band_c = history.run_lt(self.series, "lt_mom_conc_band", start, end)
+        self.assertTrue(plain_t and band_t)
+        self.assertFalse(any(t["why"] == "drift band" for t in plain_t))
+        self.assertGreaterEqual(len(band_t), len(plain_t))
+        res = history.judge_lt(band_t, band_c, self.series)
+        self.assertIn(res["verdict"], ("beats NIFTYBEES", "no"))
+        self.assertGreater(min(v for _, v in band_c), 0)
+        self.assertGreaterEqual(res["band_trades"], 0)

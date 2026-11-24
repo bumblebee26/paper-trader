@@ -1,6 +1,7 @@
 """Run the phase 3 history backtests (backtest/history.py) on the lakehouse's 2019-2026 NSE prices.
 
   python backtest/run_history.py [--only momentum,high52] [--no-send]
+  python backtest/run_history.py --only lt [--no-send]     # only the long-term momentum / drift-band comparison
 
 Loads daily bars for the 250 most traded stocks of the first 60 sessions of 2019 (plus NIFTYBEES), runs every idea
 on 2020-2024 and on the held-back 2025-2026, saves backtests/history/<date>.json in the state bucket, writes a
@@ -50,6 +51,28 @@ def table(results):
     return "\n".join(lines)
 
 
+def lt_table(results):
+    lines = ["| Long-term variant | Period | Return | NIFTYBEES | Deepest fall | Trades (band) | Turnover a year | Costs | Verdict |",
+             "|---|---|---|---|---|---|---|---|---|"]
+    for key, periods in results.items():
+        for label, s in periods.items():
+            if s:
+                lines.append(f"| {history.LT_VARIANTS[key][0]} | {label} | {s['return_pct']:+.1f}% | {s['niftybees_pct']:+.1f}% | "
+                             f"{s['max_drawdown_pct']}% | {s['trades']} ({s['band_trades']}) | {s['turnover_pct_a_year']:.0f}% | "
+                             f"Rs {s['costs_rs']:,.0f} | {s['verdict']} |")
+    return "\n".join(lines)
+
+
+def lt_message(results):
+    lines = ["[MOCK] Long-term momentum with and without a drift band, NSE 2019-2026 (Rs 1 lakh, costs included):"]
+    for key, periods in results.items():
+        lines.append(f"- {history.LT_VARIANTS[key][0]}: " + "; ".join(
+            f"{label}: {s['return_pct']:+.1f}% vs NIFTYBEES {s['niftybees_pct']:+.1f}%, fall {s['max_drawdown_pct']}%, "
+            f"costs Rs {s['costs_rs']:,.0f}" for label, s in periods.items() if s))
+    lines.append("Nothing live changes; the result goes to the 18 Dec long-term review.")
+    return "\n".join(lines)
+
+
 def message(results):
     lines = ["[MOCK] History backtests, NSE 2019-2026 (Rs 60,000 pool, costs included; 2025-26 held back):"]
     for key, periods in results.items():
@@ -67,6 +90,24 @@ def main(argv):
     t0 = time.monotonic()
     data = load_data()
     print(f"Loaded {len(data)} symbols in {time.monotonic() - t0:.0f}s", flush=True)
+    if only == ["lt"]:
+        lt = history.run_lt_all(data)
+        print(f"Ran in {time.monotonic() - t0:.0f}s", flush=True)
+        text = lt_table(lt)
+        print(text)
+        if os.environ.get("GITHUB_STEP_SUMMARY"):
+            with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+                f.write("## Long-term momentum and the drift band\n\n" + text + "\n")
+        try:
+            storage.put_json(f"backtests/history/lt_band_{market.now_ist():%Y-%m-%d}.json",
+                             {"run_at": market.now_ist().isoformat(), "results": lt})
+        except Exception as err:  # noqa: BLE001
+            print(f"Saving to S3 failed: {err}")
+        if "--no-send" not in argv:
+            import telegram_bot as tg
+
+            tg.send(lt_message(lt))
+        return
     results = history.run_all(data, only)
     print(f"Ran in {time.monotonic() - t0:.0f}s", flush=True)
     text = table(results)

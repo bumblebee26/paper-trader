@@ -24,7 +24,7 @@ PROMPT = """You are a sceptical risk reviewer for a MOCK intraday trade on the I
 Another agent proposed the trade below. Your job is to look for reasons it will FAIL, then give a fair verdict.
 Judge only from the facts given; don't invent news or prices. Pay attention to: the trade going against
 Nifty/Sensex/the sector, repeating a setup or stock that already lost today, a stop too tight for a jumpy
-market (high VIX), entering late, little time left, and a weak or tiny edge.
+market (high VIX), entering late, little time left, a weak or tiny edge, and a trade that only just clears a limit.
 
 FACTS
 {facts}
@@ -57,7 +57,7 @@ def unavailable_reason() -> str:
     return LAST_ERROR or "no answer"
 
 
-def facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines) -> str:
+def facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines, checks=None) -> str:
     plan = state.get("plan") or {}
     lines = [
         f"Time now: {market.now_ist():%H:%M} IST (entries stop 14:30, everything closes 15:10)",
@@ -102,6 +102,9 @@ def facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines
     else:
         lines.append("NSE filings for this company (today/yesterday): none")
     lines.append(f"Realized P&L today: Rs {state.get('realized_today', 0):,.0f}")
+    if checks:
+        lines.append("Limits (it passed every one; how close it is to each):")
+        lines += [f"- {c}" for c in checks]
     return "\n".join(lines)
 
 
@@ -129,10 +132,11 @@ def _fail(reason):
     return None
 
 
-def review(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines):
+def review(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines, checks=None):
     if not enabled():
         return _fail(unavailable_reason())
-    prompt = PROMPT.format(facts=facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines))
+    prompt = PROMPT.format(facts=facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines,
+                                         checks))
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDECODE") and k != "ANTHROPIC_API_KEY"}
     if not env.get("CLAUDE_CODE_OAUTH_TOKEN") and env.get("REVIEWER_CLAUDE_TOKEN"):
         # The session's login isn't passed down to its tools ("Not logged in"); the workflow hands it over

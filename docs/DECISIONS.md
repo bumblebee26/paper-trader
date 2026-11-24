@@ -192,6 +192,21 @@ changes from them directly. Still to do: the "under 1R of room" filter (B1) on t
 
 Results (24 Nov run): nothing beat NIFTYBEES in either period; on 2025-2026 five of six lost money. Momentum +32.2% / -19.1%, scanner +1.5% / -15.2%, 52-week high +29.6% / -14.1%, bull flag +62.4% / -12.2%, double bottom -46.0% / -32.3%, rally-range -21.0% / +4.9% (2020-24 / 2025-26; NIFTYBEES +106.3% / +10.8%). Report: the Claude doc "History backtests: NSE 2019-2026".
 
+## Ideas taken from the trader-skill pack (24 Nov)
+
+The owner asked to bring in what helps from github.com/Jakeschincariol/trader-skill (US-market skills: SEC filings,
+NYSE, Alpaca). The pack itself isn't installed: its data and broker parts don't apply to NSE dummy trading. Three ideas
+were rebuilt in our own code; a fourth (after-tax P&L) was dropped by the owner.
+- Reviewer facts: the independent reviewer now sees how far a proposal is from each limit (`engine.gate_margins`:
+  reward/risk vs 1.5, open positions, trades and sector trades left, room under the daily loss limit, fees vs risk,
+  time to 14:30). Facts only: the gate and the YES % rules are unchanged.
+- Holdings news alert (`engine.held_news`, every cycle on trading days): today's NSE filings on stocks the swing and
+  long-term pools hold, each sent once on Telegram with one line on why it matters. Information only.
+- Drift band (`backtest/history.py` run_lt, "History backtests" with only = lt): the long-term momentum shadows with
+  and without bringing a drifted holding back to its equal weight (2 points for the top 15, 5 for the top 5). Nothing
+  live changes; the result goes to the 18 Dec long-term review, and a live shadow only if it beats the current rules.
+- (Lakehouse) the long-term quality picks' tests with their margins: dashboard and phone app.
+
 ## Gaps found while building this register
 
 All fixed in Phase 3 step 6 (24 Nov): SYSTEM_PLAN.md (as-of date, swing auto mode, risk table with 5 open and the

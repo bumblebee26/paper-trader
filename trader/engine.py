@@ -779,6 +779,58 @@ def news_alerts(state, limit=8) -> list:
     return out
 
 
+# Why a filing on a stock we hold matters, in plain words (the holdings news alert, 24 Nov; an idea from the
+# trader-skill news monitor: only what's new, never repeated, and why it matters for what you hold).
+HELD_NEWS_WHY = {
+    "results": "results can move the price sharply; the pool's stop and exit rules still apply",
+    "board_meeting": "a board meeting can bring results, a dividend or fund-raising",
+    "order": "a large order can lift what the market expects the company to earn",
+    "management": "a change at the top can unsettle the stock for a while",
+    "regulatory": "a regulator's action can hit the price; worth a look",
+    "rating": "a credit rating change shows how lenders see the company's debt",
+    "pledge": "owners pledging shares can lead to forced selling if the price falls",
+    "insider": "insiders buying or selling hints at what they expect",
+    "dividend_split_bonus": "the price adjusts on the record date; it isn't a gain or loss",
+    "mna": "a deal can re-price the stock either way",
+    "meeting": "management may give guidance on the business",
+    "corporate_action": "check the record date: the price adjusts on it",
+    "media": "a news report, not a company filing; check it before reading much into it",
+}
+HELD_POOLS = (("swing", "Swing"), ("long_term", "Long term"))
+
+
+def held_news(state, send=True) -> list:
+    """Today's new NSE filings on stocks the swing and long-term pools hold, each sent once on Telegram with why it
+    matters. Information only: nothing is bought or sold because of it."""
+    held = {}
+    for pool, label in HELD_POOLS:
+        try:
+            for sym in pools.load(pool)["holdings"]:
+                held.setdefault(sym.upper(), []).append(label)
+        except Exception as err:  # noqa: BLE001
+            log.warning("holdings news: %s pool unreadable: %s", pool, err)
+    found = news.items()
+    if not held or found is None:
+        return []
+    today = market.now_ist().strftime("%Y-%m-%d")
+    mine = [i for i in found if (i.get("symbol") or "").upper() in held and i.get("category") != "market"
+            and (i.get("published_ist") or i.get("fetched_at_ist") or "").startswith(today)]
+    seen = set(state.get("held_news_seen") or [])
+    fresh = [i for i in mine if i.get("id") not in seen]
+    state["held_news_seen"] = [i.get("id") for i in mine]   # today's only: small, never truncated
+    out = []
+    for i in fresh[:config.HELD_NEWS_MAX]:
+        sym = i["symbol"].upper()
+        worry = " ⚠️" if i.get("category") in news.WORRYING else ""
+        why = HELD_NEWS_WHY.get(i.get("category"), "an official filing; check whether it changes the reason it's held")
+        out.append(f"{sym}{worry} ({' and '.join(held[sym])} pool): {news.describe(i)}\n  Why it matters: {why}. "
+                   f"{i.get('link', '')}".rstrip())
+    if out and send:
+        tg.send("[MOCK] News on stocks the pools hold (information only):\n" + "\n".join(out))
+        journal("data_alert", note=f"held news: {', '.join(i['symbol'].upper() for i in fresh[:config.HELD_NEWS_MAX])}")
+    return out
+
+
 def market_news(state) -> list:
     """New market-wide items (RBI, SEBI) since the last check, as one line each. They name no stock, so they
     never add a stock to the scan; they are context for the whole market."""
@@ -1011,6 +1063,32 @@ def risk_gate(state: dict, symbol: str, side: str, entry: float, stop: float, ta
     return True, "ok", qty, round(qty * per_share, 2), rr
 
 
+def gate_margins(state, symbol, entry, stop, rr, qty, risk_rs, side="BUY") -> list[str]:
+    """How far a proposal that passed the risk gate is from each limit (pass/fail with the margin, an idea from
+    the trader-skill screener, 24 Nov). Facts for the independent reviewer; nothing here changes a decision."""
+    def mins_left(until):
+        now = market.now_ist()
+        h, m = map(int, until.split(":"))
+        return max(0, (h * 60 + m) - (now.hour * 60 + now.minute))
+    sec = sectors.sector(symbol)
+    cap = trade_cap(state)
+    room = loss_room(state)
+    share = cost_share_pct(entry, abs(entry - stop), max(qty, 1), side)
+    left = mins_left(config.ENTRY_END)
+    lines = [
+        f"Gain/loss ratio {rr:g} vs at least {config.MIN_RR:g}: passes by {rr - config.MIN_RR:+.2f}",
+        f"Open positions {len(state.get('positions') or {})} of {config.MAX_OPEN_POSITIONS}",
+        (f"Trades today {state.get('trades_today', 0)} of {cap}: {cap - state.get('trades_today', 0)} left"
+         if cap else f"Trades today {state.get('trades_today', 0)} (no daily cap)"),
+        f"{sec} trades today {state.get('sector_trades', {}).get(sec, 0)} of {config.MAX_TRADES_PER_SECTOR}",
+        (f"Room under the daily loss limit: {inr(room)} of {inr(loss_limit_rs(state))}; this trade risks "
+         f"{inr(risk_rs)} ({risk_rs / room * 100:.0f}% of the room)" if room > 0 else "Room under the daily loss limit: none"),
+        f"Fees and slippage {share:.0f}% of the risk vs at most {config.MAX_COST_SHARE_PCT:g}%",
+        f"Time to the {config.ENTRY_END} entry cutoff: {left // 60} h {left % 60:02d} min",
+    ]
+    return lines
+
+
 def cost_share_pct(entry, per_share, qty, side="BUY") -> float:
     """Round-trip costs (both orders' charges + slippage on both fills) as a % of the trade's planned risk."""
     costs_rs = fees.round_trip(entry * qty, entry * qty, side) + 2 * entry * qty * config.SLIPPAGE_PCT / 100
@@ -1157,7 +1235,13 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
                 stop=stop, target=target, rr=rr, note=why)
         return {"status": "blocked", "reason": why}
     t_checks = market.now_ist()
-    review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"])
+    try:
+        margins = gate_margins(state, symbol, entry, stop, rr, qty, risk_rs, side)
+    except Exception as err:  # noqa: BLE001 - facts only; never block a proposal
+        log.warning("gate margins unavailable: %s", err)
+        margins = []
+    review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"],
+                             checks=margins)
     t_review = market.now_ist()
     advice = advisor.combine(advice, ai_yes_pct, review)
     yes = advice["yes_pct"]
