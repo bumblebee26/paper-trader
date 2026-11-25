@@ -1151,14 +1151,29 @@ def _short(text, limit=110) -> str:
     return reviewer.shorten(" ".join(str(text or "").split()), limit)
 
 
+def review_reply(review, secs, was, advice):
+    """The reply that follows a proposal you decide: the reviewer's verdict, how long it took, and the suggestion
+    with its score included."""
+    yes = advice["yes_pct"]
+    if not review:
+        return (f"Reviewer: no answer after {secs:.0f} s ({_short(reviewer.unavailable_reason(), 80)}). "
+                f"Suggestion stays {advice['verdict']} {yes}%.")
+    change = f"was {was}% without it" if yes != was else "unchanged"
+    return (f"Reviewer {review['verdict']} {review['yes_pct']}% · answered in {secs:.0f} s\n"
+            f"{_short(review['why'], 200)}\n"
+            f"Suggestion now {advice['verdict']} {yes}% ({change})")
+
+
 def compact_proposal(*, auto, place, symbol, side, setup, entry, stop, target, qty, risk_rs, rr, risk_pct, need,
                      free, advice, yes, ai_yes_pct, ai_reason, review, reasons, summary, invalid_if, skip_why, bar,
-                     bar_why, track_line, valid_until, news_pick=False, room_line="", pattern_line="") -> str:
+                     bar_why, track_line, valid_until, news_pick=False, room_line="", pattern_line="",
+                     checking=False) -> str:
     """The Telegram proposal: every number, reasons in one line each. The long version is behind Full reasons."""
     buy = side == "BUY"
     status = "your call" if not auto else "PLACING" if place else "SKIPPED"
     agent = f"agent {int(round(float(ai_yes_pct)))}" if ai_yes_pct is not None else "agent -"
-    rev = f"reviewer {review['verdict']} {review['yes_pct']}" if review else "reviewer unavailable"
+    rev = (f"reviewer {review['verdict']} {review['yes_pct']}" if review
+           else "reviewer checking…" if checking else "reviewer unavailable")
     if not auto:
         decide = f"You decide: YES or NO by {valid_until:%H:%M:%S}"
     elif place:
@@ -1189,6 +1204,7 @@ def compact_proposal(*, auto, place, symbol, side, setup, entry, stop, target, q
     if ai_yes_pct is not None and ai_reason:
         lines.append(f"Agent: {_short(ai_reason)}")
     lines.append(f"Reviewer: {_short(review['why'], 160)}" if review
+                 else "Reviewer: checking… its answer follows as a reply to this message" if checking
                  else f"Reviewer: unavailable ({_short(reviewer.unavailable_reason(), 80)})")
     lines.append(advice.get("market_short") or "")
     if track_line:
@@ -1246,12 +1262,17 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     except Exception as err:  # noqa: BLE001
         log.warning("reviewer facts unavailable: %s", err)
         fact_text = None
-    review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"],
-                             checks=margins, facts_text=fact_text)
-    t_review = market.now_ist()
-    advice = advisor.combine(advice, ai_yes_pct, review)
-    yes = advice["yes_pct"]
     auto = auto_on(state)
+    # Auto mode decides with the reviewer, so it waits for it. When you decide, the proposal goes out first and the
+    # reviewer's answer follows as a reply (from 26 Nov), so your 3 minutes start without waiting for it.
+    base_advice = advice
+    t_rev0 = market.now_ist()
+    later = not auto and reviewer.enabled()   # reviewer switched off: nothing to wait for or to reply with
+    review = (None if later else reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty,
+                                                 advice["market_lines"], checks=margins, facts_text=fact_text))
+    t_review = market.now_ist()
+    advice = advisor.combine(base_advice, ai_yes_pct, review)
+    yes = advice["yes_pct"]
     mood = advice.get("mood")
     hour = market.now_ist().strftime("%H")
     skip_why, bar, bar_why = (_auto_skip_reason(state, symbol, side, setup, mood, hour, yes, ai_yes_pct, review)
@@ -1262,6 +1283,35 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     room_line = levels.line(lv, side, entry, stop, wrsi)
     pattern_line = patterns.line(pats, side, entry, stop)
 
+    text = compact_proposal(
+        auto=auto, place=place, symbol=symbol, side=side, setup=setup, entry=entry, stop=stop, target=target,
+        qty=qty, risk_rs=risk_rs, rr=rr, risk_pct=risk_pct, need=need, free=state["balance"] - margin_used(state),
+        advice=advice, yes=yes, ai_yes_pct=ai_yes_pct, ai_reason=ai_reason, review=review, reasons=reasons,
+        summary=summary, invalid_if=invalid_if, skip_why=skip_why, bar=bar, bar_why=bar_why,
+        track_line=track.compact(setup, yes, mood, hour, sectors.SECTOR_OF.get(symbol, "Other"), side),
+        valid_until=valid_until,
+        news_pick=is_news_pick(state, symbol), room_line=room_line,
+        pattern_line=pattern_line, checking=later)
+    if not auto:
+        first = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
+    else:
+        first = [("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}")]
+        if place:
+            first.append(("EXIT", f"x:{pid}"))
+    if auto:
+        text += f"\nReviewer answered in {(t_review - t_rev0).total_seconds():.0f} s"
+    msg_id = tg.send(text, buttons=[first, links.buttons(symbol, pid)])
+    if later:
+        was = yes
+        review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, base_advice["market_lines"],
+                                 checks=margins, facts_text=fact_text)
+        t_review = market.now_ist()
+        advice = advisor.combine(base_advice, ai_yes_pct, review)
+        yes = advice["yes_pct"]
+        try:
+            tg.send(review_reply(review, (t_review - t_rev0).total_seconds(), was, advice), reply_to=msg_id)
+        except Exception as err:  # noqa: BLE001 - the reply is information; never lose the proposal over it
+            log.warning("couldn't send the reviewer's reply: %s", err)
     action = action_word(side)
     if not auto:
         head = [f"[MOCK] {action} {symbol}  ({setup}): full reasons", advice["lines"][0]]
@@ -1306,22 +1356,6 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
          else "Dummy money only."),
     ]
     full_text = "\n".join(lines)
-    text = compact_proposal(
-        auto=auto, place=place, symbol=symbol, side=side, setup=setup, entry=entry, stop=stop, target=target,
-        qty=qty, risk_rs=risk_rs, rr=rr, risk_pct=risk_pct, need=need, free=state["balance"] - margin_used(state),
-        advice=advice, yes=yes, ai_yes_pct=ai_yes_pct, ai_reason=ai_reason, review=review, reasons=reasons,
-        summary=summary, invalid_if=invalid_if, skip_why=skip_why, bar=bar, bar_why=bar_why,
-        track_line=track.compact(setup, yes, mood, hour, sectors.SECTOR_OF.get(symbol, "Other"), side),
-        valid_until=valid_until,
-        news_pick=is_news_pick(state, symbol), room_line=room_line,
-        pattern_line=pattern_line)
-    if not auto:
-        first = [("YES - place", f"yes:{pid}"), ("NO - skip", f"no:{pid}")]
-    else:
-        first = [("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}")]
-        if place:
-            first.append(("EXIT", f"x:{pid}"))
-    msg_id = tg.send(text, buttons=[first, links.buttons(symbol, pid)])
     try:
         storage.backend().put(f"reasons/{_today()}/{pid}.txt", full_text)
     except Exception as err:  # noqa: BLE001 - the full reasons are a convenience; never block a proposal
@@ -1351,7 +1385,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     # how long the live checks and the independent reviewer took, and when the proposal was ready
     journal("proposal_timing", proposal_id=pid, symbol=symbol,
             note=(f"start={secs_after_candle(t_start)};checks_sec={(t_checks - t_start).total_seconds():.1f}"
-                  f";reviewer_sec={(t_review - t_checks).total_seconds():.1f}"
+                  f";reviewer_sec={(t_review - t_rev0).total_seconds():.1f}"
                   f";ready={secs_after_candle(market.now_ist(), t_start)}"))
     base = {"proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
             "suggestion": f"{advice['verdict']} {yes}%"}
