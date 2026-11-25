@@ -56,6 +56,20 @@ class EngineTest(unittest.TestCase):
             timing = next(r for r in rows if r["event"] == "proposal_timing")
             self.assertIn("reviewer_sec=", timing["note"])
 
+    def test_you_decide_proposal_goes_first_and_reviewer_replies_with_its_time(self):
+        from unittest import mock
+        review = {"yes_pct": 30, "verdict": "NO", "why": "ran too far already"}
+        with Env() as env:
+            env.prices["RELIANCE"] = 1452.0
+            st = engine.load()
+            with mock.patch.object(engine.reviewer, "enabled", return_value=True), \
+                    mock.patch.object(engine.reviewer, "review", return_value=review):
+                r = propose_reliance(st)
+            self.assertIn("reviewer checking…", env.sent[0])          # the proposal didn't wait for it
+            self.assertIn("Reviewer NO 30% · answered in", env.sent[1])   # the reply: verdict and seconds
+            self.assertIn("Suggestion now", env.sent[1])
+            self.assertEqual(st["proposals"][r["proposal_id"]]["review"], review)   # counted in the record
+
     def test_seconds_after_candle_close(self):
         ist = engine.market.IST
         self.assertEqual(engine.secs_after_candle(datetime(2026, 11, 18, 9, 42, 7, tzinfo=ist)), 127.0)

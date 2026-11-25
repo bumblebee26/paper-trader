@@ -244,6 +244,16 @@ Dropped after the council review: shorter (caveman) answers for the live reviewe
 JSON; the time goes on starting the call and thinking, which the journal's `proposal_timing` (reviewer_sec)
 measures. Also fixed: journal appends now take a lock, so two threads can't lose each other's rows.
 
+## 19. Proposals you decide no longer wait for the reviewer (owner, 26 Nov)
+
+When you decide (auto mode off), the proposal is sent as soon as the live checks are done, with "reviewer
+checking…". The independent reviewer's answer follows as a reply to it: its verdict, how many seconds it took, and the
+suggestion with its score included. Your 3 minutes start when the proposal arrives. The journal and the scorecards
+keep the final suggestion, with the reviewer counted. Auto mode still waits for the reviewer, because it needs the
+reviewer's check to place a trade; its message now says how long the reviewer took. Each proposal's reviewer time is
+also in the journal (proposal_timing, reviewer_sec). Lighter start-up, an earlier start, Haiku and a shorter time limit
+are for the 1 Dec review, using those timings.
+
 ## Gaps found while building this register
 
 All fixed in Phase 3 step 6 (24 Nov): SYSTEM_PLAN.md (as-of date, swing auto mode, risk table with 5 open and the
