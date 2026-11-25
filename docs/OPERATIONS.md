@@ -160,7 +160,6 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 |---|---|
 | Test without trading | Actions → Trading session → Run workflow → `test` |
 | Long-term backtest | Actions → Long-term backtest → Run workflow (about 2 min, no Claude): the phase 4 selection as of 1 Jul 2025, held to today, vs NIFTYBEES. Universe `nifty200` (default, today's index list) or `traded` (the 250 most traded stocks of Apr–Jun 2025, no hindsight). Results in `backtests/longterm/<date>.json` |
-| Swing backtest | Actions → Swing backtest → Run workflow (about 2 min, no Claude). Mode `study` (default) tunes 16 rule versions on 15 May 2025–30 Apr 2026 and judges the best once on the months from 1 May 2026, against the original rules and holding NIFTYBEES; `original` runs the first four variants over the whole period. Telegram summary; full results in `backtests/swing/<date>.json` in the state bucket |
 | Re-run a phase today | Delete `sessions/<date>/<phase>` from the state bucket, then Run workflow |
 | Skip trading today | Actions → Trading session → **Disable workflow** (enable it again afterwards) |
 | All commands | Send `/help` (or `/prompts`, or "what can you do?") on Telegram; they're also in the bot's `/` menu |
@@ -174,11 +173,10 @@ Run tests with `python -m unittest discover -s tests` and `terraform fmt -recurs
 | Kill switch | Send `/stop`: no new proposals on any day until `/resume`; open positions are still managed |
 | Close a position | Send `EXIT SYMBOL` on Telegram |
 | See the money | Send `LEDGER` (or `BALANCE`) on Telegram: balance, in use (margin), free, exposure, open positions with live P&L. Answered within ~30 s during a session, ~2 min otherwise |
-| Reset every pool (done 17 Nov 2026; Day 1 = 18 Nov) | Actions → **Reset ledger** → type `RESET` (anything else is a dry run). Every pool, shadow pools included, back to its starting cash with nothing held; portfolio peak, history and circuit breaker cleared; the old state copied to `archive/ledger-reset-<date>/`. Keeps the journals (track record), ratings, test results, Telegram offset, settings and rules. Then set `LEDGER_START` in `trader/config.py` (weekly report and weekly brake) and `ledger_start` in the lakehouse (dashboard money pages) to the next trading day. Not while the guardian is exporting (15:40–15:55, 23:25–23:40) |
 | Reset the intraday pool only | Delete `state/ledger.json` from the state bucket (also forgets the Telegram offset and settings) |
 | Pool ledgers | Swing, long-term and the shadow pools (`long_term_shadow`, `long_term_mom_shadow`, `long_term_mom_conc_shadow`, `swing_shadow`, `swing_tech_shadow`, `swing_mom_shadow`, `swing_mom_conc_shadow`): `state/pools/<pool>.json` and `journal/pools/<pool>/<date>.csv` |
 | Resize a pool | Change `STARTING_CAPITAL` (intraday), `SWING_CAPITAL` or `LONG_TERM_CAPITAL` in `trader/config.py`; the next day the balance moves by the same amount, keeping the P&L so far |
-| Fetch company fundamentals now | Actions → Company fundamentals → Run workflow (tick *dry run* to only print) |
+| Fetch company fundamentals now | Actions → Company fundamentals → Run workflow |
 | Run the shadow models now | Actions → **Model shadow** → Run workflow (untick *send* to keep it off Telegram; *max_symbols* limits the universe for a quick test). Up to 75 minutes |
 | Re-send a day (or range) to the lakehouse | `aws lambda invoke --function-name stocks-trader-guardian --region ap-southeast-2 --cli-binary-format raw-in-base64-out --payload "{\"action\":\"export\",\"date\":\"2026-11-09\"}" out.json` (or `"start"`/`"end"`). A single `date` also writes a portfolio snapshot under that date, taken from the pools as they are now; a range re-sends journals only |
 
@@ -191,7 +189,7 @@ aws s3 rm s3://stocks-trader-state-<account-id>/state/ledger.json --region ap-so
 | Check | How |
 |---|---|
 | Session log | GitHub → Actions → Trading session → the run |
-| Saturday jobs and backtests | GitHub → Actions → Company fundamentals, Long-term shadow, Swing backtest or Long-term backtest → the run |
+| Saturday jobs and backtests | GitHub → Actions → Company fundamentals, Long-term shadow, History backtests or Long-term backtest → the run |
 | Today's journal | `aws s3 cp s3://stocks-trader-state-<account-id>/journal/<date>.csv - --region ap-southeast-2` |
 | Ledger | `aws s3 cp s3://stocks-trader-state-<account-id>/state/ledger.json - --region ap-southeast-2` |
 | Guardian / kicker logs | `aws logs tail /aws/lambda/stocks-trader-guardian --since 1h --region ap-southeast-2` |

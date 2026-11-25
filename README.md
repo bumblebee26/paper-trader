@@ -100,8 +100,7 @@ trader/            Engine, scanner, brief and news (lakehouse), pools, reviewer,
                    storage (S3/local), Telegram, MCP server, Lambda handlers. Standard library + boto3 only.
 models/            Shadow models for the intraday pool (intraday.py, walkforward.py; scikit-learn, GitHub job only)
 jobs/              fundamentals.py (weekly company financials for the lakehouse), longterm_shadow.py (weekly shadow pools:
-                   quality picks, momentum top 15 and top 5), model_shadow.py (daily shadow models), reset_ledger.py
-                   (puts every pool back to its starting cash; manual)
+                   quality picks, momentum top 15 and top 5), model_shadow.py (daily shadow models)
 backtest/          Swing and long-term backtests on the lakehouse's NSE daily prices
 prompts/           trading_rules.md: the rules Claude follows in a session
 infra/
