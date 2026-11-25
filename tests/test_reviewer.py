@@ -87,6 +87,18 @@ class ReviewerTest(unittest.TestCase):
             self.assertIn("Open positions 0 of", prompt)
             self.assertIn("Room under the daily loss limit:", prompt)
 
+    def test_proposal_keeps_the_reviewers_frozen_facts_for_the_council(self):
+        run = FakeRun('{"yes_pct": 64, "verdict": "YES", "why": "fine"}')
+        with Env() as env, on(), mock.patch.object(subprocess, "run", run):
+            env.prices["HDFCBANK"] = 1600.0
+            st = engine.load()
+            out = engine.propose(st, "HDFCBANK", "BUY", "ORB long", 1600.0, 1592.0, 1616.0, ["a"], "x")
+            kept = engine.storage.get_json(f"council/{engine._today()}.json")
+            rec = kept[out["proposal_id"]]
+            self.assertEqual(rec["reviewer"]["yes_pct"], 64)
+            self.assertIn("Trade: BUY", rec["facts"])
+            self.assertIn(rec["facts"], run.prompts[-1])     # the same text the reviewer saw
+
     def test_failures_never_block(self):
         for run in (FakeRun("", code=1), FakeRun("garbage"),
                     FakeRun(raise_=subprocess.TimeoutExpired("claude", 90))):

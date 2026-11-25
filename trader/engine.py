@@ -1240,8 +1240,14 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     except Exception as err:  # noqa: BLE001 - facts only; never block a proposal
         log.warning("gate margins unavailable: %s", err)
         margins = []
+    try:   # built once: the reviewer reads them now, the after-close council test reads the same frozen text
+        fact_text = reviewer.facts(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"],
+                                   margins)
+    except Exception as err:  # noqa: BLE001
+        log.warning("reviewer facts unavailable: %s", err)
+        fact_text = None
     review = reviewer.review(state, symbol, side, setup, entry, stop, target, rr, qty, advice["market_lines"],
-                             checks=margins)
+                             checks=margins, facts_text=fact_text)
     t_review = market.now_ist()
     advice = advisor.combine(advice, ai_yes_pct, review)
     yes = advice["yes_pct"]
@@ -1340,6 +1346,7 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
                   f" | source {'news' if is_news_pick(state, symbol) else 'watchlist'}"
                   f" | scanner {brief.scanner_status(state.get('plan'), symbol)}"
                   f" | sector {sectors.SECTOR_OF.get(symbol, 'Other')} |"))
+    council_keep(pid, symbol, side, setup, entry, stop, target, qty, risk_rs, rr, fact_text, review)
     # latency marks (seconds after the candle close the proposal started in): when the agent called propose_trade,
     # how long the live checks and the independent reviewer took, and when the proposal was ready
     journal("proposal_timing", proposal_id=pid, symbol=symbol,
@@ -1654,14 +1661,29 @@ def _midday_summary(state) -> None:
     tg.send("\n".join(lines))
 
 
+def council_keep(pid, symbol, side, setup, entry, stop, target, qty, risk_rs, rr, fact_text, review):
+    """Keep the reviewer's exact facts with the proposal (council/<day>.json) for the after-close council test
+    (jobs/council_shadow.py). Information only; a failure never touches the proposal."""
+    key = f"council/{_today()}.json"
+    try:
+        day = storage.get_json(key, {}) or {}
+        day[pid] = {"sent_at": _now(), "symbol": symbol, "side": side, "setup": setup, "entry": entry, "stop": stop,
+                    "target": target, "qty": qty, "risk_rs": risk_rs, "rr": rr, "facts": fact_text or "",
+                    "reviewer": review}
+        storage.put_json(key, day)
+    except Exception as err:  # noqa: BLE001
+        log.warning("council facts not saved: %s", err)
+
+
 # ----------------------------------------------------------------- report --
-def _hypothetical(p) -> float:
-    """What a rejected/expired proposal would have made, from 1m bars after it was sent."""
+def _hypothetical(p, slip_pct=0.0) -> float:
+    """What a rejected/expired proposal would have made, from 1m bars after it was sent. slip_pct > 0 pays the
+    paper fill's slippage on entry too (the council test scores every proposal this way, taken or not)."""
     bars = [b for b in market.candles(p["symbol"], "1m", 1) if b["time"] > p["sent_at"][:16]]
     if not bars:
         return 0.0
     direction = 1 if p["side"] == "BUY" else -1
-    entry = bars[0]["open"]
+    entry = bars[0]["open"] * (1 + direction * slip_pct / 100)
     exit_price = bars[-1]["close"]
     for b in bars:
         if b["time"][11:] >= config.SQUARE_OFF:

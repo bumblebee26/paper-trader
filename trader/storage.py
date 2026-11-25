@@ -13,6 +13,7 @@ Layout (same keys in both):
 """
 import csv
 import io
+import threading
 import json
 
 import config
@@ -89,15 +90,22 @@ def exists(key):
     return backend().exists(key)
 
 
+_APPEND_LOCK = threading.Lock()
+
+
 def append_row(key, columns, row):
-    """Append one CSV row (read-modify-write; fine for a few dozen rows a day)."""
-    text = backend().get(key) or ""
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=columns, lineterminator="\n")
-    if not text:
-        w.writeheader()
-    w.writerow({c: row.get(c, "") for c in columns})
-    backend().put(key, text + buf.getvalue())
+    """Append one CSV row (read-modify-write; fine for a few dozen rows a day). The lock stops two threads of one
+    process from both reading the old file and one losing the other's row.
+    shortcut: separate processes (the session and a Lambda) can still race; move to per-writer files if they ever
+    write the same key."""
+    with _APPEND_LOCK:
+        text = backend().get(key) or ""
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=columns, lineterminator="\n")
+        if not text:
+            w.writeheader()
+        w.writerow({c: row.get(c, "") for c in columns})
+        backend().put(key, text + buf.getvalue())
 
 
 def read_rows(key):
