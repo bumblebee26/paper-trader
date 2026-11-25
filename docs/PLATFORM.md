@@ -234,7 +234,7 @@ comment, merge to apply.
 | State | S3 bucket `stocks-lakehouse-tfstate-<account>` | Same bucket, key `paper-trader/aws/` |
 | Required checks on `main` | `terraform fmt`, `terraform validate (aws)`, `terraform validate (databricks)` | `Python tests and MCP server`, `terraform fmt`, `terraform validate (aws)` |
 | Ruleset `protect-main` | PR required, no force push, no deletion | same |
-| Extra workflows | `run-job.yml` (manual: run Databricks jobs in order) | `trading-session.yml`, `model-shadow.yml` (weekdays 16:10), `fundamentals.yml` and `longterm-shadow.yml` (Saturdays), `swing-backtest.yml`, `longterm-backtest.yml` and `reset-ledger.yml` (manual); environment `trading` |
+| Extra workflows | `run-job.yml` (manual: run Databricks jobs in order) | `trading-session.yml`, `model-shadow.yml` (weekdays 16:10), `fundamentals.yml` and `longterm-shadow.yml` (Saturdays), `history-backtest.yml` and `longterm-backtest.yml` (manual); environment `trading` |
 
 Shared conventions: LF line endings (`.gitattributes`), committed `project.auto.tfvars` for non-secret
 settings, committed `.terraform.lock.hcl`, docs in `docs/` (ARCHITECTURE, SETUP, OPERATIONS, TROUBLESHOOTING,

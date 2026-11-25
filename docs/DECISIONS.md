@@ -26,7 +26,7 @@ Status words: **live** = affects the dummy-money ledgers today; **paper** = reco
 | # | Decision | Status | Source |
 |---|---|---|---|
 | M1 | Rs 2,00,000 in three pools, each with its own ledger: intraday Rs 40,000, swing Rs 60,000, long-term Rs 1,00,000. A pool never spends another's cash | live | `config.STARTING_CAPITAL`, `SWING_CAPITAL`, `LONG_TERM_CAPITAL`; `trader/pools.py` |
-| M2 | Ledger reset 17 Nov: every pool and shadow pool restarted from its cash on 18 Nov; history kept | live | `config.LEDGER_START`, `jobs/reset_ledger.py` |
+| M2 | Ledger reset 17 Nov: every pool and shadow pool restarted from its cash on 18 Nov; history kept | live | `config.LEDGER_START` (the one-off reset job was removed 25 Nov; in git history) |
 | M3 | Swing pool in **auto mode** from 24 Nov (owner's decision): follows the momentum + news rules (6 stocks, 2% risk, 2×ATR trailing stop, 20 days), buys paid by selling NIFTYBEES; idle cash re-parked in NIFTYBEES at 15:14; stocks bought by hand are taken over by the rules; `/swing auto off` stops it | live | `pool_auto.py`, `swing_momentum.py` (`REAL_POOL`), `pools.park` |
 | M4 | Long-term pool in cash; auto mode (weekly quality picks, Saturdays) is built but off until the 18 Dec go/no-go approves it (`/longterm auto on`) | parked | `pool_auto.py`, `jobs/longterm_shadow.py` (`REAL_POOL`) |
 | M5 | Portfolio circuit breaker: all pools combined 12% below their peak stops new buys until `/resume` | live | `pools.breaker_on`, 15:40 snapshot |
@@ -212,6 +212,19 @@ were rebuilt in our own code; a fourth (after-tax P&L) was dropped by the owner.
   shadow. The bigger point for 18 Dec: both momentum versions trailed NIFTYBEES on the held-back years, and the top 5
   lost a quarter of its value.
 - (Lakehouse) the long-term quality picks' tests with their margins: dashboard and phone app.
+
+## 17. After every review: clean up, then update the docs and the Field Guide (owner, 25 Nov)
+
+Every review (1 Dec, mid-Dec, 18 Dec and later) ends with three steps, in this order, each as a PR the owner approves:
+1. **Clean up.** List one-off or finished jobs, dry-run switches and retired code across GitHub Actions, AWS
+   schedules and Databricks jobs, with a suggestion for each; remove only what the owner picks. Keep anything the
+   next review needs (e.g. History backtests, Long-term backtest).
+2. **Update the docs** in both repos (README, docs/, diagrams), so they match the code after the review's changes.
+3. **Update the Stocks Platform Field Guide** (the one overview page) to the same state.
+
+First clean-up (25 Nov): removed the Reset ledger job (used once, 17 Nov), the Swing backtest workflow (replaced by
+History backtests), the fundamentals job's dry-run option and the lakehouse's pre-market brief switch (the brief is
+always on). Kept for the next reviews: History backtests, Long-term backtest, Run Databricks jobs.
 
 ## Gaps found while building this register
 

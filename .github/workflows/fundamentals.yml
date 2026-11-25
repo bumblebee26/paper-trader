@@ -6,11 +6,6 @@ on:
   schedule:
     - cron: "45 1 * * 6" # Saturday 07:15 IST
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Fetch and print only, push nothing
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -45,7 +40,4 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Fetch and push
-        env:
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          if [ "$DRY_RUN" = "true" ]; then python jobs/fundamentals.py --dry-run; else python jobs/fundamentals.py; fi
+        run: python jobs/fundamentals.py

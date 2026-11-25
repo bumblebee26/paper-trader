@@ -1,7 +1,6 @@
 """Company fundamentals for the long-term pool: weekly, from Yahoo Finance into the lakehouse.
 
   python jobs/fundamentals.py            # needs AWS credentials (SSM: Databricks settings)
-  python jobs/fundamentals.py --dry-run  # fetch and print, push nothing
 
 Companies: NSE's official Nifty 200 list (with each company's industry, also pushed to the
 lakehouse as index_members/) plus the intraday watchlist. If the list can't be read, the 250 most
@@ -123,7 +122,6 @@ def fetch(symbol, fetched_at, now_epoch):
 
 
 def main(argv):
-    dry = "--dry-run" in argv
     now = market.now_ist()
     fetched_at = now.strftime("%Y-%m-%d %H:%M:%S")
     members = nifty200()
@@ -149,10 +147,6 @@ def main(argv):
     day = now.strftime("%Y-%m-%d")
     members_body = "".join(json.dumps({"symbol": s, **m, "index_name": "NIFTY 200", "as_of": day},
                                       separators=(",", ":")) + "\n" for s, m in members.items())
-    if dry:
-        print(body[:1500])
-        print(members_body[:600])
-        return 0
     storage.backend().put(f"fundamentals/date={day}/fundamentals.jsonl", body)
     import export
 
