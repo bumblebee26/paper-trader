@@ -132,11 +132,16 @@ def _fail(reason):
     return None
 
 
-def review(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines, checks=None):
+def review(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines, checks=None, facts_text=None):
     if not enabled():
         return _fail(unavailable_reason())
-    prompt = PROMPT.format(facts=facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines,
-                                         checks))
+    text = facts_text or facts(state, symbol, side, setup, entry, stop, target, rr, qty, market_lines, checks)
+    return ask(PROMPT.format(facts=text))
+
+
+def ask(prompt, model=None, timeout=None):
+    """One `claude -p` run with no tools; the parsed JSON answer or None (the reason is in LAST_ERROR)."""
+    model, timeout = model or config.REVIEWER_MODEL, timeout or config.REVIEWER_TIMEOUT_SEC
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDECODE") and k != "ANTHROPIC_API_KEY"}
     if not env.get("CLAUDE_CODE_OAUTH_TOKEN") and env.get("REVIEWER_CLAUDE_TOKEN"):
         # The session's login isn't passed down to its tools ("Not logged in"); the workflow hands it over
@@ -145,13 +150,13 @@ def review(state, symbol, side, setup, entry, stop, target, rr, qty, market_line
     env.pop("REVIEWER_CLAUDE_TOKEN", None)
     try:
         res = subprocess.run(
-            ["claude", "-p", prompt, "--model", config.REVIEWER_MODEL, "--tools", "",
+            ["claude", "-p", prompt, "--model", model, "--tools", "",
              "--strict-mcp-config", "--output-format", "text"],
-            capture_output=True, text=True, timeout=config.REVIEWER_TIMEOUT_SEC, env=env,
+            capture_output=True, text=True, timeout=timeout, env=env,
             stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
-        return _fail(f"no answer within {config.REVIEWER_TIMEOUT_SEC} s")
+        return _fail(f"no answer within {timeout} s")
     except OSError as err:
         return _fail(f"couldn't start claude: {err}")
     if res.returncode != 0:

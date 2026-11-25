@@ -226,6 +226,24 @@ First clean-up (25 Nov): removed the Reset ledger job (used once, 17 Nov), the S
 History backtests), the fundamentals job's dry-run option and the lakehouse's pre-market brief switch (the brief is
 always on). Kept for the next reviews: History backtests, Long-term backtest, Run Databricks jobs.
 
+## 18. Council test on every proposal (owner, 25 Nov; plan reviewed by an LLM council)
+
+Paper only. After the close (Model shadow workflow, 16:10) `jobs/council_shadow.py` judges each of the day's
+proposals from the exact facts the live reviewer saw (saved at proposal time in `council/<day>.json`):
+- **Council** = live reviewer + a Tape reader (one Sonnet call) + the setup's base rate (code: earlier days only,
+  pulled toward the overall rate when there are few trades). YES % = the middle one; takes the trade when at least
+  two of them are at 50% or more.
+- **Control** = the live reviewer's prompt run 3 times and averaged, so a council edge isn't just averaging.
+- **Same fill for everyone:** every proposal (taken, skipped, rejected, expired, approved-but-not-filled) is scored
+  on the next minute's open plus slippage, then stop / target / 15:10.
+- **Scoring fixed in advance:** Brier score on YES % (lower is better; 0.25 = coin flip), rupees on each method's
+  YES trades, hit rate, and rupees where the council and the live reviewer disagree. Judged at a review only after
+  30+ disagreements (about 3-6 weeks). Results: `council/results.csv`, `council/scorecard.json`, a Telegram summary.
+
+Dropped after the council review: shorter (caveman) answers for the live reviewer. Its answer is already short
+JSON; the time goes on starting the call and thinking, which the journal's `proposal_timing` (reviewer_sec)
+measures. Also fixed: journal appends now take a lock, so two threads can't lose each other's rows.
+
 ## Gaps found while building this register
 
 All fixed in Phase 3 step 6 (24 Nov): SYSTEM_PLAN.md (as-of date, swing auto mode, risk table with 5 open and the

@@ -1,7 +1,8 @@
 name: Model shadow
 
 # Shadow models for the intraday pool (volatility stop, trade filter, early cut, let winners run) and the stop
-# variants, trained and judged after every trading day. Paper only: nothing here places or changes a trade.
+# variants, trained and judged after every trading day; then the council test (jobs/council_shadow.py) judges the
+# day's proposals from the reviewer's saved facts. Paper only: nothing here places or changes a trade.
 # Also runnable by hand: Actions -> Model shadow -> Run workflow.
 on:
   schedule:
@@ -62,3 +63,21 @@ jobs:
           if [ "$SEND" != "true" ]; then args="$args --no-send"; fi
           if [ -n "$MAX_SYMBOLS" ]; then args="$args --max-symbols $MAX_SYMBOLS"; fi
           python jobs/model_shadow.py $args
+
+      - name: Install Claude Code (council test)
+        if: ${{ !cancelled() }}
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Council test (paper)
+        if: ${{ !cancelled() }}
+        env:
+          SEND: ${{ inputs.send || 'true' }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          REVIEWER_MODEL: sonnet
+        run: |
+          unset ANTHROPIC_API_KEY  # bill the subscription, never an API key
+          args=""
+          if [ "$SEND" != "true" ]; then args="--no-send"; fi
+          python jobs/council_shadow.py $args
