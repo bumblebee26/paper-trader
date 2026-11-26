@@ -269,6 +269,7 @@ def run_cycle() -> dict:
         else:
             t_data = market.now_ist()
             out["candidates"] = _scan(focus)
+            engine.SCAN_DONE = market.now_ist()
             _log_cycle(t_start, t_data, len(focus), len(out["candidates"]))
     return out
 
