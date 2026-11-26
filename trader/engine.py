@@ -154,6 +154,21 @@ def journal(event: str, event_id: str = "", **fields) -> None:
     storage.append_row(f"journal/{_today()}.csv", JOURNAL_COLUMNS, row)
 
 
+SCAN_DONE = None   # when the last run_cycle scan finished (set by server.py), for the timing line on proposals
+
+
+def timing_line(t_start, t_rev0, t_review, t_sent, reviewer_later):
+    """'⏱ after the 10:40 candle: scan +38 s · agent +71 s · checks 4 s · reviewer 2 s · sent +80 s'.
+    The +s are seconds after that candle closed; the others are how long the step took."""
+    close = t_start.replace(second=0, microsecond=0) - timedelta(minutes=t_start.minute % 5)
+    scan = (f"scan +{secs_after_candle(SCAN_DONE, t_start):.0f} s · "
+            if SCAN_DONE and timedelta(0) <= t_start - SCAN_DONE < timedelta(minutes=5) else "")
+    rev = "reviewer in the reply" if reviewer_later else f"reviewer {(t_review - t_rev0).total_seconds():.0f} s"
+    return (f"⏱ after the {close:%H:%M} candle: {scan}agent +{secs_after_candle(t_start):.0f} s · "
+            f"checks {(t_rev0 - t_start).total_seconds():.0f} s · {rev} · "
+            f"sent +{secs_after_candle(t_sent, t_start):.0f} s")
+
+
 def secs_after_candle(t=None, ref=None) -> float:
     """Seconds between the close of the 5-minute candle `ref` falls in (default: `t`'s) and `t` (default now).
     The latency marks in the journal (cycle_timing, proposal_timing) are all measured from that candle close."""
@@ -1298,8 +1313,8 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
         first = [("👍 good call", f"fb:like:{pid}"), ("👎 bad call", f"fb:dislike:{pid}")]
         if place:
             first.append(("EXIT", f"x:{pid}"))
-    if auto:
-        text += f"\nReviewer answered in {(t_review - t_rev0).total_seconds():.0f} s"
+    t_sent = market.now_ist()
+    text += "\n" + timing_line(t_start, t_rev0, t_review, t_sent, later)
     msg_id = tg.send(text, buttons=[first, links.buttons(symbol, pid)])
     if later:
         was = yes
@@ -1386,7 +1401,9 @@ def propose(state, symbol, side, setup, entry, stop, target, reasons, invalid_if
     journal("proposal_timing", proposal_id=pid, symbol=symbol,
             note=(f"start={secs_after_candle(t_start)};checks_sec={(t_checks - t_start).total_seconds():.1f}"
                   f";reviewer_sec={(t_review - t_rev0).total_seconds():.1f}"
-                  f";ready={secs_after_candle(market.now_ist(), t_start)}"))
+                  f";ready={secs_after_candle(market.now_ist(), t_start)}"
+                  f";scan={secs_after_candle(SCAN_DONE, t_start) if SCAN_DONE else ''}"
+                  f";sent={secs_after_candle(t_sent, t_start)}"))
     base = {"proposal_id": pid, "qty": qty, "risk_rs": risk_rs, "rr": rr,
             "suggestion": f"{advice['verdict']} {yes}%"}
     p = state["proposals"][pid]

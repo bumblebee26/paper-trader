@@ -70,6 +70,18 @@ class EngineTest(unittest.TestCase):
             self.assertIn("Suggestion now", env.sent[1])
             self.assertEqual(st["proposals"][r["proposal_id"]]["review"], review)   # counted in the record
 
+    def test_timing_line_splits_the_wait(self):
+        from datetime import datetime
+        t = lambda m, s: datetime(2026, 11, 26, 10, m, s, tzinfo=engine.market.IST)  # noqa: E731
+        engine.SCAN_DONE = t(40, 38)
+        try:
+            line = engine.timing_line(t(41, 11), t(41, 15), t(41, 17), t(41, 20), False)
+        finally:
+            engine.SCAN_DONE = None
+        self.assertEqual(line, "⏱ after the 10:40 candle: scan +38 s · agent +71 s · checks 4 s · reviewer 2 s"
+                               " · sent +80 s")
+        self.assertIn("reviewer in the reply", engine.timing_line(t(41, 11), t(41, 15), t(41, 15), t(41, 16), True))
+
     def test_seconds_after_candle_close(self):
         ist = engine.market.IST
         self.assertEqual(engine.secs_after_candle(datetime(2026, 11, 18, 9, 42, 7, tzinfo=ist)), 127.0)
