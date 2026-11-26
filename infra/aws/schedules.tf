@@ -20,6 +20,26 @@ locals {
   }
 }
 
+# 16:10: the model shadow job and the council test (GitHub's own cron started it 8-11 hours late)
+resource "aws_scheduler_schedule" "models" {
+  name        = "${local.prefix}-kick-models"
+  description = "Start the Model shadow workflow after the 15:45 export."
+  state       = var.dispatch_enabled ? "ENABLED" : "DISABLED"
+
+  schedule_expression          = "cron(10 16 ? * MON-FRI *)"
+  schedule_expression_timezone = "Asia/Kolkata"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.kicker.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ workflow = "model-shadow.yml" })
+  }
+}
+
 resource "aws_scheduler_schedule" "kick" {
   for_each = local.kicks
 

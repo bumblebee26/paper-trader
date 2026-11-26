@@ -30,18 +30,20 @@ def kicker(event, context):
     if not token:
         raise RuntimeError("GitHub token not set in SSM")
     repo = os.environ["DISPATCH_REPO"]
-    workflow = os.environ.get("DISPATCH_WORKFLOW", "trading-session.yml")
+    # an event can name another workflow (the 16:10 model shadow job); it then gets no phase input
+    workflow = (event or {}).get("workflow") or os.environ.get("DISPATCH_WORKFLOW", "trading-session.yml")
+    inputs = {} if (event or {}).get("workflow") else {"phase": phase}
     ref = os.environ.get("DISPATCH_REF", "main")
     request(
         "POST",
         f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
         headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
                  "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json"},
-        data=json.dumps({"ref": ref, "inputs": {"phase": phase}}).encode(),
+        data=json.dumps({"ref": ref, "inputs": inputs}).encode(),
         log_url=f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
     )
-    log.info("Dispatched %s session on %s@%s", phase, repo, ref)
-    return {"dispatched": phase}
+    log.info("Dispatched %s on %s@%s", workflow if inputs == {} else f"{phase} session", repo, ref)
+    return {"dispatched": workflow if inputs == {} else phase}
 
 
 def market_open_today():

@@ -8,6 +8,7 @@ from helpers import Env, minute_bars
 import config
 import engine
 import handlers
+import market
 import storage
 
 
@@ -198,6 +199,30 @@ class KickerTest(unittest.TestCase):
         self.assertTrue(url.endswith("/repos/bumblebee26/paper-trader/actions/workflows/trading-session.yml/dispatches"))
         self.assertEqual(json.loads(kw["data"]), {"ref": "main", "inputs": {"phase": "afternoon"}})
         self.assertNotIn("ghp_test", kw["log_url"])
+
+    def test_dispatches_another_workflow_without_a_phase(self):
+        import os
+        from unittest import mock
+        calls = []
+        with mock.patch.dict(os.environ, {"DISPATCH_TOKEN": "ghp_test", "DISPATCH_REPO": "bumblebee26/paper-trader"}), \
+                mock.patch.object(handlers, "request", lambda *a, **k: calls.append((a, k)) or b""):
+            self.assertEqual(handlers.kicker({"workflow": "model-shadow.yml"}, None), {"dispatched": "model-shadow.yml"})
+        (_, url), kw = calls[0]
+        self.assertTrue(url.endswith("/actions/workflows/model-shadow.yml/dispatches"))
+        self.assertEqual(json.loads(kw["data"]), {"ref": "main", "inputs": {}})
+
+
+class LastSessionTest(unittest.TestCase):
+    def test_late_runs_score_the_finished_session(self):
+        from datetime import datetime
+        from unittest import mock
+        at = lambda d, h, m: datetime(2026, 11, d, h, m, tzinfo=market.IST)  # noqa: E731
+        with mock.patch.object(market, "holiday", return_value=""):
+            self.assertEqual(str(market.last_session(at(25, 16, 10))), "2026-11-25")   # after the close: today
+            self.assertEqual(str(market.last_session(at(26, 1, 40))), "2026-11-25")    # after midnight: yesterday
+            self.assertEqual(str(market.last_session(at(26, 11, 0))), "2026-11-25")    # before the close: yesterday
+            self.assertEqual(str(market.last_session(at(21, 0, 19))), "2026-11-20")    # Saturday: Friday
+            self.assertEqual(str(market.last_session(at(24, 3, 43))), "2026-11-23")    # Tuesday early: Monday
 
 
 if __name__ == "__main__":

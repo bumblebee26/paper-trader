@@ -4,9 +4,9 @@ name: Model shadow
 # variants, trained and judged after every trading day; then the council test (jobs/council_shadow.py) judges the
 # day's proposals from the reviewer's saved facts. Paper only: nothing here places or changes a trade.
 # Also runnable by hand: Actions -> Model shadow -> Run workflow.
+# Started at 16:10 IST by the AWS kicker (infra/aws/schedules.tf). GitHub's own cron was removed on 26 Nov: it
+# started this job 8-11 hours late every day from 18 Nov.
 on:
-  schedule:
-    - cron: "40 10 * * 1-5" # 16:10 IST, after the 15:45 export
   workflow_dispatch:
     inputs:
       send:
@@ -15,6 +15,10 @@ on:
         default: true
       max_symbols:
         description: Limit the universe (blank = all tradable stocks)
+        required: false
+        default: ""
+      day:
+        description: Day to score, YYYY-MM-DD (blank = the last finished session)
         required: false
         default: ""
 
@@ -58,10 +62,12 @@ jobs:
         env:
           SEND: ${{ inputs.send || 'true' }}
           MAX_SYMBOLS: ${{ inputs.max_symbols }}
+          DAY: ${{ inputs.day }}
         run: |
           args=""
           if [ "$SEND" != "true" ]; then args="$args --no-send"; fi
           if [ -n "$MAX_SYMBOLS" ]; then args="$args --max-symbols $MAX_SYMBOLS"; fi
+          if [ -n "$DAY" ]; then args="$args --day $DAY"; fi
           python jobs/model_shadow.py $args
 
       - name: Install Claude Code (council test)
@@ -76,8 +82,10 @@ jobs:
           SEND: ${{ inputs.send || 'true' }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           REVIEWER_MODEL: sonnet
+          DAY: ${{ inputs.day }}
         run: |
           unset ANTHROPIC_API_KEY  # bill the subscription, never an API key
           args=""
           if [ "$SEND" != "true" ]; then args="--no-send"; fi
+          if [ -n "$DAY" ]; then args="$args --day $DAY"; fi
           python jobs/council_shadow.py $args
