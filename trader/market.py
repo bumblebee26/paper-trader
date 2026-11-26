@@ -27,6 +27,15 @@ def is_trading_day(d) -> bool:
     return d.weekday() < 5 and not holiday(d)
 
 
+def last_session(now):
+    """The latest trading day whose session is over: today after 15:30 IST, otherwise the trading day before.
+    After-the-close jobs score this day, so a run that starts late (after midnight) still scores the right one."""
+    d = now.date() if now.strftime("%H:%M") >= "15:31" else now.date() - timedelta(days=1)
+    while not is_trading_day(d):
+        d -= timedelta(days=1)
+    return d
+
+
 def next_trading_day_after(d):
     d = d + timedelta(days=1)
     while not is_trading_day(d):

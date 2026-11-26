@@ -243,4 +243,4 @@ class JobEndToEnd(unittest.TestCase):
         self.assertIn("filter", bt)
         self.assertEqual(float(bt["current"]["pnl_rs"]), out["summary"]["current"]["total_r"])
         self.assertIn("days_up_pct=", bt["current"]["note"])
-        self.assertEqual(hist[-1]["date"], "2026-11-07")
+        self.assertEqual(hist[-1]["date"], "2026-11-06")   # 7 Nov is a Saturday: the last session is Friday

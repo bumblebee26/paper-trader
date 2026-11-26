@@ -254,6 +254,14 @@ reviewer's check to place a trade; its message now says how long the reviewer to
 also in the journal (proposal_timing, reviewer_sec). Lighter start-up, an earlier start, Haiku and a shorter time limit
 are for the 1 Dec review, using those timings.
 
+## 20. The model shadow job starts from AWS and scores the last finished session (26 Nov)
+
+From 18 to 25 Nov GitHub started the 16:10 Model shadow job 8 to 11 hours late, after midnight, so it scored "today"
+(a day with no trades yet) and wrote no model rows; the council test, in the same job, judged nothing. The job is
+now started at 16:10 by the AWS kicker, like the trading sessions, and GitHub's cron for it is removed. Both the
+model job and the council score the last finished session (today after 15:30, otherwise the trading day before),
+so a late or manual run still scores the right day. The workflow takes a `day` input to re-score a past day.
+
 ## Gaps found while building this register
 
 All fixed in Phase 3 step 6 (24 Nov): SYSTEM_PLAN.md (as-of date, swing auto mode, risk table with 5 open and the

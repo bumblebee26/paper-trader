@@ -191,6 +191,6 @@ if __name__ == "__main__":
     ap.add_argument("--day", default=None)
     ap.add_argument("--no-send", action="store_true")
     a = ap.parse_args()
-    d = a.day or market.now_ist().strftime("%Y-%m-%d")
+    d = a.day or market.last_session(market.now_ist()).strftime("%Y-%m-%d")   # right day even if run late
     new, card = run(d, send=not a.no_send)
     print(f"{len(new)} judged; scorecard: {card}")

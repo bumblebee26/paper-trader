@@ -203,9 +203,11 @@ def telegram_lines(summary, real, today):
     return lines
 
 
-def main(send=True, max_syms=None, use_nifty200=False):
+def main(send=True, max_syms=None, use_nifty200=False, day=None):
     started = time.time()
-    today = market.now_ist().strftime("%Y-%m-%d")
+    # the last finished session, not the run date: GitHub started this job 8-11 hours late (after midnight) every day
+    # from 18 to 25 Nov, so "today" had no trades and no model rows were written
+    today = day or market.last_session(market.now_ist()).strftime("%Y-%m-%d")
     syms = nifty200() if use_nifty200 else universe()
     syms = syms[:max_syms] if max_syms else syms
     bars = {s: load_bars(s, today) for s in syms}
@@ -218,7 +220,7 @@ def main(send=True, max_syms=None, use_nifty200=False):
     log.info("%d labelled signals over %d days", len(data), n_days)
     decisions, notes = walkforward.walk_forward(data, vol_fn(days_bars))
     summary = walkforward.summarise(decisions)
-    trades = todays_trades(today) if market.is_trading_day(market.now_ist()) else []
+    trades = todays_trades(today)
     for t in trades:   # traded names outside the universe still need their candles
         if t["symbol"] not in bars:
             bars[t["symbol"]] = load_bars(t["symbol"], today)
@@ -261,5 +263,6 @@ if __name__ == "__main__":
     ap.add_argument("--no-send", action="store_true")
     ap.add_argument("--max-symbols", type=int, default=None)
     ap.add_argument("--nifty200", action="store_true", help="universe from niftyindices.com, not the lakehouse")
+    ap.add_argument("--day", default=None, help="YYYY-MM-DD to score (default: the last finished session)")
     a = ap.parse_args()
-    main(send=not a.no_send, max_syms=a.max_symbols, use_nifty200=a.nifty200)
+    main(send=not a.no_send, max_syms=a.max_symbols, use_nifty200=a.nifty200, day=a.day)
